@@ -3,16 +3,21 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
-import { mkdtempSync, rmSync } from 'node:fs'
+import { afterEach, beforeEach, describe, expect, spyOn, test, type Mock } from 'bun:test'
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
 import type { ModelMessage } from 'ai'
 
+import type { ChatProvider, DeferredDeliveryTarget } from '../../src/chat/types.js'
+import { setConfig } from '../../src/config.testing.js'
 import type { DebugEvent } from '../../src/debug/event-bus.js'
 import type { LlmTrace } from '../../src/debug/llm-trace-collector.js'
 import type { CreateDeliveryContext } from '../../src/deferred-prompts/delivery-input.js'
+import { pollScheduledOnce } from '../../src/deferred-prompts/poller.js'
+import * as proactiveLlmModule from '../../src/deferred-prompts/proactive-llm.js'
+import * as proofChecksObserve from '../../src/deferred-prompts/proof-checks-observe.js'
 import {
   PROOF_CHECKS,
   proofMarker,
@@ -24,6 +29,7 @@ import {
   runProofCheck,
 } from '../../src/deferred-prompts/proof-checks.js'
 import type { ProofCheckRecord } from '../../src/deferred-prompts/proof-store.js'
+import { createScheduledPrompt } from '../../src/deferred-prompts/scheduled.js'
 import type { CreateInput, UpdateInput } from '../../src/deferred-prompts/tool-handlers.js'
 import type {
   AlertCondition,
@@ -35,9 +41,21 @@ import type {
   UpdateResult,
 } from '../../src/deferred-prompts/types.js'
 import { t } from '../../src/i18n/index.js'
+import { setContextSettings } from '../../src/instances/context-store.js'
 import { formatCurrentTimeTag } from '../../src/utils/current-time-format.js'
 import { localDatetimeToUtc } from '../../src/utils/datetime.js'
-import { flushMicrotasks, mockLogger, setupTestDb, waitFor } from '../utils/test-helpers.js'
+import { createMockProvider } from '../tools/mock-provider.js'
+import {
+  createMockChatWithSentMessages,
+  flushMicrotasks,
+  mockLogger,
+  seedAdminLlmBinding,
+  seedCommonTestPlatformInstances,
+  seedTestPlatformInstance,
+  seedTestTaskInstance,
+  setupTestDb,
+  waitFor,
+} from '../utils/test-helpers.js'
 
 const CLOCK_BASE_MS = 1_700_000_040_000
 const MINUTE_MS = 60_000
@@ -927,5 +945,181 @@ describe('proof checks runner', () => {
     expect(cancelled).toHaveLength(2)
     expect(harness.world.createCalls).toHaveLength(0)
     expect(harness.records).toHaveLength(0)
+  })
+
+  describe('poller delivery record seam (D9)', () => {
+    type RefusingChatProvider = ChatProvider & {
+      isInstanceActive: (id: string) => boolean
+      sendMessage: (platformInstanceId: string, target: DeferredDeliveryTarget, text: string) => Promise<false>
+    }
+
+    interface DeliveryRecordCall {
+      runId: string
+      responseText: string
+      at: string
+    }
+
+    let sentMessages: Array<{ platformInstanceId: string; target: DeferredDeliveryTarget; text: string }>
+    let chat: ChatProvider
+    let recordCalls: DeliveryRecordCall[]
+    let recordSpy: Mock<(runId: string, responseText: string, at: string) => void>
+    const spies: Array<{ mockRestore: () => void }> = []
+
+    const track = <T extends { mockRestore: () => void }>(spy: T): T => {
+      spies.push(spy)
+      return spy
+    }
+
+    const spyDeliveryRecord = (): void => {
+      recordCalls = []
+      recordSpy = track(
+        spyOn(proofChecksObserve, 'recordProofDelivery').mockImplementation(
+          (recordedRunId: string, responseText: string, at: string): void => {
+            recordCalls.push({ runId: recordedRunId, responseText, at })
+          },
+        ),
+      )
+    }
+
+    const setupPollerUser = (userId: string): void => {
+      seedCommonTestPlatformInstances()
+      seedTestPlatformInstance({ id: 'mock-default' })
+      seedTestTaskInstance({ id: 'kaneo-default' })
+      setConfig(userId, 'timezone', 'UTC')
+      setContextSettings({ contextId: userId, taskInstanceId: 'kaneo-default', platformInstanceId: 'mock-default' })
+      seedAdminLlmBinding()
+    }
+
+    const createDueProofPrompt = (userId: string, runId: string): void => {
+      createScheduledPrompt(userId, `${proofMarker(runId)} proof body`, {
+        fireAt: new Date(Date.now() - 60_000).toISOString(),
+      })
+    }
+
+    beforeEach(() => {
+      const mockChat = createMockChatWithSentMessages()
+      chat = mockChat.provider
+      sentMessages = mockChat.sentMessages
+    })
+
+    afterEach(() => {
+      for (const spy of spies) spy.mockRestore()
+      spies.length = 0
+    })
+
+    test('records the delivery only after the whole-marker group delivers, leaving the message untouched', async () => {
+      const userId = 'proof-delivery-user'
+      setupPollerUser(userId)
+      const runId = '6f9619ff-8b86-d011-b42d-00cf4fc964ff'
+      createDueProofPrompt(userId, runId)
+      track(
+        spyOn(proactiveLlmModule, 'dispatchExecution').mockImplementation(() =>
+          Promise.resolve('Delivered proof reply.'),
+        ),
+      )
+      spyDeliveryRecord()
+
+      await pollScheduledOnce(chat, () => createMockProvider())
+
+      expect(recordCalls).toHaveLength(1)
+      expect(recordCalls[0]?.runId).toBe(runId)
+      expect(recordCalls[0]?.responseText).toBe('Delivered proof reply.')
+      expect(recordCalls[0]?.at).toMatch(/^\d{4}-\d{2}-\d{2}T/u)
+      expect(sentMessages).toHaveLength(1)
+      expect(sentMessages[0]?.text).toBe('Delivered proof reply.')
+    })
+
+    test('mixed marker and plain prompts in one group skip the record but still deliver', async () => {
+      const userId = 'proof-mixed-user'
+      setupPollerUser(userId)
+      const pastTime = new Date(Date.now() - 60_000).toISOString()
+      createDueProofPrompt(userId, '11111111-2222-4333-8444-555555555555')
+      createScheduledPrompt(userId, 'plain reminder', { fireAt: pastTime })
+      track(spyOn(proactiveLlmModule, 'dispatchExecution').mockImplementation(() => Promise.resolve('Merged reply.')))
+      spyDeliveryRecord()
+
+      await pollScheduledOnce(chat, () => createMockProvider())
+
+      expect(recordSpy).not.toHaveBeenCalled()
+      expect(sentMessages).toHaveLength(1)
+      expect(sentMessages[0]?.text).toBe('Merged reply.')
+    })
+
+    test('plain groups never record', async () => {
+      const userId = 'proof-plain-user'
+      setupPollerUser(userId)
+      createScheduledPrompt(userId, 'an ordinary reminder', { fireAt: new Date(Date.now() - 60_000).toISOString() })
+      track(spyOn(proactiveLlmModule, 'dispatchExecution').mockImplementation(() => Promise.resolve('Ordinary reply.')))
+      spyDeliveryRecord()
+
+      await pollScheduledOnce(chat, () => createMockProvider())
+
+      expect(recordSpy).not.toHaveBeenCalled()
+      expect(sentMessages).toHaveLength(1)
+      expect(sentMessages[0]?.text).toBe('Ordinary reply.')
+    })
+
+    test('error-path delivery is not recorded', async () => {
+      const userId = 'proof-error-path-user'
+      setupPollerUser(userId)
+      createDueProofPrompt(userId, 'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee')
+      track(
+        spyOn(proactiveLlmModule, 'dispatchExecution').mockImplementation(() =>
+          Promise.reject(new Error('LLM exploded')),
+        ),
+      )
+      spyDeliveryRecord()
+
+      await pollScheduledOnce(chat, () => createMockProvider())
+
+      expect(recordSpy).not.toHaveBeenCalled()
+      expect(sentMessages).toHaveLength(1)
+      expect(sentMessages[0]?.text).toContain('I ran into an error while working on that:')
+    })
+
+    test('no record when sendProactiveMessage resolves false', async () => {
+      const userId = 'proof-refused-user'
+      setupPollerUser(userId)
+      createDueProofPrompt(userId, '99999999-8888-4777-8666-555555555555')
+      track(
+        spyOn(proactiveLlmModule, 'dispatchExecution').mockImplementation(() => Promise.resolve('Undelivered reply.')),
+      )
+      spyDeliveryRecord()
+      chat = {
+        ...chat,
+        isInstanceActive: (_id: string): boolean => true,
+        sendMessage: (_platformInstanceId: string, _target: DeferredDeliveryTarget, _text: string): Promise<false> =>
+          Promise.resolve(false),
+      } as RefusingChatProvider
+
+      await pollScheduledOnce(chat, () => createMockProvider())
+
+      expect(recordSpy).not.toHaveBeenCalled()
+      expect(sentMessages).toHaveLength(0)
+    })
+
+    test('the record line persists through the real seam to the proof store', async () => {
+      const userId = 'proof-persist-user'
+      setupPollerUser(userId)
+      const runId = 'c0ffee00-1234-4abc-9def-567890abcdef'
+      createDueProofPrompt(userId, runId)
+      track(
+        spyOn(proactiveLlmModule, 'dispatchExecution').mockImplementation(() => Promise.resolve('Persisted reply.')),
+      )
+
+      await pollScheduledOnce(chat, () => createMockProvider())
+
+      const storePath = join(envDir, 'proof-checks.jsonl')
+      await waitFor(() => {
+        try {
+          return readFileSync(storePath, 'utf8').includes(`"runId":"${runId}"`)
+        } catch {
+          return false
+        }
+      })
+      const parsed: unknown = JSON.parse(readFileSync(storePath, 'utf8').trim())
+      expect(parsed).toMatchObject({ runId, responseText: 'Persisted reply.', delivered: true })
+      expect(readFileSync(storePath, 'utf8').trim()).toMatch(/"at":"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/u)
+    })
   })
 })
