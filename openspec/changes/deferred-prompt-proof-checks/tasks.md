@@ -4,7 +4,7 @@ Test-first order per design.md D12 (red before each implementation). Verificatio
 
 ## 1. Proof store (capped JSONL)
 
-- [ ] 1.1 Write failing `tests/deferred-prompts/proof-store.test.ts` (imports `src/deferred-prompts/proof-store.js`): append/load round-trip, record shape `{run_id, check, variant, started_at, finished_at, verdict, observations[]}`, cap to last ~50 runs dropping oldest, atomic trim (temp+rename, no partial file), DI of `{path, now}` with a temp dir. Verify red: `bun test tests/deferred-prompts/proof-store.test.ts`
+- [x] 1.1 Write failing `tests/deferred-prompts/proof-store.test.ts` (imports `src/deferred-prompts/proof-store.js`): append/load round-trip, record shape `{run_id, check, variant, started_at, finished_at, verdict, observations[]}`, cap to last ~50 runs dropping oldest, atomic trim (temp+rename, no partial file), DI of `{path, now}` with a temp dir. Verify red: `bun test tests/deferred-prompts/proof-store.test.ts`
 - [ ] 1.2 Implement `src/deferred-prompts/proof-store.ts` per design D5: append-only JSONL at `dirname(DB_PATH ?? 'papai.db')/proof-checks.jsonl`, single-writer promise chain, lazy file creation, injected path/clock; no logging of recorded prompt text. Verify green: `bun test tests/deferred-prompts/proof-store.test.ts` && `bun run lint`
 
 ## 2. Async runner + poller delivery record
