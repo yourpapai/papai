@@ -3,10 +3,8 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-// Extracted, not inline: oxlint's pedantic max-lines rule caps this file at
-// 300 lines, and the scoped graphql-client ignore below
-// (github-provider-graphql-api) pushed the inline form to 301. Re-inline only
-// alongside an equal size reduction here.
+// Extracted, not inline: oxlint's pedantic max-lines rule caps this file at 300 lines, and the scoped
+// graphql-client ignore below (github-provider-graphql-api) pushed the inline form to 301. Re-inline only alongside an equal size reduction.
 import { svelteCompiler } from './knip-svelte-compiler.js'
 
 // GUARDRAIL: keep the ignore surface minimal. New ignores require an inline
@@ -102,8 +100,9 @@ export default {
     // usage-failure-queries change (openspec/changes/usage-failure-queries);
     // the follow-up dashboard/settings wiring consumes its exports.
     'src/usage/failures.ts!',
-    // Proof-check store: disposable seam; runner/poller/reader consumers land in later tasks of deferred-prompt-proof-checks.
+    // Proof-check store + runner: disposable seam; runner/poller/reader consumers land in later tasks of deferred-prompt-proof-checks.
     'src/deferred-prompts/proof-store.ts!',
+    'src/deferred-prompts/proof-checks.ts!',
     // First-party plugin entry points are loaded dynamically by the plugin
     // loader, so they have no static importer.
     'plugins/*/index.ts!',
@@ -262,8 +261,9 @@ export default {
     // (openspec/changes/usage-failure-queries) and by tests outside knip's
     // production project scope.
     'src/usage/failures.ts': ['exports'],
-    // Proof-store exports: later-task consumers of deferred-prompt-proof-checks plus tests outside knip's graph.
-    'src/deferred-prompts/proof-store.ts': ['exports'],
+    // Proof-check module exports: later-task consumers (diagnostics tools, poller record line) of
+    // deferred-prompt-proof-checks plus tests outside knip's production graph.
+    'src/deferred-prompts/proof-*.ts': ['exports', 'types'],
     // Re-export facades whose remaining flagged bindings knip cannot trace:
     // the published plugin-types package export, declared plugin-core-separation
     // compatibility boundaries, and bindings consumed by byte-frozen 0Q

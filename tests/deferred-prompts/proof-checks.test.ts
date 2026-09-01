@@ -92,27 +92,35 @@ class FakeTimers {
   }
 }
 
-class FakeBus {
-  listeners = new Set<(event: DebugEvent) => void>()
+interface FakeBus {
+  listeners: Set<(event: DebugEvent) => void>
+  subscribe: (listener: (event: DebugEvent) => void) => void
+  unsubscribe: (listener: (event: DebugEvent) => void) => void
+  emit: (event: DebugEvent) => void
+  emitUserPromptEvent: (type: string, promptId: string, userId: string, at: number) => void
+  emitGroupPromptEvent: (type: string, promptId: string, groupId: string, at: number) => void
+}
 
-  subscribe = (listener: (event: DebugEvent) => void): void => {
-    this.listeners.add(listener)
+const makeFakeBus = (): FakeBus => {
+  const listeners = new Set<(event: DebugEvent) => void>()
+  const emit = (event: DebugEvent): void => {
+    for (const listener of [...listeners]) listener(event)
   }
-
-  unsubscribe = (listener: (event: DebugEvent) => void): void => {
-    this.listeners.delete(listener)
-  }
-
-  emit = (event: DebugEvent): void => {
-    for (const listener of [...this.listeners]) listener(event)
-  }
-
-  emitUserPromptEvent = (type: string, promptId: string, userId: string, at: number): void => {
-    this.emit({ type, timestamp: at, scope: { kind: 'user', userId }, data: { promptId } })
-  }
-
-  emitGroupPromptEvent = (type: string, promptId: string, groupId: string, at: number): void => {
-    this.emit({ type, timestamp: at, scope: { kind: 'group', groupId }, data: { promptId } })
+  return {
+    listeners,
+    subscribe: (listener: (event: DebugEvent) => void): void => {
+      listeners.add(listener)
+    },
+    unsubscribe: (listener: (event: DebugEvent) => void): void => {
+      listeners.delete(listener)
+    },
+    emit,
+    emitUserPromptEvent: (type: string, promptId: string, userId: string, at: number): void => {
+      emit({ type, timestamp: at, scope: { kind: 'user', userId }, data: { promptId } })
+    },
+    emitGroupPromptEvent: (type: string, promptId: string, groupId: string, at: number): void => {
+      emit({ type, timestamp: at, scope: { kind: 'group', groupId }, data: { promptId } })
+    },
   }
 }
 
@@ -197,7 +205,9 @@ const makeAlertRow = (id: string, ownerId: string, prompt: string, condition: Al
 let idSeq = 0
 const nextId = (prefix: string): string => `${prefix}-${++idSeq}`
 
-const makeHandlers = (world: FakeWorld) => ({
+const makeHandlers = (
+  world: FakeWorld,
+): Pick<ProofCheckDeps, 'executeCreate' | 'executeUpdate' | 'executeGet' | 'executeCancel'> => ({
   executeCreate: (userId: string, input: CreateInput, deliveryCtx?: CreateDeliveryContext): CreateResult => {
     world.createCalls.push({ userId, input, deliveryCtx })
     if (world.createError !== null) return { error: world.createError }
@@ -257,7 +267,7 @@ interface Harness {
 const makeHarness = (): Harness => {
   const world = makeWorld()
   const timers = new FakeTimers()
-  const bus = new FakeBus()
+  const bus = makeFakeBus()
   const records: ProofCheckRecord[] = []
   const owned = <T extends { createdByUserId: string }>(row: T | undefined, userId: string): T | null =>
     row !== undefined && row.createdByUserId === userId ? row : null
@@ -342,6 +352,11 @@ describe('proof checks runner', () => {
     return outcome.run_id
   }
 
+  const expectCleaned = (outcome: ProofCheckOutcome): string[] => {
+    if (outcome.status !== 'cleaned') throw new Error(`Expected a cleaned outcome, got ${JSON.stringify(outcome)}`)
+    return outcome.cancelled
+  }
+
   const waitForRecord = async (minimum = 1): Promise<ProofCheckRecord> => {
     await waitFor(() => harness.records.length >= minimum)
     return harness.records[harness.records.length - 1]!
@@ -416,8 +431,9 @@ describe('proof checks runner', () => {
     })
     expect(createCall?.input.prompt.startsWith(proofMarker(record.run_id))).toBe(true)
 
-    const cancelledIds = harness.world.cancelCalls.map((call) => call.id)
-    expect(cancelledIds).toContain(record.run_id && singleKey(harness.world.scheduled))
+    const createdId = singleKey(harness.world.scheduled)
+    expect(record.run_id).not.toBe('')
+    expect(harness.world.cancelCalls.map((call) => call.id)).toContain(createdId)
     expect(harness.world.cancelCalls[0]?.userId).toBe(ADMIN_STORAGE_ID)
     expect(harness.world.updateCalls).toHaveLength(0)
   })
@@ -502,7 +518,8 @@ describe('proof checks runner', () => {
     expect(record.run_id).toBe(runId)
     expect(harness.bus.listeners.size).toBe(0)
     expect(harness.timers.pendingCount()).toBe(0)
-    expect(harness.world.cancelCalls.some((call) => call.id === proofId && call.userId === ADMIN_STORAGE_ID)).toBe(true)
+    const proofCancel = harness.world.cancelCalls.find((call) => call.id === proofId)
+    expect(proofCancel?.userId).toBe(ADMIN_STORAGE_ID)
   })
 
   test('async observation matches deferred:fired only for the proof prompt id in user scope', async () => {
@@ -554,7 +571,9 @@ describe('proof checks runner', () => {
     await expectStarted(makeRequest({ check: 'bug3_fires_on_creation' }))
     await waitFor(() => harness.world.createCalls.length > 0)
     const proofId = singleKey(harness.world.scheduled)
-    const fireAtMs = Date.parse(harness.world.scheduled.get(proofId)?.fireAt ?? '')
+    const proofRow = harness.world.scheduled.get(proofId)
+    expect(proofRow).toBeDefined()
+    const fireAtMs = Date.parse(proofRow!.fireAt)
     expect(Number.isNaN(fireAtMs)).toBe(false)
     harness.world.scheduled.set(proofId, {
       ...harness.world.scheduled.get(proofId)!,
@@ -645,7 +664,7 @@ describe('proof checks runner', () => {
     const runId = await expectStarted(makeRequest())
     await waitFor(() => harness.world.createCalls.length > 0)
     const proofId = singleKey(harness.world.scheduled)
-    harness.deps.readCachedHistory = () => {
+    harness.deps.readCachedHistory = (): readonly ModelMessage[] => {
       throw new Error('history read exploded')
     }
     harness.timers.nowMs = CLOCK_BASE_MS + 1_000
@@ -903,11 +922,9 @@ describe('proof checks runner', () => {
       ),
     )
 
-    const outcome = await runProofCheck(harness.deps, makeRequest({ check: undefined, cleanup: true }))
-
-    if (outcome.status !== 'cleaned') throw new Error(`Expected a cleaned outcome, got ${JSON.stringify(outcome)}`)
-    expect(new Set(outcome.cancelled)).toEqual(new Set(['sp-sweep-a', 'al-sweep-a']))
-    expect(outcome.cancelled).toHaveLength(2)
+    const cancelled = expectCleaned(await runProofCheck(harness.deps, makeRequest({ check: undefined, cleanup: true })))
+    expect(new Set(cancelled)).toEqual(new Set(['sp-sweep-a', 'al-sweep-a']))
+    expect(cancelled).toHaveLength(2)
     expect(harness.world.createCalls).toHaveLength(0)
     expect(harness.records).toHaveLength(0)
   })
