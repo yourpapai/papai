@@ -57,11 +57,58 @@ function fakeClock(): { readonly tick: () => Promise<void>; readonly release: ()
   }
 }
 
-async function releaseTick(clock: { readonly release: () => void }): Promise<void> {
-  clock.release()
-  await new Promise((resolve) => {
-    setTimeout(resolve, 0)
-  })
+/**
+ * Release ticks until the re-presented final gate has parked (two presentations, tail
+ * closed) — a fixed tick count races the settle chain's fs reads under load (the CI
+ * 4-vCPU serial run wedged the waiter mid-settle and hung to the global timeout).
+ */
+async function ticksUntilSecondPresentation(
+  clock: { readonly release: () => void },
+  logPath: string,
+  budgetMs = 10_000,
+): Promise<void> {
+  const deadline = Date.now() + budgetMs
+  while (Date.now() < deadline) {
+    const tokens = typeTokens(readEvents(logPath))
+    const presentations = tokens.filter((token) => token === 'gate:presented:').length
+    const tailClosed = tokens.at(-1) === 'stage_exit:atomicity' || tokens.at(-1) === 'stage_exit:decompose'
+    if (presentations >= 2 && tailClosed) return
+    clock.release()
+    await new Promise((resolve) => {
+      setTimeout(resolve, 2)
+    })
+  }
+}
+
+/**
+ * Release ticks (bounded) until the pending run resolves — the settled flag flips in
+ * the same microtask batch as the promise (a `Promise.race` against an already-settled
+ * marker loses to the marker).
+ */
+async function settleViaTicks<T>(
+  pending: Promise<T>,
+  clock: { readonly release: () => void },
+  budgetMs = 10_000,
+): Promise<T> {
+  const state = { settled: false }
+  const tracked = pending.then(
+    (value: T): T => {
+      state.settled = true
+      return value
+    },
+    (error: unknown): never => {
+      state.settled = true
+      throw error
+    },
+  )
+  const deadline = Date.now() + budgetMs
+  while (Date.now() < deadline && !state.settled) {
+    clock.release()
+    await new Promise((resolve) => {
+      setTimeout(resolve, 2)
+    })
+  }
+  return tracked
 }
 
 async function waitFor(predicate: () => boolean, budgetMs = 5_000): Promise<boolean> {
@@ -83,31 +130,6 @@ function typeTokens(events: readonly SddEvent[]): string[] {
         ? `gate:${event.action}:${'outcome' in event ? (event.outcome ?? '') : ''}`
         : `${event.type}:${'round' in event ? event.round : ''}`,
   )
-}
-
-/** Release ticks (bounded) until the re-presented final gate has parked (two presentations, tail closed). */
-async function ticksUntilSecondPresentation(clock: { readonly release: () => void }, logPath: string): Promise<void> {
-  for (let i = 0; i < 30; i += 1) {
-    await releaseTick(clock)
-    const tokens = typeTokens(readEvents(logPath))
-    const presentations = tokens.filter((token) => token === 'gate:presented:').length
-    const tailClosed = tokens.at(-1) === 'stage_exit:atomicity' || tokens.at(-1) === 'stage_exit:decompose'
-    if (presentations >= 2 && tailClosed) break
-  }
-}
-
-/** Release ticks (bounded) until the pending run resolves. */
-async function settleViaTicks<T>(
-  pending: Promise<T>,
-  clock: { readonly release: () => void },
-  budget = 30,
-): Promise<T> {
-  for (let i = 0; i < budget; i += 1) {
-    await releaseTick(clock)
-    const done = await Promise.race([pending.then((): boolean => true), Promise.resolve(false)])
-    if (done) break
-  }
-  return pending
 }
 
 /** The M shape whose final gate parks for the human (a high-blast assumption blocks R1). */

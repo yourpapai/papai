@@ -183,23 +183,19 @@ function fakeClock(): { readonly tick: () => Promise<void>; readonly release: ()
   }
 }
 
-/** Release one tick and let the waiter's continuation run before the next. */
-async function releaseTick(clock: { readonly release: () => void }): Promise<void> {
-  clock.release()
-  await new Promise((resolve) => {
-    setTimeout(resolve, 0)
-  })
-}
-
-/** Release ticks (bounded) until the run presents the given gate version and parks again. */
+/**
+ * Release ticks until the run presents the given gate version and parks again — a fixed
+ * tick count races the revision round's fs reads under load (the wall-clock bound keeps
+ * releasing while the work is still in flight).
+ */
 async function ticksUntilNextGate(
   clock: { readonly release: () => void },
   logPath: string,
   version: number,
-  budget = 40,
+  budgetMs = 10_000,
 ): Promise<void> {
-  for (let i = 0; i < budget; i += 1) {
-    await releaseTick(clock)
+  const deadline = Date.now() + budgetMs
+  while (Date.now() < deadline) {
     const presented = readEvents(logPath).some(
       (event) => event.type === 'gate' && event.action === 'presented' && event.version === version,
     )
@@ -209,6 +205,10 @@ async function ticksUntilNextGate(
         event.stage === 'review' &&
         readEvents(logPath).some((e) => e.type === 'gate' && e.action === 'answered'),
     )
-    if (presented && updaterRan) break
+    if (presented && updaterRan) return
+    clock.release()
+    await new Promise((resolve) => {
+      setTimeout(resolve, 2)
+    })
   }
 }

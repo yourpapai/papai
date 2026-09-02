@@ -63,23 +63,23 @@ function fakeClock(): { readonly tick: () => Promise<void>; readonly release: ()
   }
 }
 
-/** Release one tick and let the waiter's continuation run before the next. */
-async function releaseTick(clock: { readonly release: () => void }): Promise<void> {
-  clock.release()
-  await new Promise((resolve) => {
-    setTimeout(resolve, 0)
-  })
-}
-
-/** Release ticks (bounded) until the path exists on disk. */
+/**
+ * Release ticks until the path exists on disk — a fixed tick count races the
+ * presentation write's fs window under load (the wall-clock bound keeps releasing
+ * while the write is still in flight).
+ */
 async function ticksUntilFile(
   clock: { readonly release: () => void },
   filePath: string,
-  budget = 30,
+  budgetMs = 10_000,
 ): Promise<boolean> {
-  for (let i = 0; i < budget; i += 1) {
-    await releaseTick(clock)
+  const deadline = Date.now() + budgetMs
+  while (Date.now() < deadline) {
     if (fs.existsSync(filePath)) return true
+    clock.release()
+    await new Promise((resolve) => {
+      setTimeout(resolve, 2)
+    })
   }
   return fs.existsSync(filePath)
 }

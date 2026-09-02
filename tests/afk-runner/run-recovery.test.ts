@@ -235,21 +235,36 @@ describe('mid-presentation crash heals on resume (D5)', () => {
 
 type ResumeOutcome = Awaited<ReturnType<typeof resumeRun>>
 
-/** Resume through the injected clock, releasing ticks (bounded) until the run halts. */
+/**
+ * Resume through the injected clock, releasing ticks until the run halts — the settled
+ * flag flips in the same microtask batch as the promise (a `Promise.race` against an
+ * already-settled marker loses to the marker); a fixed tick count races the settle
+ * chain's fs reads under load.
+ */
 async function settleAndWait(
   pending: Promise<ResumeOutcome>,
   clock: { readonly release: () => void },
-  budget = 30,
+  budgetMs = 10_000,
 ): Promise<ResumeOutcome> {
-  for (let i = 0; i < budget; i += 1) {
+  const state = { settled: false }
+  const tracked = pending.then(
+    (value: ResumeOutcome): ResumeOutcome => {
+      state.settled = true
+      return value
+    },
+    (error: unknown): never => {
+      state.settled = true
+      throw error
+    },
+  )
+  const deadline = Date.now() + budgetMs
+  while (Date.now() < deadline && !state.settled) {
     clock.release()
     await new Promise((resolve) => {
-      setTimeout(resolve, 0)
+      setTimeout(resolve, 2)
     })
-    const done = await Promise.race([pending.then((): boolean => true), Promise.resolve(false)])
-    if (done) break
   }
-  return pending
+  return tracked
 }
 
 function driveResume(deps: Parameters<typeof resumeRun>[0], runId: string): Promise<ResumeOutcome> {
