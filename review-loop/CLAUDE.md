@@ -50,7 +50,7 @@ mean "install the pinned CLI", not a PATH problem.
 
 ## Agent subprocess guards
 
-Agent subprocess guards live in `src/spawn.ts` + `src/agent-runner.ts`: besides the wall-clock `timeout`, an optional `inactivityTimeoutMs` watchdog kills a child that produces no stdout (hung LLM stream) and reports `stalled: true`; `runAgent` retries a stall once but never retries a wall-clock timeout. Callers opt in by passing `inactivityTimeoutMs` through `RunAgentOptions` (mutation-improve wires it from `agent.inactivityTimeoutMs`; review-loop's own config does not yet).
+Agent subprocess guards live in `src/spawn.ts` + `src/agent-runner.ts`: besides the wall-clock `timeout`, an optional `inactivityTimeoutMs` watchdog kills a child that produces no stdout (hung LLM stream) and reports `stalled: true`; `runAgent` retries a stall once but never retries a wall-clock timeout. The stall retry continues the killed attempt's session when its line handler captured an id — the re-spawn carries the backend-mapped continuation flag (`--session <id>` opencode, `--resume <id>` claude, composed in `buildAgentCommand`) instead of minting a fresh session, and re-sends the same prompt into it; with no captured id the retry argv is byte-identical to the pre-change fresh re-spawn (escalation-retry-session-continuation D4, unconditional for every consumer). Callers opt in by passing `inactivityTimeoutMs` through `RunAgentOptions` (mutation-improve wires it from `agent.inactivityTimeoutMs`; review-loop's own config does not yet).
 
 A run has a **soft stop** of its own (`src/stop-controller.ts`): `runTimeoutMs`
 (config, `0` = no budget) and `SIGINT`/`SIGTERM` both ask the loop to stop, and it
