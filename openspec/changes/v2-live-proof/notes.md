@@ -329,3 +329,10 @@ Both C8 lanes copied and the extended oracle green (9/9): `event-driven-suggesti
 ### Corpus report (task 6.1)
 
 `corpus-report.json` saved in this folder — `analyze` over the three workdirs + the live lane dir, all 7 runs (outage attempt `failed`, Run A, Run B passes 1-4, Scratch C) era-current and aggregated (era-contaminated: none; the consistency-signature era flag found no contamination in any C8 log — see the D8 correction in the lane oracle). Metrics report known / unknown-with-reason with no errors (e.g. Run A r2: "no cap-hit convergence pairs"; usage costKnown false everywhere after the model switch — the free-tier shape). Ground-truth join reads 0 committed changes (all produced changes are uncommitted in their target worktrees — the honest not-on-a-ref reading). **Read-only contract confirmed**: shasum over every file in all three workdirs before/after the analyze invocation — byte-identical (204 files).
+
+### Full verification (task 8.1)
+
+- `bun run test`: the initial run (host loadavg 18.8 — the shared-host load-flake regime) failed 11 tests in 5 files; per the testing runbook each was re-run file-by-file: gate-deadline 15/15 green, gate-waiter 23/23 green, veto-revision 3/3 green, opencode-agent/shell 6/6 green, telegram 1 fail — **environment-shaped**: `resolveUserId` makes a real `api.telegram.org` call that hangs on this host (curl: 000 after 8s — no egress), so the fail-fast-to-null contract cannot hold; the path is untouched by this branch (empty diff vs master) and the same branch's full gate at 6ec9f2d68 was 0-fail. Everything else passed in the full run.
+- `bun run typecheck`: green. `bun run lint`: green (0 problems).
+- `bun run duplicates`: exit 0 — 88 clones, the pre-existing never-masked drift under the 10% threshold per the R5 adjudication.
+- Docs currency: afk-runner.md re-scored ledger + C8 row + F-A4 record; AGENTS.md docs-table row updated (C1-C8, two live-proof cycles, next: U3).
