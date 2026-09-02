@@ -29,5 +29,5 @@ See LICENSE in the project root for details.
 
 ## 5. Full verification and docs close-out
 
-- [ ] 5.1 Run the full suite and the hygiene gates. Verify: `bun test && bun run typecheck && bun run lint`
+- [x] 5.1 Run the full suite and the hygiene gates. Verify: `bun test && bun run typecheck && bun run lint`
 - [ ] 5.2 Close the findings in `docs/architecture/afk-runner.md`: F-C1/C2/C3 paragraphs resolve (steer settle containment, the rendered integrity blocker with its settle-side expected content, the production deadline wiring) and the C9 scope seed's first item drops; update the C8 ledger note that named this change as immediate. Verify: `bun run lint`

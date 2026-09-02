@@ -67,31 +67,56 @@ function atSecondPresentationPark(logPath: string): boolean {
   return presentations >= 2 && tokens.at(-1) === 'stage_exit:atomicity'
 }
 
-/** Release ticks (bounded) until the predicate holds on the log. */
+/**
+ * Release ticks (a no-op release while the waiter is mid-async-work) until
+ * the predicate holds on the log — a fixed tick count races the settle
+ * chain's fs reads under parallel-worker load.
+ */
 async function ticksUntil(
   clock: { readonly release: () => void },
   logPath: string,
   done: (logPath: string) => boolean,
-  budget = 30,
+  budgetMs = 5_000,
 ): Promise<void> {
-  for (let i = 0; i < budget; i += 1) {
-    await releaseTick(clock)
-    if (done(logPath)) break
+  const deadline = Date.now() + budgetMs
+  while (Date.now() < deadline) {
+    if (done(logPath)) return
+    clock.release()
+    await new Promise((resolve) => {
+      setTimeout(resolve, 2)
+    })
   }
 }
 
-/** Release ticks (bounded) until the parked-gate resume settles and returns. */
+/**
+ * Release ticks (bounded) until the parked-gate resume settles and returns —
+ * the settled flag flips in the same microtask batch as the promise (a
+ * `Promise.race` against an already-settled marker loses to the marker).
+ */
 async function settleViaTicks<T>(
   pending: Promise<T>,
   clock: { readonly release: () => void },
-  budget = 10,
+  budgetMs = 10_000,
 ): Promise<T> {
-  for (let i = 0; i < budget; i += 1) {
-    await releaseTick(clock)
-    const done = await Promise.race([pending.then((): boolean => true), Promise.resolve(false)])
-    if (done) break
+  const state = { settled: false }
+  const tracked = pending.then(
+    (value: T): T => {
+      state.settled = true
+      return value
+    },
+    (error: unknown): never => {
+      state.settled = true
+      throw error
+    },
+  )
+  const deadline = Date.now() + budgetMs
+  while (Date.now() < deadline && !state.settled) {
+    clock.release()
+    await new Promise((resolve) => {
+      setTimeout(resolve, 2)
+    })
   }
-  return pending
+  return tracked
 }
 
 async function waitFor(predicate: () => boolean, budgetMs = 5_000): Promise<boolean> {
@@ -105,11 +130,15 @@ async function waitFor(predicate: () => boolean, budgetMs = 5_000): Promise<bool
   return predicate()
 }
 
-/** Release ticks (bounded) until the healed settle re-drives into the tail and parks at the final gate. */
+/** Release ticks (wall-clock bounded) until the healed settle re-drives into the tail and parks at the final gate. */
 async function ticksUntilTailPark(clock: { readonly release: () => void }, logPath: string): Promise<void> {
-  for (let i = 0; i < 20; i += 1) {
-    await releaseTick(clock)
-    if (endsAtTailPark(logPath)) break
+  const deadline = Date.now() + 5_000
+  while (Date.now() < deadline) {
+    if (endsAtTailPark(logPath)) return
+    clock.release()
+    await new Promise((resolve) => {
+      setTimeout(resolve, 2)
+    })
   }
 }
 
@@ -335,7 +364,7 @@ describe('deadline expiry claims through the production waiter (F-C3/D5)', () =>
     expect(settled.indexOf(decision!)).toBeGreaterThan(settled.indexOf(answered[0]!))
     // the extended round runs to completion: round 3 converges, the tail's
     // final gate R1-approves, the run completes
-    const halted = await settleViaTicks(resumedPromise, clock, 40)
+    const halted = await settleViaTicks(resumedPromise, clock)
     expect(halted).toMatchObject({ halted: 'final', drove: true })
     expect(pipeline.spawnOrder).toContain('findings-3.json')
     expect(hasRoundOpen(readEvents(logPath), 3)).toBe(true)
@@ -458,7 +487,7 @@ describe('live-shaped think-half integration (stubbed agents)', () => {
       decision: 'approve',
     })
     fs.writeFileSync(path.join(runDir, 'gate-2.md'), approveMd)
-    const halted = await settleViaTicks(runPromise, clock, 30)
+    const halted = await settleViaTicks(runPromise, clock)
 
     expect(halted).toMatchObject({ halted: 'final', position: 'completed' })
     const tokens = skeletonTokens(logPath)

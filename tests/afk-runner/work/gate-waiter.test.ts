@@ -28,11 +28,69 @@ import { makeFakePipeline, TASK_TEXT } from '../fixtures/fake-pipeline.js'
 const NULL_DIGEST = { what: null, why: null, touches: null, hasTasks: false }
 
 /** Release one tick and let the waiter's continuation run before the next. */
+/**
+ * Release one tick and let the waiter's async work (fs reads across the
+ * settle/expiry chain) finish before the next release — a bare one-turn wait
+ * races the reads under parallel-worker load, leaving the tick queue empty
+ * while the waiter is mid-attempt.
+ */
 async function releaseTick(clock: { readonly release: () => void }): Promise<void> {
   clock.release()
   await new Promise((resolve) => {
-    setTimeout(resolve, 0)
+    setTimeout(resolve, 1)
   })
+  await new Promise((resolve) => {
+    setTimeout(resolve, 1)
+  })
+}
+
+/**
+ * Release ticks (a no-op release while the waiter is mid-async-work) until
+ * the waiter's promise settles — a fixed tick count races the settle chain's
+ * fs reads under parallel-worker load. The settled flag flips in the same
+ * microtask batch as the promise (a `Promise.race` against an already-settled
+ * marker loses to the marker: the `.then` derivation costs an extra hop).
+ */
+async function settleViaTicks<T>(
+  pending: Promise<T>,
+  clock: { readonly release: () => void },
+  budgetMs = 5_000,
+): Promise<T> {
+  const state = { settled: false }
+  const tracked = pending.then(
+    (value: T): T => {
+      state.settled = true
+      return value
+    },
+    (error: unknown): never => {
+      state.settled = true
+      throw error
+    },
+  )
+  const deadline = Date.now() + budgetMs
+  while (Date.now() < deadline && !state.settled) {
+    clock.release()
+    await new Promise((resolve) => {
+      setTimeout(resolve, 2)
+    })
+  }
+  return tracked
+}
+
+/** Release ticks until the predicate holds — fixed tick counts race the settle chain's fs reads under load. */
+async function ticksUntil(
+  clock: { readonly release: () => void },
+  done: () => boolean,
+  budgetMs = 5_000,
+): Promise<void> {
+  const deadline = Date.now() + budgetMs
+  while (Date.now() < deadline) {
+    if (done()) return
+    clock.release()
+    await new Promise((resolve) => {
+      setTimeout(resolve, 2)
+    })
+  }
 }
 
 /** Fake clock: each tick resolves only when the test releases it. */
@@ -250,7 +308,7 @@ describe('gate waiter — stability guard (C4 5.2)', () => {
     await releaseTick(h.clock)
     await releaseTick(h.clock)
     await releaseTick(h.clock)
-    const result = await waiter
+    const result = await settleViaTicks(waiter, h.clock)
     expect(result).toEqual({ kind: 'settled', outcome: 'approve' })
     const events = readEvents(h.logPath)
     expect(events.at(-2)).toMatchObject({ type: 'gate', action: 'answered', outcome: 'approve' })
@@ -289,7 +347,7 @@ describe('gate waiter — steer translation (C4 5.2)', () => {
     const waiter = h.start()
     h.writeSteer('abort\n')
     h.clock.release()
-    const result = await waiter
+    const result = await settleViaTicks(waiter, h.clock)
     expect(result).toEqual({ kind: 'settled', outcome: 'abort' })
     expect(fs.existsSync(path.join(h.runDir, 'steer.consumed.1.md'))).toBe(true)
   })
@@ -299,7 +357,7 @@ describe('gate waiter — steer translation (C4 5.2)', () => {
     const waiter = h.start()
     h.writeSteer('extend\n')
     h.clock.release()
-    const result = await waiter
+    const result = await settleViaTicks(waiter, h.clock)
     expect(result).toEqual({ kind: 'settled', outcome: 'extend' })
     expect(readEvents(h.logPath).at(-1)).toMatchObject({ type: 'round_open', round: 2, cap: 2 })
   })
@@ -322,7 +380,7 @@ describe('gate waiter — steer translation (C4 5.2)', () => {
     const waiter = h.start()
     h.writeSteer('veto F1=drop the rollback promise\n')
     h.clock.release()
-    const result = await waiter
+    const result = await settleViaTicks(waiter, h.clock)
     expect(result).toEqual({ kind: 'settled', outcome: 'veto' })
     expect(readEvents(h.logPath).at(-1)).toMatchObject({ type: 'stage_enter', stage: 'draft' })
   })
@@ -333,7 +391,7 @@ describe('gate waiter — settle containment (D3)', () => {
     const h = await makeAwaitingGate()
     const waiter = h.start()
     h.writeGateMd('## Gate response\n\n- [x] A9 never declared\n')
-    for (let i = 0; i < 4; i += 1) await releaseTick(h.clock)
+    await ticksUntil(h.clock, () => fs.existsSync(path.join(h.runDir, 'gate-1.response-error.md')))
     const probe = await Promise.race([waiter.then((r) => r), Promise.resolve('still-waiting' as const)])
     expect(probe).toBe('still-waiting')
     expect(hasAnsweredGate(readEvents(h.logPath))).toBe(false)
@@ -346,14 +404,14 @@ describe('gate waiter — settle containment (D3)', () => {
     const h = await makeAwaitingGate()
     const waiter = h.start()
     h.writeGateMd('## Gate response\n\n- [x] A9 never declared\n')
-    for (let i = 0; i < 8; i += 1) await releaseTick(h.clock)
+    await ticksUntil(h.clock, () => h.warnings.some((line) => line.includes('unknown assumption A9')))
     // one rejection line only — an unchanged digest never re-attempts
     expect(h.warnings.filter((line) => line.includes('unknown assumption A9'))).toHaveLength(1)
     h.writeGateMd(APPROVE_MD)
     await releaseTick(h.clock)
     await releaseTick(h.clock)
     await releaseTick(h.clock)
-    const result = await waiter
+    const result = await settleViaTicks(waiter, h.clock)
     expect(result).toEqual({ kind: 'settled', outcome: 'approve' })
     expect(hasAnsweredGate(readEvents(h.logPath))).toBe(true)
   })
@@ -362,11 +420,11 @@ describe('gate waiter — settle containment (D3)', () => {
     const h = await makeAwaitingGate()
     const waiter = h.start()
     h.writeGateMd('## Gate response\n\n- [x] A9 never declared\n')
-    for (let i = 0; i < 4; i += 1) await releaseTick(h.clock)
+    await ticksUntil(h.clock, () => fs.existsSync(path.join(h.runDir, 'gate-1.response-error.md')))
     expect(fs.existsSync(path.join(h.runDir, 'gate-1.response-error.md'))).toBe(true)
     h.writeGateMd(APPROVE_MD)
     for (let i = 0; i < 3; i += 1) await releaseTick(h.clock)
-    await waiter
+    await settleViaTicks(waiter, h.clock)
     expect(fs.existsSync(path.join(h.runDir, 'gate-1.response-error.md'))).toBe(false)
   })
 
@@ -376,7 +434,7 @@ describe('gate waiter — settle containment (D3)', () => {
     h.writeGateMd(poisoned)
     // first waiter: rejects once
     const first = h.start()
-    for (let i = 0; i < 4; i += 1) await releaseTick(h.clock)
+    await ticksUntil(h.clock, () => h.warnings.some((line) => line.includes('unknown assumption A9')))
     await Promise.race([first.then((r) => r), Promise.resolve('still-waiting' as const)])
     expect(h.warnings.filter((line) => line.includes('unknown assumption A9'))).toHaveLength(1)
     // resumed waiter over the same unchanged file: seeds the digest guard from
@@ -397,7 +455,7 @@ describe('gate waiter — settle containment (D3)', () => {
     )
     const waiter = h.start()
     h.writeGateMd('## Gate response\n\n- [x] A1 guests stay read-only\n')
-    for (let i = 0; i < 4; i += 1) await releaseTick(h.clock)
+    await ticksUntil(h.clock, () => fs.existsSync(path.join(h.runDir, 'gate-1.response-error.md')))
     const errorMd = fs.readFileSync(path.join(h.runDir, 'gate-1.response-error.md'), 'utf8')
     expect(errorMd).toContain('expected content is empty')
     expect(errorMd).toContain('sidecar')
@@ -411,8 +469,7 @@ describe('gate waiter — thrown steer settle stays contained (F-C1/D2)', () => 
     const h = await makeAwaitingGate()
     const waiter = h.start()
     h.writeSteer('veto F99=drop the rollback promise\n')
-    await releaseTick(h.clock)
-    await releaseTick(h.clock)
+    await ticksUntil(h.clock, () => fs.existsSync(path.join(h.runDir, 'gate-1.response-error.md')))
     const probe = await Promise.race([waiter.then((r) => r), Promise.resolve('still-waiting' as const)])
     expect(probe).toBe('still-waiting')
     // the steer file is consumed (append-only audit), never re-driven
@@ -432,14 +489,14 @@ describe('gate waiter — thrown steer settle stays contained (F-C1/D2)', () => 
     const h = await makeAwaitingGate()
     const waiter = h.start()
     h.writeSteer('veto F99=drop it\n')
-    for (let i = 0; i < 3; i += 1) await releaseTick(h.clock)
+    await ticksUntil(h.clock, () => fs.existsSync(path.join(h.runDir, 'gate-1.response-error.md')))
     // what a resumed waiter would seed from the artifact: the steer line's
     // digest — which no gate-file content digest can equal
     expect(readFailedDigest(h.runDir, 1)).toBe(digestOf('veto F99=drop it'))
     expect(readFailedDigest(h.runDir, 1)).not.toBe(digestOf(APPROVE_MD))
     h.writeGateMd(APPROVE_MD)
     for (let i = 0; i < 3; i += 1) await releaseTick(h.clock)
-    const result = await waiter
+    const result = await settleViaTicks(waiter, h.clock)
     expect(result).toEqual({ kind: 'settled', outcome: 'approve' })
     expect(fs.existsSync(path.join(h.runDir, 'gate-1.response-error.md'))).toBe(false)
   })
@@ -454,7 +511,7 @@ describe('gate waiter — end-to-end at an integrity-substituted gate (F-C2/D3)'
     const waiter = h.start()
     h.writeGateMd('## Gate response\n\nPOLICY-INTEGRITY POLICY-INTEGRITY\n→ acknowledged\nAPPROVE\n')
     for (let i = 0; i < 3; i += 1) await releaseTick(h.clock)
-    const result = await waiter
+    const result = await settleViaTicks(waiter, h.clock)
     expect(result).toEqual({ kind: 'settled', outcome: 'approve' })
     const events = readEvents(h.logPath)
     expect(events.at(-2)).toMatchObject({ type: 'gate', action: 'answered', outcome: 'approve' })
@@ -468,11 +525,11 @@ describe('gate waiter — attempt-scoped claims (D4)', () => {
     const h = await makeAwaitingGate()
     const waiter = h.start()
     h.writeGateMd('## Gate response\n\n- [x] A9 never declared\n')
-    for (let i = 0; i < 4; i += 1) await releaseTick(h.clock)
+    await ticksUntil(h.clock, () => fs.existsSync(path.join(h.runDir, 'gate-1.response-error.md')))
     expect(fs.existsSync(path.join(h.runDir, 'gate-1.settle-claim'))).toBe(false)
     h.writeGateMd(APPROVE_MD)
     for (let i = 0; i < 3; i += 1) await releaseTick(h.clock)
-    const result = await waiter
+    const result = await settleViaTicks(waiter, h.clock)
     expect(result).toEqual({ kind: 'settled', outcome: 'approve' })
   })
 
@@ -481,7 +538,7 @@ describe('gate waiter — attempt-scoped claims (D4)', () => {
     const waiter = h.start()
     h.writeGateMd(APPROVE_MD)
     for (let i = 0; i < 3; i += 1) await releaseTick(h.clock)
-    await waiter
+    await settleViaTicks(waiter, h.clock)
     expect(fs.existsSync(path.join(h.runDir, 'gate-1.settle-claim'))).toBe(false)
   })
 })
@@ -520,7 +577,7 @@ describe('gate waiter — steer grammar and hygiene (D7)', () => {
     const waiter = h.start()
     h.writeSteer('veto\n')
     h.clock.release()
-    const result = await waiter
+    const result = await settleViaTicks(waiter, h.clock)
     expect(result).toEqual({ kind: 'settled', outcome: 'veto' })
     const md = fs.readFileSync(path.join(h.runDir, 'gate-1.md'), 'utf8')
     expect(md).toMatch(/^VETO$/mu)
@@ -532,7 +589,7 @@ describe('gate waiter — steer grammar and hygiene (D7)', () => {
     const waiter = h.start()
     h.writeSteer('veto the approach is wrong\n')
     h.clock.release()
-    const result = await waiter
+    const result = await settleViaTicks(waiter, h.clock)
     expect(result).toEqual({ kind: 'settled', outcome: 'veto' })
     expect(fs.readFileSync(path.join(h.runDir, 'gate-1.md'), 'utf8')).toContain('VETO: the approach is wrong')
   })
@@ -542,7 +599,7 @@ describe('gate waiter — steer grammar and hygiene (D7)', () => {
     const waiter = h.start()
     h.writeSteer('veto F1=drop the rollback promise\n')
     h.clock.release()
-    const result = await waiter
+    const result = await settleViaTicks(waiter, h.clock)
     expect(result).toEqual({ kind: 'settled', outcome: 'veto' })
     const md = fs.readFileSync(path.join(h.runDir, 'gate-1.md'), 'utf8')
     expect(md).toContain('- [ ] F1')
@@ -619,16 +676,8 @@ function presentedGateEvents(events: readonly SddEvent[]): SddEvent[] {
 }
 
 /** One waiter-clock poll step: release a tick, then report whether the re-drive has presented the final gate and parked. */
-async function waitForRunEnd<T>(pending: Promise<T>, clock: { readonly release: () => void }, budget = 30): Promise<T> {
-  for (let i = 0; i < budget; i += 1) {
-    clock.release()
-    await new Promise((resolve) => {
-      setTimeout(resolve, 0)
-    })
-    const done = await Promise.race([pending.then((): boolean => true), Promise.resolve(false)])
-    if (done) break
-  }
-  return pending
+function waitForRunEnd<T>(pending: Promise<T>, clock: { readonly release: () => void }): Promise<T> {
+  return settleViaTicks(pending, clock, 10_000)
 }
 
 function extendSkipWarning(line: string): boolean {

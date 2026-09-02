@@ -151,13 +151,6 @@ function fakeClock(): { readonly tick: () => Promise<void>; readonly release: ()
 }
 
 /** Release one tick and let the waiter's continuation run before the next. */
-async function releaseTick(clock: { readonly release: () => void }): Promise<void> {
-  clock.release()
-  await new Promise((resolve) => {
-    setTimeout(resolve, 0)
-  })
-}
-
 function endsAtTailPark(logPath: string): boolean {
   const tokens = eventTokens(logPath)
   const presentedFinal = readEvents(logPath).some(
@@ -168,8 +161,15 @@ function endsAtTailPark(logPath: string): boolean {
 
 /** Release ticks (bounded) until the revision round converges and the tail parks at the final gate. */
 async function ticksUntilTailPark(clock: { readonly release: () => void }, logPath: string): Promise<void> {
-  for (let i = 0; i < 30; i += 1) {
-    await releaseTick(clock)
-    if (endsAtTailPark(logPath)) break
+  // Wall-clock budget, not a fixed tick count: the revision chain's fs reads
+  // span macrotask turns under parallel-worker load, and a no-op release
+  // while the waiter is mid-work loses a tick.
+  const deadline = Date.now() + 5_000
+  while (Date.now() < deadline) {
+    if (endsAtTailPark(logPath)) return
+    clock.release()
+    await new Promise((resolve) => {
+      setTimeout(resolve, 2)
+    })
   }
 }

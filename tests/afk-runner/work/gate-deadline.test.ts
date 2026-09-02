@@ -291,11 +291,66 @@ function expiredGate(options: {
   return { runDir, start: () => awaitGateSettle(ports), clock, warnings }
 }
 
+/**
+ * Release one tick and let the waiter's async work (fs reads across the
+ * settle/expiry chain) finish before the next release — a bare one-turn wait
+ * races the reads under parallel-worker load, leaving the tick queue empty
+ * while the waiter is mid-attempt.
+ */
 async function releaseTick(clock: { readonly release: () => void }): Promise<void> {
   clock.release()
   await new Promise((resolve) => {
-    setTimeout(resolve, 0)
+    setTimeout(resolve, 1)
   })
+  await new Promise((resolve) => {
+    setTimeout(resolve, 1)
+  })
+}
+
+/** Release ticks until the predicate holds — fixed tick counts race the expiry chain's fs reads under parallel-worker load. */
+async function ticksUntil(
+  clock: { readonly release: () => void },
+  done: () => boolean,
+  budgetMs = 5_000,
+): Promise<void> {
+  const deadline = Date.now() + budgetMs
+  while (Date.now() < deadline) {
+    if (done()) return
+    clock.release()
+    await new Promise((resolve) => {
+      setTimeout(resolve, 2)
+    })
+  }
+}
+
+/**
+ * Release ticks until the waiter's promise settles (bounded) — the settled
+ * flag flips in the same microtask batch as the promise.
+ */
+async function settleViaTicks<T>(
+  pending: Promise<T>,
+  clock: { readonly release: () => void },
+  budgetMs = 5_000,
+): Promise<T> {
+  const state = { settled: false }
+  const tracked = pending.then(
+    (value: T): T => {
+      state.settled = true
+      return value
+    },
+    (error: unknown): never => {
+      state.settled = true
+      throw error
+    },
+  )
+  const deadline = Date.now() + budgetMs
+  while (Date.now() < deadline && !state.settled) {
+    clock.release()
+    await new Promise((resolve) => {
+      setTimeout(resolve, 2)
+    })
+  }
+  return tracked
 }
 
 describe('gate deadline — expiry (C4 9.2)', () => {
@@ -313,11 +368,11 @@ describe('gate deadline — expiry (C4 9.2)', () => {
   it('no conservative branch: re-arm once via one additive event, then stay pending', async () => {
     const h = expiredGate({ trajectory: false })
     const waiter = h.start()
-    await releaseTick(h.clock)
-    await releaseTick(h.clock)
+    const logPath = path.join(h.runDir, 'events.ndjson')
+    await ticksUntil(h.clock, () => rearmedEvents(readEvents(logPath)).length > 0)
     const probe = await Promise.race([waiter.then((r) => r), Promise.resolve('still-waiting' as const)])
     expect(probe).toBe('still-waiting')
-    const rearmed = rearmedEvents(readEvents(path.join(h.runDir, 'events.ndjson')))
+    const rearmed = rearmedEvents(readEvents(logPath))
     expect(rearmed).toHaveLength(1)
     expect(h.warnings.some((line) => line.includes('re-armed once'))).toBe(true)
   })
@@ -325,13 +380,12 @@ describe('gate deadline — expiry (C4 9.2)', () => {
   it('a second expiry after the one re-arm never re-arms again', async () => {
     const h = expiredGate({ trajectory: false, reArmed: true })
     const waiter = h.start()
-    await releaseTick(h.clock)
-    await releaseTick(h.clock)
+    const logPath = path.join(h.runDir, 'events.ndjson')
+    await ticksUntil(h.clock, () => h.warnings.some((line) => line.includes('gate stays pending')))
     const probe = await Promise.race([waiter.then((r) => r), Promise.resolve('still-waiting' as const)])
     expect(probe).toBe('still-waiting')
-    const rearmed = rearmedEvents(readEvents(path.join(h.runDir, 'events.ndjson')))
+    const rearmed = rearmedEvents(readEvents(logPath))
     expect(rearmed).toHaveLength(1)
-    expect(h.warnings.some((line) => line.includes('gate stays pending'))).toBe(true)
   })
 
   it('the expiry claim loser exits as external', async () => {
@@ -374,10 +428,12 @@ describe('gate deadline — waiter auto_decision protocol (D3)', () => {
   it('re-arm appends none/pending after the rearmed event; the rearmed flow itself is unchanged', async () => {
     const h = expiredGate({ trajectory: false })
     const waiter = h.start()
-    await releaseTick(h.clock)
-    await releaseTick(h.clock)
+    const logPath = path.join(h.runDir, 'events.ndjson')
+    await ticksUntil(h.clock, () =>
+      autoDecisionEvents(readEvents(logPath)).some((event) => event.decision === 'pending'),
+    )
     await Promise.race([waiter.then((r) => r), Promise.resolve('still-waiting' as const)])
-    const events = readEvents(path.join(h.runDir, 'events.ndjson'))
+    const events = readEvents(logPath)
     const rearmed = rearmedEvents(events)
     expect(rearmed).toHaveLength(1)
     const decisions = autoDecisionEvents(events)
@@ -392,16 +448,13 @@ describe('gate deadline — waiter auto_decision protocol (D3)', () => {
     const waiter = h.start()
     // one expiry attempt only — the seeded re-arm left the deadline in the
     // past, so every further tick would append another pending record
-    h.clock.release()
-    await new Promise((resolve) => {
-      setTimeout(resolve, 0)
-    })
-    await new Promise((resolve) => {
-      setTimeout(resolve, 0)
-    })
+    const logPath = path.join(h.runDir, 'events.ndjson')
+    await ticksUntil(h.clock, () =>
+      autoDecisionEvents(readEvents(logPath)).some((event) => event.decision === 'pending'),
+    )
     const probe = await Promise.race([waiter.then((r) => r), Promise.resolve('still-waiting' as const)])
     expect(probe).toBe('still-waiting')
-    const events = readEvents(path.join(h.runDir, 'events.ndjson'))
+    const events = readEvents(logPath)
     expect(rearmedEvents(events)).toHaveLength(1)
     const decisions = autoDecisionEvents(events)
     expect(decisions).toHaveLength(1)
@@ -432,11 +485,11 @@ describe('gate deadline — expiry ladder metered semantics (D5)', () => {
   it('metered + unknown cost: R4 still gates at expiry — re-arm, no settle', async () => {
     const h = expiredGate({ trajectory: true, costUnknown: true })
     const waiter = h.start()
-    await releaseTick(h.clock)
-    await releaseTick(h.clock)
+    const logPath = path.join(h.runDir, 'events.ndjson')
+    await ticksUntil(h.clock, () => rearmedEvents(readEvents(logPath)).length > 0)
     const probe = await Promise.race([waiter.then((r) => r), Promise.resolve('still-waiting' as const)])
     expect(probe).toBe('still-waiting')
-    const events = readEvents(path.join(h.runDir, 'events.ndjson'))
+    const events = readEvents(logPath)
     expect(rearmedEvents(events)).toHaveLength(1)
     expect(answeredGateEvents(events)).toHaveLength(0)
   })
@@ -447,16 +500,13 @@ describe('gate deadline — natural sequence (D4 attempt-scoped claims)', () => 
     const h = expiredGate({ trajectory: false })
     const waiter = h.start()
     // first expiry: no conservative branch → one re-arm, claim released
-    await releaseTick(h.clock)
-    await releaseTick(h.clock)
-    expect(rearmedEvents(readEvents(path.join(h.runDir, 'events.ndjson')))).toHaveLength(1)
+    const logPath = path.join(h.runDir, 'events.ndjson')
+    await ticksUntil(h.clock, () => rearmedEvents(readEvents(logPath)).length > 0)
+    expect(rearmedEvents(readEvents(logPath))).toHaveLength(1)
     expect(fs.existsSync(path.join(h.runDir, 'gate-1.settle-claim'))).toBe(false)
     // the operator answers by hand during the re-arm window
     fs.writeFileSync(path.join(h.runDir, 'gate-1.md'), '## Gate response\n\n- [x] T1 reviewed\nAPPROVE\n')
-    await releaseTick(h.clock)
-    await releaseTick(h.clock)
-    await releaseTick(h.clock)
-    const result = await waiter
+    const result = await settleViaTicks(waiter, h.clock)
     expect(result).toEqual({ kind: 'settled', outcome: 'approve' })
     expect(answeredGateEvents(readEvents(path.join(h.runDir, 'events.ndjson')))).toHaveLength(1)
   })
@@ -464,8 +514,7 @@ describe('gate deadline — natural sequence (D4 attempt-scoped claims)', () => 
   it('a second deadline after the re-arm re-runs the ladder instead of reporting an already-held claim', async () => {
     const h = expiredGate({ trajectory: false, reArmed: true })
     const waiter = h.start()
-    await releaseTick(h.clock)
-    await releaseTick(h.clock)
+    await ticksUntil(h.clock, () => h.warnings.some((line) => line.includes('gate stays pending')))
     const probe = await Promise.race([waiter.then((r) => r), Promise.resolve('still-waiting' as const)])
     expect(probe).toBe('still-waiting')
     // the ladder ran again (the pending warning came from a fresh attempt, not a claim loss)
