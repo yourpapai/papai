@@ -147,7 +147,6 @@ const makeObserved = (overrides: Partial<ProofCheckDeps> = {}): Observed => {
           records.push(record)
           return Promise.resolve()
         },
-        load: () => Promise.resolve([]),
       },
       readRecentLlm: () => [],
       readCachedHistory: () => [],

@@ -36,7 +36,7 @@ const fakeDeps = (): ProofCheckDeps => ({
   listAlertPrompts: () => [],
   getScheduledPrompt: () => null,
   getAlertPrompt: () => null,
-  store: { append: () => Promise.resolve(), load: () => Promise.resolve([]) },
+  store: { append: () => Promise.resolve() },
   readRecentLlm: () => [],
   readCachedHistory: () => [],
 })

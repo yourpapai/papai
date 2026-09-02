@@ -45,7 +45,7 @@ const makeFakeProofDeps = (overrides: Partial<ProofCheckDeps> = {}): ProofCheckD
   listAlertPrompts: () => [],
   getScheduledPrompt: () => null,
   getAlertPrompt: () => null,
-  store: { append: () => Promise.resolve(), load: () => Promise.resolve([]) },
+  store: { append: () => Promise.resolve() },
   readRecentLlm: () => [],
   readCachedHistory: () => [],
   ...overrides,
@@ -181,7 +181,6 @@ describe('run_proof_check execution', () => {
           appended.push(record)
           return Promise.resolve()
         },
-        load: () => Promise.resolve([]),
       },
     })
     const tool = makeRunProofCheckTool('sc-admin', 'chat-admin', deps)

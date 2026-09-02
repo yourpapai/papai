@@ -305,7 +305,6 @@ const makeHarness = (): Harness => {
         records.push(record)
         return Promise.resolve()
       },
-      load: () => Promise.resolve([...records]),
     },
     readRecentLlm: () => world.traces,
     readCachedHistory: () => world.history,

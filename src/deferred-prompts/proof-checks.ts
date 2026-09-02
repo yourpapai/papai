@@ -62,7 +62,6 @@ export type ProofCheckDeps = {
   getAlertPrompt: (id: string, userId: string) => AlertPrompt | null
   store: {
     append: (record: ProofCheckRecord) => Promise<void>
-    load: () => Promise<ProofCheckRecord[]>
   }
   readRecentLlm: () => readonly LlmTrace[]
   readCachedHistory: (storageContextId: string) => readonly ModelMessage[]

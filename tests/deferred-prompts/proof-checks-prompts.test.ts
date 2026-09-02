@@ -55,7 +55,7 @@ const baseDeps = (): ProofCheckDeps => ({
   listAlertPrompts: () => [],
   getScheduledPrompt: () => null,
   getAlertPrompt: () => null,
-  store: { append: () => Promise.resolve(), load: () => Promise.resolve([]) },
+  store: { append: () => Promise.resolve() },
   readRecentLlm: () => [],
   readCachedHistory: () => [],
 })
@@ -207,7 +207,6 @@ describe('proof check prompt helpers', () => {
         stored.push(record)
         return Promise.resolve()
       },
-      load: (): Promise<ProofCheckRecord[]> => Promise.resolve([]),
     }
     const record = makeRecord('run-1', 'bug4_create_response_mode', undefined, CLOCK_BASE_MS, CLOCK_BASE_MS, 'pass', [])
     await appendRecord(deps, record)
@@ -219,7 +218,6 @@ describe('proof check prompt helpers', () => {
         attempts += 1
         return Promise.reject(new Error('disk exploded'))
       },
-      load: (): Promise<ProofCheckRecord[]> => Promise.resolve([]),
     }
     await appendRecord(deps, record)
     expect(attempts).toBe(1)

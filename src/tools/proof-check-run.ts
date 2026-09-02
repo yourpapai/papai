@@ -17,7 +17,7 @@ import {
   type ProofCheckDeps,
   type ProofCheckId,
 } from '../deferred-prompts/proof-checks.js'
-import { appendProofRecord, loadProofRecords } from '../deferred-prompts/proof-store.js'
+import { appendProofRecord } from '../deferred-prompts/proof-store.js'
 import { getScheduledPrompt, listScheduledPrompts } from '../deferred-prompts/scheduled.js'
 import { executeCancel, executeCreate, executeGet, executeUpdate } from '../deferred-prompts/tool-handlers.js'
 import { logger } from '../logger.js'
@@ -57,7 +57,6 @@ const productionProofCheckDeps = (): ProofCheckDeps => {
     getAlertPrompt,
     store: {
       append: (record) => appendProofRecord(record),
-      load: () => loadProofRecords(),
     },
     readRecentLlm: () => recentLlm,
     readCachedHistory: (storageContextId) => getCachedHistory(storageContextId),
