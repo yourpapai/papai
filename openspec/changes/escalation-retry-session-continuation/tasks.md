@@ -23,5 +23,5 @@ See LICENSE in the project root for details.
 
 ## 4. Docs and full gates
 
-- [ ] 4.1 Close F-A4 in `docs/architecture/afk-runner.md` as fixed, citing this change (design Migration Plan). Verify: `rg -n "F-A4" docs/architecture/afk-runner.md`
-- [ ] 4.2 Full suite and gates: `bun test`, `bun run typecheck`, `bun run lint` — all green.
+- [x] 4.1 Close F-A4 in `docs/architecture/afk-runner.md` as fixed, citing this change (design Migration Plan). Verify: `rg -n "F-A4" docs/architecture/afk-runner.md`
+- [x] 4.2 Full suite and gates: `bun test`, `bun run typecheck`, `bun run lint` — all green.
