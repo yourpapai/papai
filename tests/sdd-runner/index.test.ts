@@ -6,6 +6,8 @@
 import { afterEach, beforeEach, describe, expect, it, spyOn } from 'bun:test'
 import { execFileSync } from 'node:child_process'
 import fs from 'node:fs'
+import type { PathLike, RmOptions } from 'node:fs'
+import * as fsp from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 
@@ -226,11 +228,17 @@ describe('runEntry wiring routes (in-process, mutation kills)', () => {
   let exitSpy: { mockRestore(): void }
   const saved: { argv: string[]; config: string | undefined } = { argv: [], config: undefined }
 
-  function makeEntryFixture(): EntryFixture {
+  function makeEntryFixture(backend?: 'claude'): EntryFixture {
     const dir = makeDir()
     fs.writeFileSync(
       path.join(dir, 'config.json'),
-      JSON.stringify({ repoRoot: dir, workDir: '.sdd-runner', model: 'test-model', budget: 5 }),
+      JSON.stringify({
+        repoRoot: dir,
+        workDir: '.sdd-runner',
+        model: 'test-model',
+        budget: 5,
+        ...(backend === undefined ? {} : { backend }),
+      }),
     )
     return {
       repoRoot: dir,
@@ -252,10 +260,32 @@ describe('runEntry wiring routes (in-process, mutation kills)', () => {
     })
   })
 
+  /**
+   * The three names the claude-route guard reads. Every credential test sets
+   * all three explicitly: the process running this suite may itself carry a
+   * real one, and an inherited spelling would decide the test's outcome.
+   */
+  const CREDENTIAL_NAMES = ['ANTHROPIC_API_KEY', 'CLAUDE_CODE_OAUTH_TOKEN', 'LLM_API_KEY'] as const
+  const savedCredentials = new Map<string, string | undefined>()
+
+  function setCredentials(values: Partial<Record<(typeof CREDENTIAL_NAMES)[number], string>>): void {
+    for (const name of CREDENTIAL_NAMES) {
+      savedCredentials.set(name, process.env[name])
+      const value = values[name]
+      if (value === undefined) Reflect.deleteProperty(process.env, name)
+      else process.env[name] = value
+    }
+  }
+
   afterEach(() => {
     process.argv = saved.argv
     if (saved.config === undefined) delete process.env['SDD_RUNNER_CONFIG']
     else process.env['SDD_RUNNER_CONFIG'] = saved.config
+    for (const [name, value] of savedCredentials) {
+      if (value === undefined) Reflect.deleteProperty(process.env, name)
+      else process.env[name] = value
+    }
+    savedCredentials.clear()
     writeSpy.mockRestore()
     exitSpy.mockRestore()
     fixture = null
@@ -372,6 +402,196 @@ describe('runEntry wiring routes (in-process, mutation kills)', () => {
     expect(out).toContain('runs: 1')
     expect(out).toContain(`## run ${state.runId} (${fx.workDir}) — add-thing ·`)
     expect(fx.exitCodes).toEqual([0])
+  })
+
+  /** The runner's own config-dir parent prefix, distinct from the loop's. */
+  const CLAUDE_TMP_PREFIX = 'sdd-runner-claude-'
+
+  function claudeParentsInTmp(): string[] {
+    return fs.readdirSync(os.tmpdir()).filter((name) => name.startsWith(CLAUDE_TMP_PREFIX))
+  }
+
+  interface RmTracker {
+    readonly claudeTargets: string[]
+    restore(): void
+  }
+
+  /** The one recorded claude-parent removal target, '' when none was attempted. */
+  function soleClaudeTarget(tracker: RmTracker): string {
+    return tracker.claudeTargets[0] ?? ''
+  }
+
+  /**
+   * Records (and optionally fails) the teardown's removal of the config-dir
+   * parent. Only claude-parent targets are touched: the same `rm` serves
+   * unrelated cleanup inside a run, which must keep working.
+   */
+  function trackClaudeParentRemoval(fail: boolean): RmTracker {
+    const claudeTargets: string[] = []
+    const realRm = fsp.rm
+    const spy = spyOn(fsp, 'rm').mockImplementation((target: PathLike, options?: RmOptions) => {
+      const mine = path.basename(String(target)).startsWith(CLAUDE_TMP_PREFIX)
+      if (!mine) return realRm(target, options)
+      claudeTargets.push(String(target))
+      return fail ? Promise.reject(new Error('teardown removal failed')) : realRm(target, options)
+    })
+    return {
+      claudeTargets,
+      restore: (): void => {
+        spy.mockRestore()
+      },
+    }
+  }
+
+  /**
+   * The claude route's credential guard (D3). `--reopen` is the run-driving
+   * verb these cases drive: it is not one of the read-only verbs, and it fails
+   * on its own terms (`no settled gate`) without spawning — so the refusal
+   * being a credential one, rather than that, is the ordering evidence.
+   */
+  async function reopenClaudeRun(fx: EntryFixture): Promise<void> {
+    const state = await createRunState({ workDir: fx.workDir, repoRoot: fx.repoRoot, changeName: 'add-thing' })
+    await saveRunState(state)
+    fs.writeFileSync(path.join(fx.workDir, 'runs', state.runId, 'events.ndjson'), '')
+    await runEntryAgainst(fx, [state.runId, '--reopen', '1', '--config', fx.configPath])
+  }
+
+  it('the claude route refuses an empty credential environment before any run directory exists', async () => {
+    const fx = makeEntryFixture('claude')
+    setCredentials({})
+    const taskFile = path.join(fx.repoRoot, 'task.md')
+    fs.writeFileSync(taskFile, '# Add a thing\n')
+    await expect(runEntryAgainst(fx, [taskFile, '--config', fx.configPath])).rejects.toThrow(/\[CLAUDE_CREDENTIALS\]/u)
+    // No run directory means no spawn: the pipeline's first agent starts only
+    // after `runStart` has allocated one.
+    expect(fs.existsSync(path.join(fx.workDir, 'runs'))).toBe(false)
+  })
+
+  it('the claude route refuses both Anthropic spellings set', async () => {
+    const fx = makeEntryFixture('claude')
+    setCredentials({ ANTHROPIC_API_KEY: 'sk-ant-key-0123456789', CLAUDE_CODE_OAUTH_TOKEN: 'oauth-token-0123456789' })
+    await expect(reopenClaudeRun(fx)).rejects.toThrow(/\[CLAUDE_CREDENTIALS\]/u)
+  })
+
+  it("the claude route refuses a set LLM_API_KEY, the other route's carrier", async () => {
+    const fx = makeEntryFixture('claude')
+    setCredentials({ ANTHROPIC_API_KEY: 'sk-ant-key-0123456789', LLM_API_KEY: 'gateway-key' })
+    await expect(reopenClaudeRun(fx)).rejects.toThrow(/\[LLM_CREDENTIALS\]/u)
+  })
+
+  it('ANTHROPIC_API_KEY alone passes the guard and the verb does its own work', async () => {
+    const fx = makeEntryFixture('claude')
+    setCredentials({ ANTHROPIC_API_KEY: 'sk-ant-key-0123456789' })
+    // Past the guard, so the failure is the verb's own. Which profile that
+    // spelling buys is pinned on `resolveAgentBackend` itself.
+    await expect(reopenClaudeRun(fx)).rejects.toThrow(/no settled gate to reopen/u)
+  })
+
+  it('CLAUDE_CODE_OAUTH_TOKEN alone passes the guard and the verb does its own work', async () => {
+    const fx = makeEntryFixture('claude')
+    setCredentials({ CLAUDE_CODE_OAUTH_TOKEN: 'oauth-token-0123456789' })
+    await expect(reopenClaudeRun(fx)).rejects.toThrow(/no settled gate to reopen/u)
+  })
+
+  it('the stop verb runs on a claude-route config with no credential set', async () => {
+    const fx = makeEntryFixture('claude')
+    setCredentials({})
+    const state = await createRunState({ workDir: fx.workDir, repoRoot: fx.repoRoot, changeName: 'add-thing' })
+    await saveRunState(state)
+    writeHolder(path.join(fx.workDir, 'runs', state.runId), process.pid)
+    await expect(runEntryAgainst(fx, ['stop', state.runId, '--config', fx.configPath])).rejects.toThrow(
+      /intercepted process\.exit\(0\)/u,
+    )
+    expect(fx.exitCodes).toEqual([0])
+  })
+
+  it('the analyze verb runs on a claude-route config with no credential set', async () => {
+    const fx = makeEntryFixture('claude')
+    setCredentials({})
+    const state = await createRunState({ workDir: fx.workDir, repoRoot: fx.repoRoot, changeName: 'add-thing' })
+    await saveRunState(state)
+    fs.writeFileSync(path.join(fx.workDir, 'runs', state.runId, 'events.ndjson'), '')
+    await expect(runEntryAgainst(fx, ['analyze', '--config', fx.configPath])).rejects.toThrow(
+      /intercepted process\.exit\(0\)/u,
+    )
+    expect(fx.writes.join('')).toContain('sdd-runner corpus analysis')
+    expect(fx.exitCodes).toEqual([0])
+  })
+
+  it('the report verb runs on a claude-route config with no credential set', async () => {
+    const fx = makeEntryFixture('claude')
+    setCredentials({})
+    execFileSync('git', ['init', '-b', 'sdd-test-branch', fx.repoRoot], { stdio: 'ignore' })
+    const state = await createRunState({ workDir: fx.workDir, repoRoot: fx.repoRoot, changeName: 'add-thing' })
+    await saveRunState({ ...state, status: 'completed' })
+    fs.writeFileSync(path.join(fx.workDir, 'runs', state.runId, 'events.ndjson'), '')
+    await expect(runEntryAgainst(fx, [state.runId, '--config', fx.configPath])).rejects.toThrow(
+      /intercepted process\.exit\(0\)/u,
+    )
+    expect(fx.writes.join('')).toContain(`run: ${state.runId}`)
+    expect(fx.exitCodes).toEqual([0])
+  })
+
+  it('the opencode route reads no credential and opens no config-dir parent', async () => {
+    const fx = makeEntryFixture()
+    // The environment that refuses a claude-route run outright; the default
+    // route must not consult any of it.
+    setCredentials({
+      ANTHROPIC_API_KEY: 'sk-ant-key-0123456789',
+      CLAUDE_CODE_OAUTH_TOKEN: 'oauth-token-0123456789',
+      LLM_API_KEY: 'gateway-key',
+    })
+    const tracker = trackClaudeParentRemoval(false)
+    const before = claudeParentsInTmp()
+    try {
+      await expect(reopenClaudeRun(fx)).rejects.toThrow(/no settled gate to reopen/u)
+    } finally {
+      tracker.restore()
+    }
+    expect(tracker.claudeTargets).toEqual([])
+    expect(claudeParentsInTmp()).toEqual(before)
+  })
+
+  it('opens the config-dir parent under the OS tmp root and removes it at teardown', async () => {
+    const fx = makeEntryFixture('claude')
+    setCredentials({ ANTHROPIC_API_KEY: 'sk-ant-key-0123456789' })
+    const tracker = trackClaudeParentRemoval(false)
+    const before = claudeParentsInTmp()
+    try {
+      await expect(reopenClaudeRun(fx)).rejects.toThrow(/no settled gate to reopen/u)
+    } finally {
+      tracker.restore()
+    }
+    expect(tracker.claudeTargets).toHaveLength(1)
+    const parent = soleClaudeTarget(tracker)
+    // Under the OS tmp root, and inside neither the checkout nor the work dir:
+    // session files and CLI state must never land where a commit could stage
+    // them or a later run could read them.
+    expect(path.dirname(parent)).toBe(os.tmpdir())
+    expect(parent.startsWith(fx.repoRoot)).toBe(false)
+    expect(parent.startsWith(fx.workDir)).toBe(false)
+    // Removed at teardown, whichever way the verb ended.
+    expect(fs.existsSync(parent)).toBe(false)
+    expect(claudeParentsInTmp()).toEqual(before)
+  })
+
+  it('a teardown removal failure changes neither the outcome nor the exit status', async () => {
+    const fx = makeEntryFixture('claude')
+    setCredentials({ ANTHROPIC_API_KEY: 'sk-ant-key-0123456789' })
+    const tracker = trackClaudeParentRemoval(true)
+    try {
+      // The verb's own failure still surfaces — the teardown's rejection is
+      // swallowed rather than replacing or masking it.
+      await expect(reopenClaudeRun(fx)).rejects.toThrow(/no settled gate to reopen/u)
+    } finally {
+      tracker.restore()
+      for (const leftover of claudeParentsInTmp()) {
+        fs.rmSync(path.join(os.tmpdir(), leftover), { recursive: true, force: true })
+      }
+    }
+    // Not vacuous: the removal really was attempted, and really did fail.
+    expect(tracker.claudeTargets).toHaveLength(1)
+    expect(fx.exitCodes).toEqual([])
   })
 })
 

@@ -61,6 +61,7 @@ const FiveKeySchema = z.object({
   budget: z.number().positive().nullable().default(5),
   deadline: z.number().positive().optional(),
   metered: z.boolean().optional(),
+  backend: z.enum(['opencode', 'claude']).default('opencode'),
 })
 
 export const RunnerConfigSchema = z.strictObject({
@@ -74,6 +75,12 @@ export interface RunnerConfig {
   readonly budget: number | null
   readonly deadline?: number
   readonly metered?: boolean
+  /**
+   * Which agent CLI drives the run. `loadRunnerConfig` always fills this from
+   * the schema default, so a loaded config carries it; it stays optional here
+   * so hand-built configs mean the default opencode route by omission.
+   */
+  readonly backend?: 'opencode' | 'claude'
 }
 
 export const AUTONOMY_DEFAULTS: AutonomyConfig = { level: 'assist', costCeilingUsd: 5, metered: true }

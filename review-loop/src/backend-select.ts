@@ -7,7 +7,7 @@ import { mkdtemp } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 
-import type { AgentBackend, ReviewLoopConfig } from './config.js'
+import type { AgentBackend } from './config.js'
 
 /**
  * The credential guard and profile resolver for the claude backend (design D4).
@@ -131,20 +131,6 @@ export function resolveAgentBackend(
 }
 
 /**
- * Opens the claude route's run-scoped config-dir parent and assembles the
- * run-wide `claude` context onto the config (D4/D8), as one function so the
- * teardown pairing with the `finally`'s removal is a seam, not a coincidence:
- *
- * - the parent is `mkdtemp` under the OS tmp root, never inside a worktree or
- *   the checkout, so session files and CLI state never cross runs and no
- *   commit the loop's fixer makes can stage them;
- * - `envSource` is `process.env` read at this one point — after
- *   `applyCommitIdentity` stamped the commit identity, so it rides into every
- *   claude child env — and never again.
- *
- * Returns the created parent, which the caller's `finally` removes best-effort.
- */
-/**
  * The claude route's run-wide context (design D2): the resolver's answer
  * joined with D8's run-scoped config-dir root and the parent env, read once at
  * `runCli`'s assembly point. Additively-optional beside `backend` so callers
@@ -161,9 +147,35 @@ export interface ClaudeRunContext {
   envSource: Record<string, string | undefined>
 }
 
-export async function openClaudeContext(config: ReviewLoopConfig, resolved: ResolvedAgentBackend): Promise<string> {
-  const claudeParent = await mkdtemp(path.join(tmpdir(), 'review-loop-claude-'))
-  config.claude = {
+/** The loop's own parent-directory prefix; a second caller names its own. */
+export const CLAUDE_CONFIG_DIR_PREFIX = 'review-loop-claude-'
+
+/**
+ * Opens the claude route's run-scoped config-dir parent and assembles the
+ * run-wide `claude` context onto the holder (D4/D8), as one function so the
+ * teardown pairing with the `finally`'s removal is a seam, not a coincidence:
+ *
+ * - the parent is `mkdtemp` under the OS tmp root, never inside a worktree or
+ *   the checkout, so session files and CLI state never cross runs and no
+ *   commit the loop's fixer makes can stage them;
+ * - `envSource` is `process.env` read at this one point — after
+ *   `applyCommitIdentity` stamped the commit identity, so it rides into every
+ *   claude child env — and never again.
+ *
+ * The holder is structural rather than the loop's own config: sdd-runner runs
+ * the same route with no `ReviewLoopConfig` to hand, and duplicating this
+ * doctrine there would leave the two copies unpinned. `tmpPrefix` lets that
+ * second caller name its parents without shadowing the loop's.
+ *
+ * Returns the created parent, which the caller's `finally` removes best-effort.
+ */
+export async function openClaudeContext(
+  holder: { claude?: ClaudeRunContext },
+  resolved: ResolvedAgentBackend,
+  tmpPrefix: string = CLAUDE_CONFIG_DIR_PREFIX,
+): Promise<string> {
+  const claudeParent = await mkdtemp(path.join(tmpdir(), tmpPrefix))
+  holder.claude = {
     profile: resolved.profile,
     credentialName: resolved.credentialName,
     credentialValue: resolved.credentialValue,

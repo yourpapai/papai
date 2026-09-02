@@ -11,6 +11,7 @@ import path from 'node:path'
 
 import { agentWritePath } from '../../review-loop/src/agent-runner.js'
 import type { LineSink, SpawnFn, SpawnResult } from '../../review-loop/src/agent-runner.js'
+import { ALLOWLISTS, analysisAllowlist } from '../../review-loop/src/claude-argv.js'
 import {
   AssumptionRecordSchema,
   AssumptionsSidecarSchema,
@@ -712,5 +713,189 @@ describe('ResolutionSchema resolution verbs', () => {
         resolution: 'wished-away',
       }).success,
     ).toBe(false)
+  })
+})
+
+const CLAUDE_RESULT_LINE = JSON.stringify({
+  type: 'result',
+  is_error: false,
+  stop_reason: 'end_turn',
+  session_id: 'sess-1',
+  total_cost_usd: 0.01,
+  usage: { input_tokens: 10, output_tokens: 5, cache_read_input_tokens: 0, cache_creation_input_tokens: 0 },
+})
+
+interface SpawnCall {
+  readonly command: string
+  readonly args: readonly string[]
+  readonly stdin: string | undefined
+  readonly env: Record<string, string> | undefined
+}
+
+/** A spawn that records the whole invocation and writes a valid sidecar. */
+function recordingSpawn(basename: string, lines: readonly string[] = []): { spawn: SpawnFn; calls: SpawnCall[] } {
+  const calls: SpawnCall[] = []
+  const spawn: SpawnFn = (command, args, options, onLine) => {
+    calls.push({ command, args: [...args], stdin: options.stdin, env: options.env })
+    const target = agentWritePath(options.cwd, basename)
+    fs.mkdirSync(path.dirname(target), { recursive: true })
+    fs.writeFileSync(target, VALID_FINDINGS)
+    if (onLine !== undefined) for (const line of lines) onLine(line)
+    return Promise.resolve({ exitCode: 0, stdout: '', stderr: '' })
+  }
+  return { spawn, calls }
+}
+
+/** The first recorded spawn call's child env, empty when it carried none. */
+function firstEnv(calls: readonly SpawnCall[]): Record<string, string> {
+  return calls[0]?.env ?? {}
+}
+
+/** The first recorded spawn call's argv, empty when nothing was recorded. */
+function firstArgs(calls: readonly SpawnCall[]): readonly string[] {
+  return calls[0]?.args ?? []
+}
+
+const CLAUDE_MODEL = 'anthropic/claude-opus-4-1'
+
+function claudeDeps(dir: string, spawn: SpawnFn, emitted: EventInput[] = []): AgentLayerDeps {
+  return {
+    spawn,
+    config: { ...makeConfig(dir), model: CLAUDE_MODEL, backend: 'claude' },
+    execGit: makeGitExec(''),
+    emit: (event) => {
+      emitted.push(EventInputSchema.parse(event))
+    },
+    claude: {
+      profile: 'bare',
+      credentialName: 'ANTHROPIC_API_KEY',
+      credentialValue: 'sk-ant-secret-0123456789',
+      configDirRoot: path.join(dir, 'claude-root'),
+      envSource: { PATH: '/usr/bin', LLM_API_KEY: 'gateway-key', ANTHROPIC_BASE_URL: 'https://proxy.invalid' },
+    },
+    createClaudeSpawnDir: (context) =>
+      Promise.resolve({ configDir: path.join(context.configDirRoot, 'spawn-1'), mcpConfigPath: null }),
+  }
+}
+
+describe('spawn composition by backend route', () => {
+  it('composes the default route argv byte-identically, with neither stdin nor env', async () => {
+    const dir = makeDir()
+    const { spawn, calls } = recordingSpawn('findings.json')
+    const deps: AgentLayerDeps = {
+      spawn,
+      config: makeConfig(dir),
+      execGit: makeGitExec(''),
+      emit: () => {},
+    }
+    await runStageAgent(deps, makeOptions(dir, 'findings.json'))
+    expect(calls).toHaveLength(1)
+    expect(calls[0]?.command).toBe('opencode')
+    expect(calls[0]?.args).toEqual([
+      'run',
+      '--auto',
+      '--format',
+      'json',
+      '--model',
+      'default-model',
+      '--dir',
+      dir,
+      'Review the artifacts.',
+    ])
+    // Value-absence, not key-absence: the attempt layer always spreads both
+    // keys, and `realSpawn` branches on the value — an undefined env is what
+    // keeps the child inheriting `process.env` exactly as it does today.
+    expect(calls[0]?.stdin).toBeUndefined()
+    expect(calls[0]?.env).toBeUndefined()
+  })
+
+  it('composes the claude route for an analysis role: profile block, streaming tail, allowlist, stripped model', async () => {
+    const dir = makeDir()
+    const { spawn, calls } = recordingSpawn('findings.json', [CLAUDE_RESULT_LINE])
+    await runStageAgent(claudeDeps(dir, spawn), makeOptions(dir, 'findings.json'))
+    expect(calls[0]?.command).toBe('claude')
+    expect(calls[0]?.args).toEqual([
+      '--bare',
+      '-p',
+      '--output-format',
+      'stream-json',
+      '--verbose',
+      '--permission-mode',
+      'default',
+      '--allowedTools',
+      analysisAllowlist(dir),
+      '--model',
+      'claude-opus-4-1',
+    ])
+  })
+
+  it('gives an artifact-writing role the author allowlist on the same composition', async () => {
+    const dir = makeDir()
+    const { spawn, calls } = recordingSpawn('draft-proposal.json', [CLAUDE_RESULT_LINE])
+    const options = { ...makeOptions(dir, 'draft-proposal.json'), role: 'drafter' as const, label: 'drafter-proposal' }
+    await runStageAgent(claudeDeps(dir, spawn), options)
+    expect(calls[0]?.args[calls[0].args.indexOf('--allowedTools') + 1]).toBe(ALLOWLISTS.author)
+  })
+
+  it('carries the prompt on stdin and the stripped-then-added child env', async () => {
+    const dir = makeDir()
+    const { spawn, calls } = recordingSpawn('findings.json', [CLAUDE_RESULT_LINE])
+    await runStageAgent(claudeDeps(dir, spawn), makeOptions(dir, 'findings.json'))
+    // The role prompt rides stdin, never argv: one argument is capped at 128 KiB.
+    expect(calls[0]?.stdin).toBe('Review the artifacts.')
+    expect(calls[0]?.args).not.toContain('Review the artifacts.')
+    const env = firstEnv(calls)
+    expect(env['PATH']).toBe('/usr/bin')
+    expect(env['ANTHROPIC_API_KEY']).toBe('sk-ant-secret-0123456789')
+    expect(env['CLAUDE_CONFIG_DIR']).toBe(path.join(dir, 'claude-root', 'spawn-1'))
+    expect(env['DISABLE_AUTOUPDATER']).toBe('1')
+    // The other route's carrier and the endpoint switch never ride along.
+    expect('LLM_API_KEY' in env).toBe(false)
+    expect('ANTHROPIC_BASE_URL' in env).toBe(false)
+  })
+})
+
+describe('resume continuation by backend route', () => {
+  it('attempts no continuation spawn on the claude route and re-spawns from the rebuilt prompt', async () => {
+    const dir = makeDir()
+    const emitted: EventInput[] = []
+    const { spawn, calls } = recordingSpawn('findings.json', [CLAUDE_RESULT_LINE])
+    const options = { ...makeOptions(dir, 'findings.json'), continueSessionId: 'sess-old' }
+    await runStageAgent(claudeDeps(dir, spawn, emitted), options)
+    // One announced attempt, not two: each spawn's CLAUDE_CONFIG_DIR is a
+    // fresh mkdtemp removed with the process, so no earlier session is
+    // addressable by --resume — composing one only to have it refused would
+    // book a killed attempt and a spawn the route can never serve.
+    expect(emitted.filter((event) => event.type === 'spawned')).toHaveLength(1)
+    expect(calls).toHaveLength(1)
+    // extraArgs stays empty — a claude invocation refuses opencode-shaped argv,
+    // and that refusal is exactly the argument-composition error never raised here.
+    expect(calls[0]?.args).not.toContain('--session')
+    expect(calls[0]?.args).not.toContain('sess-old')
+    // The rebuild spawn carries the original prompt, not the continuation one.
+    expect(calls[0]?.stdin).toBe('Review the artifacts.')
+    // The fallback is still reported, so a reader sees why no session resumed.
+    expect(retryings(emitted)).toEqual([{ reason: 'validation', attempt: 2 }])
+  })
+
+  it('still composes and reports the continuation path on the opencode route', async () => {
+    const dir = makeDir()
+    const emitted: EventInput[] = []
+    const { spawn, calls } = recordingSpawn('findings.json')
+    const deps: AgentLayerDeps = {
+      spawn,
+      config: makeConfig(dir),
+      execGit: makeGitExec(''),
+      emit: (event) => {
+        emitted.push(EventInputSchema.parse(event))
+      },
+    }
+    const options = { ...makeOptions(dir, 'findings.json'), continueSessionId: 'sess-old' }
+    await runStageAgent(deps, options)
+    expect(calls).toHaveLength(1)
+    const args = firstArgs(calls)
+    expect(args.slice(args.indexOf('--session'), args.indexOf('--session') + 2)).toEqual(['--session', 'sess-old'])
+    // A continuation that works needs no fallback signal.
+    expect(retryings(emitted)).toEqual([])
   })
 })

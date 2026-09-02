@@ -31,6 +31,24 @@ export interface PipelineEnv {
   readonly input: FreshInput
 }
 
+/**
+ * The per-stage agent deps, derived in one place from the orchestrator deps.
+ *
+ * Every stage entry point needs this same projection, and the claude run
+ * context has to ride it: four hand-copied literals is exactly how one route
+ * gets dropped on one path. `claude` is spread conditionally so a run without
+ * the context has no key at all rather than an undefined one.
+ */
+export function agentDepsOf(deps: OrchestratorDeps, emit: (event: EventInput) => void): AgentLayerDeps {
+  return {
+    spawn: deps.spawn,
+    config: deps.config,
+    execGit: deps.execGit,
+    emit,
+    ...(deps.claude === undefined ? {} : { claude: deps.claude }),
+  }
+}
+
 export function buildPipelineEnv(
   deps: OrchestratorDeps,
   state: RunState,
@@ -41,7 +59,7 @@ export function buildPipelineEnv(
   const sidecarDir = path.join(state.runDir, 'sidecars')
   const changeDir = path.join(cwd, 'openspec', 'changes', input.changeName)
   const machine = createStageMachine({ emit })
-  const agent: AgentLayerDeps = { spawn: deps.spawn, config: deps.config, execGit: deps.execGit, emit }
+  const agent = agentDepsOf(deps, emit)
   const ctx: StageContext = { cwd, changeDir, sidecarDir, emit }
   const resolved: OrchestratorDeps = { ...deps, autonomy: input.autonomy }
   return { deps: resolved, state, machine, agent, ctx, input }

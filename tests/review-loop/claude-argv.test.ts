@@ -103,6 +103,74 @@ describe('allowlistForLabel', () => {
   })
 })
 
+describe('allowlistForLabel — the sdd-runner role labels', () => {
+  const cwd = '/repo/.sdd-runner/run-7'
+  const analysis = analysisAllowlist(cwd)
+  /**
+   * The artifact-writing set spelled out rather than read off `ALLOWLISTS`:
+   * this pins the doctrine value itself, and the constant it must equal is
+   * pinned separately against the parent route's `propose` set.
+   */
+  const authoring = 'Read,Edit,Write,Glob,Grep'
+
+  const artifactWriters = [
+    'drafter-proposal',
+    'drafter-specs',
+    'drafter-design',
+    'resolver-r1',
+    'resolver-r12',
+    'decomposer',
+    'atomicity',
+    // Both spawn under the runner's `resolver` role and edit tracked files —
+    // `drift` rewrites tasks.md, `veto-updater` the artifacts a veto names.
+    'drift',
+    'veto-updater',
+  ] as const
+  const analysts = ['reviewer-r1', 'reviewer-r12', 'skeptic-r1', 'skeptic-r12', 'estimator', 'planner'] as const
+
+  test('the artifact-writing roles resolve to the authoring set', () => {
+    for (const label of artifactWriters) {
+      expect(allowlistForLabel(label, cwd)).toBe(authoring)
+    }
+  })
+
+  test('the analysis roles resolve to the analysis set, scratch Write rule included', () => {
+    for (const label of analysts) {
+      expect(allowlistForLabel(label, cwd)).toBe(analysis)
+    }
+    expect(analysis).toBe(`Read,Glob,Grep,Write(${cwd}/.review-loop/**)`)
+  })
+
+  test('no runner label logs the unmapped-label warning', () => {
+    const warnings: string[] = []
+    for (const label of [...artifactWriters, ...analysts]) {
+      allowlistForLabel(label, cwd, (message) => {
+        warnings.push(message)
+      })
+    }
+    expect(warnings).toEqual([])
+  })
+
+  test('no runner label grants Bash or a bare wildcard tool entry', () => {
+    for (const label of [...artifactWriters, ...analysts]) {
+      const entries = allowlistForLabel(label, cwd).split(',')
+      expect(entries).not.toContain('Bash')
+      // A scoped rule carries its glob inside the parens; the bare tool entries carry none.
+      const bare = entries.filter((entry) => !entry.includes('('))
+      expect(bare.some((entry) => entry.includes('*'))).toBe(false)
+    }
+  })
+
+  test("the loop's own labels keep byte-identical answers", () => {
+    for (const label of ['fixer', 'fixer-w1', 'fixer-w2-retry', 'fixer-batch-cluster-7']) {
+      expect(allowlistForLabel(label, cwd)).toBe(ALLOWLISTS.fixer)
+    }
+    for (const label of ['matcher', 'matcher-w1', 'inspector', 'inspector-w1', 'inspector-aggregated']) {
+      expect(allowlistForLabel(label, cwd)).toBe(analysis)
+    }
+  })
+})
+
 describe('modelIdForCli', () => {
   test('a slash-bearing value keeps its model id (the opencode provider/model form)', () => {
     expect(modelIdForCli('opencode/claude-sonnet-4-6')).toBe('claude-sonnet-4-6')

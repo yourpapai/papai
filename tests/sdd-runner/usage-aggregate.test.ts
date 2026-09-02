@@ -8,8 +8,12 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 
+import { agentWritePath } from '../../review-loop/src/agent-runner.js'
+import type { SpawnFn } from '../../review-loop/src/agent-runner.js'
+import { FindingsSidecarSchema, runStageAgent } from '../../sdd-runner/src/agent-layer.js'
+import type { AgentLayerDeps } from '../../sdd-runner/src/agent-layer.js'
 import { appendEvent } from '../../sdd-runner/src/events.js'
-import type { AgentUsage, DoneEvent, SddEvent } from '../../sdd-runner/src/events.js'
+import type { AgentUsage, DoneEvent, EventInput, SddEvent } from '../../sdd-runner/src/events.js'
 import type { ResolvedCost } from '../../sdd-runner/src/pricing.js'
 import { aggregateUsage } from '../../sdd-runner/src/usage-aggregate.js'
 import { costOfUsage } from '../../sdd-runner/src/usage-aggregate.js'
@@ -597,5 +601,152 @@ describe('costOfUsage', () => {
         rates,
       ),
     ).toBe(repriceEvent(doneEvent(usage, 1), rates).usage.costUsd)
+  })
+})
+
+describe('the claude route cost chain', () => {
+  /** The configured id keeps its provider prefix; only the CLI sees it stripped. */
+  const CLAUDE_MODEL = 'anthropic/claude-opus-4-1'
+
+  function makeDir(): string {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'sdd-claude-cost-'))
+    tmpDirs.push(dir)
+    return dir
+  }
+
+  function resultLine(usage: Record<string, number>, totalCostUsd: number): string {
+    return JSON.stringify({
+      type: 'result',
+      is_error: false,
+      stop_reason: 'end_turn',
+      session_id: 'sess-1',
+      total_cost_usd: totalCostUsd,
+      usage,
+    })
+  }
+
+  /** Drive one claude-route stage spawn whose stream carries `line`. */
+  async function claudeStageEvents(line: string): Promise<EventInput[]> {
+    const dir = makeDir()
+    const emitted: EventInput[] = []
+    const spawn: SpawnFn = (_command, _args, options, onLine) => {
+      const target = agentWritePath(options.cwd, 'findings.json')
+      fs.mkdirSync(path.dirname(target), { recursive: true })
+      fs.writeFileSync(target, JSON.stringify({ findings: [] }))
+      onLine?.(line)
+      return Promise.resolve({ exitCode: 0, stdout: '', stderr: '' })
+    }
+    const deps: AgentLayerDeps = {
+      spawn,
+      config: {
+        repoRoot: dir,
+        workDir: path.join(dir, '.sdd-runner'),
+        model: CLAUDE_MODEL,
+        budget: 5,
+        backend: 'claude',
+      },
+      execGit: () => Promise.resolve({ stdout: '', stderr: '' }),
+      emit: (event) => {
+        emitted.push(event)
+      },
+      claude: {
+        profile: 'bare',
+        credentialName: 'ANTHROPIC_API_KEY',
+        credentialValue: 'sk-ant-secret-0123456789',
+        configDirRoot: path.join(dir, 'claude-root'),
+        envSource: {},
+      },
+      createClaudeSpawnDir: (context) =>
+        Promise.resolve({ configDir: path.join(context.configDirRoot, 'spawn-1'), mcpConfigPath: null }),
+    }
+    await runStageAgent(deps, {
+      role: 'reviewer',
+      changeName: 'add-thing',
+      cwd: dir,
+      prompt: 'Review the artifacts.',
+      outputPath: 'findings.json',
+      outputSchema: FindingsSidecarSchema,
+      label: 'reviewer-r1',
+      runDir: dir,
+      round: 1,
+      sidecarDir: path.join(dir, 'sidecars'),
+    })
+    return emitted
+  }
+
+  function doneEventsOf(emitted: readonly EventInput[]): Array<Extract<EventInput, { type: 'done' }>> {
+    return emitted.filter((event): event is Extract<EventInput, { type: 'done' }> => event.type === 'done')
+  }
+
+  it("carries the result line's four buckets and its cost into exactly one done event", async () => {
+    const emitted = await claudeStageEvents(
+      resultLine(
+        {
+          input_tokens: 1200,
+          output_tokens: 300,
+          cache_read_input_tokens: 900,
+          cache_creation_input_tokens: 150,
+        },
+        0.0125,
+      ),
+    )
+    const dones = doneEventsOf(emitted)
+    // Once: the result line is the turn's single accounting record, and a
+    // second fold would double every claude-route figure the ladder reads.
+    expect(dones).toHaveLength(1)
+    // Unfolded: the CLI reports cached reads and cache creation as their own
+    // buckets, and collapsing either into `inputTokens` would price them at
+    // the uncached rate.
+    expect(dones[0]?.usage).toMatchObject({
+      inputTokens: 1200,
+      outputTokens: 300,
+      cachedReadTokens: 900,
+      cachedWriteTokens: 150,
+      costUsd: 0.0125,
+    })
+  })
+
+  it('leaves a cost the CLI reported untouched through repricing', () => {
+    const resolve = resolverFrom({ [CLAUDE_MODEL]: { input: 15, output: 75, source: 'primary' } })
+    const events: SddEvent[] = [
+      spawnedEvent('reviewer-r1', CLAUDE_MODEL, 1),
+      doneEvent(
+        makeUsage({
+          inputTokens: 1200,
+          outputTokens: 300,
+          cachedReadTokens: 900,
+          cachedWriteTokens: 150,
+          costUsd: 0.0125,
+        }),
+        2,
+      ),
+    ]
+    const { events: repriced, costKnown } = repriceEvents(events, resolve)
+    expect(doneAt(repriced, 1).usage.costUsd).toBe(0.0125)
+    expect(costKnown).toBe(true)
+  })
+
+  it('reprices a zero-cost turn from the provider-prefixed config model id', () => {
+    const resolve = resolverFrom({ [CLAUDE_MODEL]: { input: 15, output: 75, source: 'primary' } })
+    const events: SddEvent[] = [
+      spawnedEvent('reviewer-r1', CLAUDE_MODEL, 1),
+      doneEvent(makeUsage({ inputTokens: 1_000_000, outputTokens: 1_000_000, costUsd: 0 }), 2),
+    ]
+    const { events: repriced, costKnown } = repriceEvents(events, resolve)
+    expect(doneAt(repriced, 1).usage.costUsd).toBe(90)
+    // Priced by the configured id, prefix included — the stripped id the CLI
+    // is handed is not a key the pricing table carries.
+    expect(doneAt(repriced, 1).model).toBe(CLAUDE_MODEL)
+    expect(costKnown).toBe(true)
+  })
+
+  it('an unpriceable model leaves the ladder reading unknown spend', () => {
+    const events: SddEvent[] = [
+      spawnedEvent('reviewer-r1', CLAUDE_MODEL, 1),
+      doneEvent(makeUsage({ inputTokens: 1200, outputTokens: 300, costUsd: 0 }), 2),
+    ]
+    const aggregate = aggregateUsage(events, () => null)
+    expect(aggregate.costKnown).toBe(false)
+    expect(aggregate.costUsd).toBe(0)
   })
 })

@@ -3,9 +3,17 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { describe, expect, test } from 'bun:test'
+import { afterEach, describe, expect, test } from 'bun:test'
+import { existsSync, rmSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import path from 'node:path'
 
-import { BackendSelectionError, resolveAgentBackend } from '../../review-loop/src/backend-select.js'
+import {
+  BackendSelectionError,
+  openClaudeContext,
+  resolveAgentBackend,
+  type ClaudeRunContext,
+} from '../../review-loop/src/backend-select.js'
 
 describe('resolveAgentBackend', () => {
   test('ANTHROPIC_API_KEY alone selects the bare profile', () => {
@@ -103,5 +111,56 @@ describe('resolveAgentBackend', () => {
     expect(resolved.profile).toBe('bare')
     expect(resolved.credentialName).toBe('ANTHROPIC_API_KEY')
     expect(resolved.credentialValue).toBe('')
+  })
+})
+
+describe('openClaudeContext', () => {
+  const parents: string[] = []
+
+  afterEach(() => {
+    while (parents.length > 0) {
+      const parent = parents.pop()
+      if (parent !== undefined) rmSync(parent, { recursive: true, force: true })
+    }
+  })
+
+  const resolved = resolveAgentBackend('claude', { CLAUDE_CODE_OAUTH_TOKEN: 'oauth-token-0123456789' })
+
+  async function open(holder: { claude?: ClaudeRunContext }, prefix?: string): Promise<string> {
+    const parent = await openClaudeContext(holder, resolved, prefix)
+    parents.push(parent)
+    return parent
+  }
+
+  test('assembles the context onto a bare structural holder, not a whole loop config', async () => {
+    // The runner has no ReviewLoopConfig to hand; anything carrying the
+    // optional `claude` field is enough for the seam to be shared.
+    const holder: { claude?: ClaudeRunContext } = {}
+    const parent = await open(holder)
+    expect(holder.claude).toMatchObject({
+      profile: 'native',
+      credentialName: 'CLAUDE_CODE_OAUTH_TOKEN',
+      credentialValue: 'oauth-token-0123456789',
+      configDirRoot: parent,
+    })
+    // envSource is a snapshot of the parent env, never a live alias of it.
+    expect(holder.claude?.envSource).not.toBe(process.env)
+    expect(holder.claude?.envSource['PATH']).toBe(process.env['PATH'])
+  })
+
+  test('honours an explicit tmp-prefix so each caller names its own parents', async () => {
+    const parent = await open({}, 'sdd-runner-claude-')
+    expect(path.basename(parent).startsWith('sdd-runner-claude-')).toBe(true)
+  })
+
+  test("defaults to the loop's own prefix when none is given", async () => {
+    const parent = await open({})
+    expect(path.basename(parent).startsWith('review-loop-claude-')).toBe(true)
+  })
+
+  test('creates the parent under the OS tmp root, and it exists', async () => {
+    const parent = await open({})
+    expect(path.dirname(parent)).toBe(tmpdir())
+    expect(existsSync(parent)).toBe(true)
   })
 })

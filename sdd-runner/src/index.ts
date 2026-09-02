@@ -15,18 +15,17 @@ import { loadCorpus } from './analyze-io.js'
 import { nodeAnalyzeFs, readOnlyGit } from './analyze-io.js'
 import { renderCorpusJson, renderCorpusReport } from './analyze-report.js'
 import { groundTruthJoin } from './analyze-truth.js'
+import { claudeGateOf, exitAfterClose, withClaude, type ClaudeGate } from './claude-gate.js'
 import { main } from './cli.js'
 import type { CliHarness } from './cli.js'
 import { parseSddArgs } from './cli.js'
 import { discoverBranch, loadRunnerConfig } from './config.js'
 import type { ExecGitFn } from './config.js'
 import { readEvents } from './events.js'
-import type { EventInput } from './events.js'
 import type { OrchestratorDeps } from './gate-digest.js'
 import { runGateResume } from './gate-resume-entry.js'
 import { runGateReopen, latestSettledGateVersion } from './gate.js'
-import type { LiveViewWiring } from './live-view.js'
-import { wireLiveView } from './live-view.js'
+import { harnessLiveView, registerTitleIfTty } from './harness-view.js'
 import { createOpenSpecDriver } from './openspec-driver.js'
 import type { OpenSpecDriver } from './openspec-driver.js'
 import { runContinue, runResume, runStart } from './orchestrator.js'
@@ -38,9 +37,7 @@ import type { ChangeDirSummary, ReportInput } from './report.js'
 import { resolveRunId } from './run-index.js'
 import { loadRunState, runDirOf } from './run-state.js'
 import { sessionLoopOf } from './session-harness.js'
-import { requestCalmStop, stopRun } from './stop-controller.js'
-import { registerTerminalTitle, TERMINAL_TITLE_RESTORE } from './terminal-title.js'
-import { createRunScreenSession } from './tui-run-session.js'
+import { stopRun } from './stop-controller.js'
 import { buildResolveCost, childUsageOf } from './usage-aggregate.js'
 
 export const USAGE = [
@@ -107,25 +104,6 @@ function makeExecGit(): ExecGitFn {
     })
 }
 
-/** Mode-decided live view for this process: Ink run screen on a TTY, lines otherwise. */
-function harnessLiveView(lineRender: (event: EventInput) => void): LiveViewWiring {
-  return wireLiveView(
-    { stdout: { isTTY: process.stdout.isTTY }, stdin: { isTTY: process.stdin.isTTY } },
-    process.env,
-    lineRender,
-    ({ runDir, logPath }) =>
-      createRunScreenSession({
-        logPath,
-        requestCalmStop: (): void => {
-          requestCalmStop(runDir)
-        },
-        hardExit: (code): void => {
-          process.exit(code)
-        },
-      }),
-  )
-}
-
 function shellExec(
   driverCwd: string,
 ): (args: readonly string[]) => Promise<{ stdout: string; stderr: string; exitCode: number }> {
@@ -138,7 +116,10 @@ function shellExec(
     })
 }
 
-async function buildHarness(verbosity: Verbosity = 'normal', configOverride?: string): Promise<CliHarness> {
+async function buildHarness(
+  verbosity: Verbosity = 'normal',
+  configOverride?: string,
+): Promise<{ harness: CliHarness; claude: ClaudeGate }> {
   const configPath =
     configOverride ?? process.env['SDD_RUNNER_CONFIG'] ?? path.join(import.meta.dir, '..', 'config.json')
   const config = await loadRunnerConfig(configPath)
@@ -146,8 +127,16 @@ async function buildHarness(verbosity: Verbosity = 'normal', configOverride?: st
   const execGit = makeExecGit()
   const resolveCost = await buildResolveCost()
   const renderer = createRenderer(process.stdout, verbosity, { resolveCost })
-  const live = harnessLiveView(renderer.renderEvent)
-  registerTitleIfTty(process.stdout)
+  // The gate is created below — it needs the deps the live view feeds — but
+  // the abrupt exits (the run screen's second Ctrl-C, a TTY SIGINT/SIGTERM)
+  // must already name it: `process.exit` runs no `finally`, so this teardown
+  // is the only chance those paths get. Both registrations and the binding
+  // below share one synchronous block, so no signal can arrive before the
+  // closer is bound; until then there is nothing to close.
+  let closeGate: () => Promise<void> = (): Promise<void> => Promise.resolve()
+  const teardownExit = exitAfterClose((): Promise<void> => closeGate())
+  const live = harnessLiveView(renderer.renderEvent, teardownExit)
+  registerTitleIfTty(process.stdout, teardownExit)
   const orchestratorDeps: OrchestratorDeps = {
     config,
     spawn: realSpawn,
@@ -163,26 +152,31 @@ async function buildHarness(verbosity: Verbosity = 'normal', configOverride?: st
     stdout: harnessStdout,
     interactive: (): boolean => stdinIsInteractive(),
   }
-  return harnessMembers(config, orchestratorDeps, execGit)
+  const claude = claudeGateOf(orchestratorDeps)
+  closeGate = (): Promise<void> => claude.close()
+  return { harness: harnessMembers(config, orchestratorDeps, execGit, claude), claude }
 }
 
+/** Every run-driving (spending) verb goes through `withClaude`; the read-only ones deliberately do not. */
 function harnessMembers(
   config: { readonly workDir: string; readonly repoRoot: string },
   orchestratorDeps: OrchestratorDeps,
   execGit: ExecGitFn,
+  claude: ClaudeGate,
 ): CliHarness {
   const members: CliHarness = {
     workDir: config.workDir,
-    runStart: (options) => runStart(orchestratorDeps, options),
-    runResume: (runId, autonomy) => runResume(orchestratorDeps, runId, autonomy),
-    runGateResume: async (runId) => {
+    runStart: withClaude(claude, (options) => runStart(orchestratorDeps, options)),
+    runResume: withClaude(claude, (runId, autonomy) => runResume(orchestratorDeps, runId, autonomy)),
+    runGateResume: withClaude(claude, async (runId) => {
       const resolved = await resolveRunId(config.workDir, runId)
       return runGateResume(orchestratorDeps, resolved, {})
-    },
-    runContinue: (runId, autonomy) => runContinue(orchestratorDeps, runId, autonomy),
+    }),
+    runContinue: withClaude(claude, (runId, autonomy) => runContinue(orchestratorDeps, runId, autonomy)),
     requestCalmStop: (runId) => stopRun(config.workDir, runId),
-    runGateReopen: (runId, gateVersion) =>
+    runGateReopen: withClaude(claude, (runId, gateVersion) =>
       resolveAndCall(config.workDir, runId, (r) => runGateReopen(orchestratorDeps, config.workDir, r, gateVersion)),
+    ),
     buildReport: (runId, pr) => buildRunReport(config, runId, pr, execGit),
     runAnalysis: (workdirs, json) => runCorpusAnalysis(config, execGit, workdirs, json),
     stdout: harnessStdout,
@@ -190,7 +184,7 @@ function harnessMembers(
     latestSettledGateVersion: (runId) =>
       resolveAndCall(config.workDir, runId, (r) => latestSettledGateVersion(config.workDir, r)),
   }
-  return { ...members, sessionLoop: sessionLoopOf(config, orchestratorDeps, members) }
+  return { ...members, sessionLoop: sessionLoopOf(config, members) }
 }
 
 function harnessStdout(line: string): void {
@@ -254,16 +248,6 @@ async function buildRunReport(
   return buildReport(input)
 }
 
-function registerTitleIfTty(stream: { readonly isTTY?: boolean; write(chunk: string): boolean }): void {
-  if (stream.isTTY !== true) return
-  registerTerminalTitle(
-    (chunk: string): void => {
-      stream.write(chunk)
-    },
-    (): string => TERMINAL_TITLE_RESTORE,
-  )
-}
-
 async function resolveAndCall<T>(workDir: string, runId: string, fn: (resolved: string) => Promise<T>): Promise<T> {
   const resolved = await resolveRunId(workDir, runId)
   return fn(resolved)
@@ -276,8 +260,14 @@ export async function runEntry(): Promise<void> {
     return
   }
   const parsed = parseSddArgs(argv)
-  const harness = await buildHarness('normal', parsed.configPath)
-  const code = await main(argv, harness)
+  const { harness, claude } = await buildHarness('normal', parsed.configPath)
+  let code: number
+  // Teardown before the exit, not after it: `process.exit` runs no `finally`.
+  try {
+    code = await main(argv, harness)
+  } finally {
+    await claude.close()
+  }
   process.exit(code)
 }
 
