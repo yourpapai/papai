@@ -25,11 +25,17 @@ import { logger } from '../logger.js'
 const log = logger.child({ scope: 'tool:run-proof-check' })
 
 const productionProofCheckDeps = (): ProofCheckDeps => {
+  // The opaque-handle deps contract (ProofCheckDeps.setTimeout -> unknown) needs a
+  // concrete-type bridge for the stdlib clearTimeout; the map doubles as the pending
+  // registry, so every entry must be dropped when its timer clears OR fires naturally.
   const timerHandles = new Map<unknown, ReturnType<typeof setTimeout>>()
   return {
     now: () => Date.now(),
     setTimeout: (fn, ms) => {
-      const handle = setTimeout(fn, ms)
+      const handle = setTimeout((): void => {
+        timerHandles.delete(handle)
+        fn()
+      }, ms)
       timerHandles.set(handle, handle)
       return handle
     },

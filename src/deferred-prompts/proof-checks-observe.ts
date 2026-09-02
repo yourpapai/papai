@@ -229,6 +229,7 @@ const finalizeProofRun = async (
     deps,
     makeRecord(state.runId, state.checkId, state.variant, state.startMs, deps.now(), verdict, observations),
   )
+  deliveryRecords.delete(state.runId)
   releaseLock()
 }
 

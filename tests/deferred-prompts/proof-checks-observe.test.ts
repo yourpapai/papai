@@ -360,6 +360,40 @@ describe('proof check async observation', () => {
     expect(observed.records[0]?.observations.join('\n')).toContain('generated_text: proof reply')
   })
 
+  test('a finalized run evicts its delivery record so a later run cannot correlate it', async () => {
+    const row = makeScheduledRow(CLOCK_BASE_MS + 30_000)
+    const proofTrace = makeTrace({ timestamp: CLOCK_BASE_MS + 29_000, generatedText: 'proof reply' })
+    recordProofDelivery('run-1', 'proof reply', new Date(CLOCK_BASE_MS).toISOString())
+    arm(
+      { checkId: 'bug1_delivery_matches_execution', variant: 'no_tools', fireAtMs: CLOCK_BASE_MS },
+      {
+        getScheduledPrompt: (): ScheduledPrompt | null => row,
+        readRecentLlm: () => [proofTrace],
+      },
+    )
+
+    observed.clock.advance(2 * 60_000 + 1_000)
+    await waitFor(() => observed.records.length > 0)
+    await waitFor(() => observed.releaseCalls() > 0)
+    const firstVerdict = observed.records[0]?.verdict
+    expect(firstVerdict).toBe('pass')
+
+    arm(
+      { checkId: 'bug1_delivery_matches_execution', variant: 'no_tools', fireAtMs: CLOCK_BASE_MS },
+      {
+        getScheduledPrompt: (): ScheduledPrompt | null => row,
+        readRecentLlm: () => [proofTrace],
+      },
+    )
+    observed.clock.advance(2 * 60_000 + 1_000)
+    await waitFor(() => observed.records.length > 0)
+    await waitFor(() => observed.releaseCalls() > 0)
+
+    expect(firstVerdict).toBe('pass')
+    expect(observed.records[0]?.verdict).toBe('inconclusive')
+    expect(observed.records[0]?.observations.join('\n')).toContain('no delivery record for the run')
+  })
+
   test('event-path trace correlation picks the proof turn that completed before the fired event', async () => {
     const fireAtMs = CLOCK_BASE_MS + 88_000
     const fireMs = CLOCK_BASE_MS + 90_000
