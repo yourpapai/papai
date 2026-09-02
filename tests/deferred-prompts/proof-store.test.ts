@@ -122,6 +122,40 @@ describe('proof store', () => {
     }
   })
 
+  test('caps run records, not raw lines, so interleaved delivery lines keep full run retention', async () => {
+    const appendDelivery = async (index: number): Promise<void> => {
+      await appendProofJsonLine(
+        {
+          runId: `run-${String(index).padStart(2, '0')}`,
+          responseText: 'delivered',
+          delivered: true,
+          at: new Date(CLOCK_BASE_MS + index * 1_000).toISOString(),
+        },
+        deps(),
+      )
+    }
+
+    for (let index = 1; index <= PROOF_STORE_CAP; index++) {
+      await appendDelivery(index)
+      await appendProofRecord(makeRecord(index), deps())
+    }
+
+    expect(await loadProofRecords(deps())).toHaveLength(PROOF_STORE_CAP)
+    expect(readFileSync(path, 'utf8').trim().split('\n')).toHaveLength(2 * PROOF_STORE_CAP)
+
+    for (let index = PROOF_STORE_CAP + 1; index <= PROOF_STORE_CAP + 5; index++) {
+      await appendDelivery(index)
+      await appendProofRecord(makeRecord(index), deps())
+    }
+
+    const records = await loadProofRecords(deps())
+
+    expect(records).toHaveLength(PROOF_STORE_CAP)
+    expect(records[0]!.run_id).toBe('run-06')
+    expect(records[records.length - 1]!.run_id).toBe('run-55')
+    expect(readFileSync(path, 'utf8').trim().split('\n')).toHaveLength(2 * PROOF_STORE_CAP - 1)
+  })
+
   test('consults the injected clock while appending past the cap', async () => {
     let calls = 0
     const now = (): Date => {

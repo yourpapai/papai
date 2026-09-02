@@ -91,8 +91,15 @@ const trimToFit = (path: string, now: () => Date): void => {
     .split('\n')
     .filter((line) => line !== '')
   if (lines.length <= MAX_RECORDS) return
+  const runIndexes: number[] = []
+  for (const [index, line] of lines.entries()) {
+    if (isProofCheckRecord(parseJsonLine(line))) runIndexes.push(index)
+  }
+  const excess = runIndexes.length - MAX_RECORDS
+  if (excess <= 0) return
+  const keepFrom = runIndexes[excess]!
   const tempPath = `${path}.tmp-${now().getTime()}`
-  writeFileSync(tempPath, `${lines.slice(-MAX_RECORDS).join('\n')}\n`)
+  writeFileSync(tempPath, `${lines.slice(keepFrom).join('\n')}\n`)
   renameSync(tempPath, path)
 }
 
