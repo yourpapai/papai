@@ -10,6 +10,7 @@ import path from 'node:path'
 
 import {
   findInFlightSession,
+  findKilledSession,
   nextSessionAttempt,
   readSessionLedger,
   recordDeadSpawn,
@@ -167,6 +168,36 @@ describe('session ledger reading', () => {
     const inFlight = findInFlightSession(runDir, 'reviewer', 1)
     expect(inFlight?.opencodeSessionId).toBe('ses_b')
     expect(inFlight?.status).toBe('killed')
+  })
+})
+
+describe('findKilledSession — the continuation seam lookup (escalation-retry-session-continuation D6)', () => {
+  it('returns the latest id-bearing killed line for a (label, round)', () => {
+    const runDir = makeRunDir()
+    recordSessionId(runDir, spawnInput, 'ses_a')
+    updateSessionStatus(runDir, 'reviewer', 1, 'killed')
+    recordSessionId(runDir, spawnInput, 'ses_b')
+    updateSessionStatus(runDir, 'reviewer', 1, 'killed')
+    const killed = findKilledSession(runDir, 'reviewer', 1)
+    expect(killed?.opencodeSessionId).toBe('ses_b')
+    expect(killed?.status).toBe('killed')
+  })
+
+  it('excludes a dangling spawned entry and a settled done entry — null either way', () => {
+    const runDir = makeRunDir()
+    recordSessionId(runDir, spawnInput, 'ses_spawned')
+    expect(findKilledSession(runDir, 'reviewer', 1)).toBeNull()
+    updateSessionStatus(runDir, 'reviewer', 1, 'done')
+    expect(findKilledSession(runDir, 'reviewer', 1)).toBeNull()
+  })
+
+  it('excludes a killed line with no id and other (label, round) keys — no match is null', () => {
+    const runDir = makeRunDir()
+    recordDeadSpawn(runDir, spawnInput, 1)
+    recordSessionId(runDir, { ...spawnInput, label: 'resolver', role: 'resolver' }, 'ses_r')
+    updateSessionStatus(runDir, 'resolver', 1, 'killed')
+    expect(findKilledSession(runDir, 'reviewer', 1)).toBeNull()
+    expect(findKilledSession(runDir, 'reviewer', 2)).toBeNull()
   })
 })
 

@@ -149,13 +149,30 @@ function allOfKey(lines: readonly SessionLedgerLine[], label: string, round: num
   return indices
 }
 
-/** Latest in-flight (spawned or killed, id-bearing) line for a key, or null. */
-export function findInFlightSession(runDir: string, label: string, round: number): SessionLedgerLine | null {
+/** Latest id-bearing line of a key in one of the given statuses, or null. */
+function latestIdBearing(
+  runDir: string,
+  label: string,
+  round: number,
+  statuses: readonly SessionLedgerStatus[],
+): SessionLedgerLine | null {
   const matches = readSessionLedger(runDir).filter(
-    (line) =>
-      isKey(line, label, round) &&
-      line.opencodeSessionId !== null &&
-      (line.status === 'spawned' || line.status === 'killed'),
+    (line) => isKey(line, label, round) && line.opencodeSessionId !== null && statuses.includes(line.status),
   )
   return matches.length === 0 ? null : matches[matches.length - 1]!
+}
+
+/** Latest in-flight (spawned or killed, id-bearing) line for a key, or null. */
+export function findInFlightSession(runDir: string, label: string, round: number): SessionLedgerLine | null {
+  return latestIdBearing(runDir, label, round, ['spawned', 'killed'])
+}
+
+/**
+ * Latest id-bearing `killed` line for a key, or null — the stage re-entry
+ * continuation boundary (escalation-retry-session-continuation D2): in-process
+ * failures settle `killed` (continue); a true crash dangles `spawned` and a
+ * settled spawn reads `done`, both fresh.
+ */
+export function findKilledSession(runDir: string, label: string, round: number): SessionLedgerLine | null {
+  return latestIdBearing(runDir, label, round, ['killed'])
 }
