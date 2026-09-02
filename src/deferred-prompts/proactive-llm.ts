@@ -13,7 +13,11 @@ import { getCachedHistory } from '../cache.js'
 import type { DeferredDeliveryTarget } from '../chat/types.js'
 import { hoistSystemMessages } from '../llm-message-utils.js'
 import { buildChatModel } from '../llm-model-builder.js'
+import { emitLlmEnd, emitLlmStart } from '../llm-orchestrator-events.js'
+import { emitLlmError } from '../llm-orchestrator-logging.js'
 import { collectTurnMessages } from '../llm-orchestrator-messages.js'
+import { handleToolCallFinish } from '../llm-orchestrator-support.js'
+import { adaptToolExecutionEnd } from '../llm-orchestrator-tool-events.js'
 import { logger } from '../logger.js'
 import { createDisclosurePrepareStep } from '../tools/disclosure/prepare-step.js'
 import { buildToolsContextRecord } from '../tools/wrap-tool-execution.js'
@@ -106,6 +110,57 @@ type ScopedGenerationArgs = Readonly<{
   scope: Parameters<typeof runWithProviderRequestScope>[0]
 }>
 
+/**
+ * Debug-trace emission parity with invokeModel (llm:start/end/error): the proof
+ * checks correlate the run's own trace from recentLlm, so the proactive execution
+ * must land one. chatUserId is the prompt owner's native chat user id (the
+ * delivery target's context id only for DM targets, where the two coincide),
+ * which is what findOwnTrace attributes against — and what usage recording
+ * treats as the real chat actor, so group-targeted prompts must not land their
+ * spend on the group id.
+ */
+const generateWithTrace = async (
+  execCtx: DeferredExecutionContext,
+  config: LlmConfig,
+  prepared: FullGenerationInput,
+  deps: ProactiveLlmDeps,
+  scope: Parameters<typeof runWithProviderRequestScope>[0],
+  turnId: string,
+  baseOptions: Parameters<ProactiveLlmDeps['generateText']>[0],
+): Promise<Awaited<ReturnType<ProactiveLlmDeps['generateText']>>> => {
+  const start = Date.now()
+  emitLlmStart(prepared.storageContextId, config.mainModel, prepared.messages, prepared.tools, turnId)
+  try {
+    const result = await deps.generateText(
+      Object.assign({}, baseOptions, { toolsContext: buildToolsContextRecord(prepared.tools, scope) }),
+    )
+    emitLlmEnd(
+      prepared.storageContextId,
+      execCtx.deliveryTarget.createdByUserId,
+      execCtx.deliveryTarget.contextType,
+      config.mainModel,
+      result,
+      start,
+      prepared.messages,
+      prepared.tools,
+      turnId,
+    )
+    return result
+  } catch (error) {
+    emitLlmError(
+      prepared.storageContextId,
+      execCtx.deliveryTarget.createdByUserId,
+      execCtx.deliveryTarget.contextType,
+      config.mainModel,
+      start,
+      prepared.messages.length,
+      error,
+      turnId,
+    )
+    throw error
+  }
+}
+
 const runScopedGeneration = async (args: ScopedGenerationArgs): Promise<string> => {
   const { execCtx, config, configContextId, deps, model, scope } = args
   const { createdByUserId } = execCtx
@@ -133,10 +188,11 @@ const runScopedGeneration = async (args: ScopedGenerationArgs): Promise<string> 
     stopWhen: deps.stepCountIs(25),
     timeout: 1_200_000,
     prepareStep: createDisclosurePrepareStep(prepared.disclosure, prepared.storageContextId, turnId),
+    onToolExecutionEnd: (event) => {
+      handleToolCallFinish(prepared.storageContextId, undefined, { ...adaptToolExecutionEnd(event), turnId })
+    },
   }
-  const result = await deps.generateText(
-    Object.assign({}, baseOptions, { toolsContext: buildToolsContextRecord(tools, scope) }),
-  )
+  const result = await generateWithTrace(execCtx, config, prepared, deps, scope, turnId, baseOptions)
   const previousHistory = getCachedHistory(prepared.storageContextId)
   const assistantMessages = collectTurnMessages(result)
   persistProactiveResults(

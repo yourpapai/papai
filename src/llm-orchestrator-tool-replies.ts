@@ -19,9 +19,11 @@ import { getContextLanguage } from './utils/config-language.js'
 type LogContext = Record<string, unknown>
 
 // Local, looser event shape than the internal ToolCallFinishEvent: the reply
-// boundary only reads identity/duration/success/output/error.
+// boundary only reads identity/duration/success/output/error. turnId scopes the
+// llm:tool_result to the trace-collector pending of the emitting turn.
 type ToolCallFinishEvent = {
   toolCall: { toolName: string; toolCallId: string }
+  turnId?: string
 } & Partial<{
   success: boolean
   output: unknown
@@ -66,14 +68,19 @@ const emitToolFailure = (
   deps: LlmToolReplyDeps,
 ): void => {
   const { toolName, toolCallId } = event.toolCall
-  deps.emit('llm:tool_result', contextId, {
-    toolName,
-    toolCallId,
-    durationMs: event.durationMs,
-    success: false,
-    result: toolFailure,
-    error: toolFailure.error,
-  })
+  deps.emit(
+    'llm:tool_result',
+    contextId,
+    {
+      toolName,
+      toolCallId,
+      durationMs: event.durationMs,
+      success: false,
+      result: toolFailure,
+      error: toolFailure.error,
+    },
+    event.turnId,
+  )
   deps.log.warn(
     {
       contextId,
@@ -95,13 +102,18 @@ const emitToolFailure = (
 
 const emitToolSuccess = (contextId: string, event: ToolCallFinishEvent, deps: LlmToolReplyDeps): void => {
   const { toolName, toolCallId } = event.toolCall
-  deps.emit('llm:tool_result', contextId, {
-    toolName,
-    toolCallId,
-    durationMs: event.durationMs,
-    success: true,
-    result: event.output,
-  })
+  deps.emit(
+    'llm:tool_result',
+    contextId,
+    {
+      toolName,
+      toolCallId,
+      durationMs: event.durationMs,
+      success: true,
+      result: event.output,
+    },
+    event.turnId,
+  )
 }
 
 export function handleToolCallFinish(

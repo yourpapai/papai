@@ -19,6 +19,8 @@ import { finalizeAllPrompts, mergeExecutionMetadata } from './poller-scheduled.j
 import { resolveProactivePlatformInstanceId, sendProactiveMessage } from './proactive-delivery.js'
 import { getStorageContextId } from './proactive-llm-helpers.js'
 import { dispatchExecution, type BuildProviderFn, type DeferredExecutionContext } from './proactive-llm.js'
+import { recordProofDelivery } from './proof-checks-observe.js'
+import { parseProofMarker } from './proof-checks-prompts.js'
 import { getScheduledPromptsDue } from './scheduled.js'
 import type { ScheduledPrompt } from './types.js'
 
@@ -26,6 +28,16 @@ export { pollAlertsOnce } from './poller-alerts.js'
 
 const log = logger.child({ scope: 'deferred:poller' })
 const inFlightPrompts = new Set<string>()
+
+// Disposable proof-check instrumentation (design D9), deleted with the deferred-prompt-proof-checks
+// module: pure record after confirmed delivery — never alters the message, the target, or control
+// flow; groups that are not entirely marker-carrying skip (a merged response cannot be attributed).
+const recordProofGroupDelivery = (prompts: ScheduledPrompt[], response: string): void => {
+  const markerRunIds = prompts.map((prompt) => parseProofMarker(prompt.prompt))
+  if (markerRunIds.length === 0 || markerRunIds.some((id) => id === null)) return
+  recordProofDelivery(markerRunIds[0]!, response, new Date().toISOString())
+}
+
 const promptToExecCtx = (prompt: ScheduledPrompt): DeferredExecutionContext => ({
   createdByUserId: prompt.createdByUserId,
   deliveryTarget: prompt.deliveryTarget,
@@ -67,6 +79,7 @@ async function executeScheduledPromptsForGroup(
 
   const delivered = await sendProactiveMessage(chat, execCtx.deliveryTarget, response)
   if (!delivered) return
+  recordProofGroupDelivery(prompts, response)
   finalizeAllPrompts(prompts, new Date().toISOString(), timezone)
   for (const prompt of prompts) {
     emitUser('deferred:fired', prompt.createdByUserId, { promptId: prompt.id })

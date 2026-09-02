@@ -15,6 +15,11 @@ import { NO_ANALYTICS_SCOPE } from '../../src/analytics/provider-request-scope.j
 import { updateByokLlmConfig } from '../../src/byok-llm/store.js'
 import { toScopedContextId, toScopedThreadContextId } from '../../src/chat/scoped-context.js'
 import { setConfig } from '../../src/config.testing.js'
+import {
+  subscribe as subscribeDebugBus,
+  type DebugEvent,
+  unsubscribe as unsubscribeDebugBus,
+} from '../../src/debug/event-bus.js'
 import { dispatchExecution } from '../../src/deferred-prompts/proactive-llm.js'
 import type { DeferredExecutionContext } from '../../src/deferred-prompts/proactive-llm.js'
 import type { ExecutionMetadata } from '../../src/deferred-prompts/types.js'
@@ -35,7 +40,13 @@ type GenerateTextResult = {
   toolCalls: unknown[]
   toolResults: unknown[]
   steps: unknown[] | undefined
-  finalStep: { response: { messages: ModelMessage[] } }
+  usage?: { inputTokens: number; outputTokens: number }
+  finalStep: { response: { id?: string; modelId?: string; messages: ModelMessage[] } }
+}
+type ToolExecutionEndEvent = {
+  toolCall: { toolName: string; toolCallId: string; input: unknown }
+  toolExecutionMs: number
+  toolOutput: { type: 'tool-result'; output: unknown } | { type: 'tool-error'; error: unknown }
 }
 type GenerateTextCall = {
   model: string
@@ -45,6 +56,7 @@ type GenerateTextCall = {
   toolsContext?: Record<string, unknown>
   stopWhen?: unknown
   prepareStep?: (arg: { stepNumber: number; steps?: readonly unknown[] }) => { activeTools?: string[] }
+  onToolExecutionEnd?: (event: ToolExecutionEndEvent) => void
 }
 type BuildModelCall = { apiKey: string; baseURL: string; modelId: string }
 
@@ -81,6 +93,22 @@ const containsFact = (
   )
 
 const USER_ID = 'exec-mode-user'
+
+// The with_tool_probe failure shape: the outer wrapper converts a thrown tool
+// error into this structured result, so the SDK reports a tool-result whose
+// output is a failure payload.
+const makeToolFailureResult = (toolCallId: string): Record<string, unknown> => ({
+  success: false,
+  error: 'blocked host: loopback addresses are not fetchable',
+  toolName: 'web_fetch',
+  toolCallId,
+  timestamp: new Date().toISOString(),
+  errorType: 'tool-execution',
+  errorCode: 'blocked-host',
+  userMessage: 'web fetch failed',
+  agentMessage: 'web fetch failed',
+  retryable: false,
+})
 
 function makeExecCtx(): DeferredExecutionContext {
   return {
@@ -138,7 +166,7 @@ describe('dispatchExecution', () => {
       text: 'Mock response',
       toolCalls: [],
       toolResults: [],
-      steps: undefined,
+      steps: [],
       finalStep: { response: { messages: [] } },
     })
   }
@@ -154,7 +182,7 @@ describe('dispatchExecution', () => {
         text: 'Mock response',
         toolCalls: [],
         toolResults: [],
-        steps: undefined,
+        steps: [],
         finalStep: { response: { messages: [] } },
       })
     }
@@ -193,6 +221,191 @@ describe('dispatchExecution', () => {
       const toolNames = toolNamesOf(call.tools)
       expect(toolNames).toContain('search_tools')
       expect(toolNames).toContain('load_tool')
+    })
+  })
+
+  describe('llm trace emission', () => {
+    const metadata: ExecutionMetadata = {
+      delivery_brief: 'be brief',
+      context_snapshot: null,
+    }
+
+    const captureBus = (): { events: DebugEvent[]; stop: () => void } => {
+      const events: DebugEvent[] = []
+      const listener = (event: DebugEvent): void => {
+        events.push(event)
+      }
+      subscribeDebugBus(listener)
+      return { events, stop: (): void => unsubscribeDebugBus(listener) }
+    }
+
+    test('emits llm:start/llm:end attributed to the delivery target for trace correlation', async () => {
+      setupUserConfig()
+      const provider = createMockProvider()
+      appendHistory(USER_ID, [
+        { role: 'user', content: '<current_time>2026-05-25 07:00 (Monday)</current_time> earlier turn' },
+      ])
+      generateTextImpl = (args: GenerateTextCall): Promise<GenerateTextResult> => {
+        generateTextCalls.push(args)
+        return Promise.resolve({
+          text: 'Proactive reply',
+          toolCalls: [],
+          toolResults: [],
+          steps: [],
+          usage: { inputTokens: 11, outputTokens: 7 },
+          finishReason: 'stop',
+          finalStep: { response: { id: 'resp-1', modelId: 'main-model', messages: [] } },
+        })
+      }
+      const bus = captureBus()
+      try {
+        await dispatchExecution(makeExecCtx(), 'scheduled', 'check overdue', metadata, () => provider)
+      } finally {
+        bus.stop()
+      }
+
+      const start = bus.events.find((event) => event.type === 'llm:start')
+      const end = bus.events.find((event) => event.type === 'llm:end')
+      expect(start).toBeDefined()
+      expect(end).toBeDefined()
+      expect(start?.scope).toEqual({ kind: 'user', userId: USER_ID })
+      expect(start?.data['model']).toBe('main-model')
+      expect(end?.scope).toEqual({ kind: 'user', userId: USER_ID })
+      expect(end?.data['chatUserId']).toBe(USER_ID)
+      expect(end?.data['contextType']).toBe('dm')
+      expect(end?.data['model']).toBe('main-model')
+      expect(end?.data['generatedText']).toBe('Proactive reply')
+      expect(end?.data['finishReason']).toBe('stop')
+      expect(end?.data['totalDuration']).toBeNumber()
+      expect(end?.data['currentTimeTag']).toBe('2026-05-25 07:00 (Monday)')
+      expect(String(end?.turnId)).toContain('proactive:')
+    })
+
+    test('emits llm:error and rethrows when generation fails', async () => {
+      setupUserConfig()
+      const provider = createMockProvider()
+      generateTextImpl = (): Promise<GenerateTextResult> => Promise.reject(new Error('provider down'))
+      const bus = captureBus()
+      try {
+        await expect(
+          dispatchExecution(makeExecCtx(), 'scheduled', 'check overdue', metadata, () => provider),
+        ).rejects.toThrow('provider down')
+      } finally {
+        bus.stop()
+      }
+
+      const error = bus.events.find((event) => event.type === 'llm:error')
+      expect(error).toBeDefined()
+      expect(error?.scope).toEqual({ kind: 'user', userId: USER_ID })
+      expect(error?.data['chatUserId']).toBe(USER_ID)
+      expect(error?.data['contextType']).toBe('dm')
+      expect(error?.data['model']).toBe('main-model')
+      expect(error?.data['error']).toBe('provider down')
+    })
+
+    test('attributes group-targeted llm:end to the prompt owner, not the group context id', async () => {
+      setupUserConfig()
+      const provider = createMockProvider()
+      generateTextImpl = (args: GenerateTextCall): Promise<GenerateTextResult> => {
+        generateTextCalls.push(args)
+        return Promise.resolve({
+          text: 'Proactive group reply',
+          toolCalls: [],
+          toolResults: [],
+          steps: [],
+          usage: { inputTokens: 5, outputTokens: 3 },
+          finishReason: 'stop',
+          finalStep: { response: { id: 'resp-2', modelId: 'main-model', messages: [] } },
+        })
+      }
+      const bus = captureBus()
+      try {
+        await dispatchExecution(makeGroupThreadExecCtx(), 'scheduled', 'check overdue', metadata, () => provider)
+      } finally {
+        bus.stop()
+      }
+
+      const end = bus.events.find((event) => event.type === 'llm:end')
+      expect(end).toBeDefined()
+      expect(end?.data['contextType']).toBe('group')
+      // chatUserId is the real chat actor (prompt owner); the group context id
+      // must never land there or usage rows attribute spend to the group.
+      expect(end?.data['chatUserId']).toBe(USER_ID)
+      expect(end?.data['chatUserId']).not.toBe(makeGroupThreadExecCtx().deliveryTarget.contextId)
+    })
+
+    test('emits llm:tool_result on the proactive turnId for a structured tool failure', async () => {
+      setupUserConfig()
+      const provider = createMockProvider()
+      generateTextImpl = (args: GenerateTextCall): Promise<GenerateTextResult> => {
+        generateTextCalls.push(args)
+        args.onToolExecutionEnd?.({
+          toolCall: {
+            toolName: 'web_fetch',
+            toolCallId: 'call-1',
+            input: { url: 'http://127.0.0.1:9/proof-check-probe' },
+          },
+          toolExecutionMs: 4,
+          toolOutput: { type: 'tool-result', output: makeToolFailureResult('call-1') },
+        })
+        return Promise.resolve({
+          text: 'Probe failed',
+          toolCalls: [],
+          toolResults: [],
+          steps: [],
+          finishReason: 'stop',
+          finalStep: { response: { messages: [] } },
+        })
+      }
+      const bus = captureBus()
+      try {
+        await dispatchExecution(makeExecCtx(), 'scheduled', 'check overdue', metadata, () => provider)
+      } finally {
+        bus.stop()
+      }
+
+      const toolResult = bus.events.find((event) => event.type === 'llm:tool_result')
+      expect(toolResult).toBeDefined()
+      expect(toolResult?.scope).toEqual({ kind: 'user', userId: USER_ID })
+      expect(String(toolResult?.turnId)).toContain('proactive:')
+      expect(toolResult?.data['toolName']).toBe('web_fetch')
+      expect(toolResult?.data['toolCallId']).toBe('call-1')
+      expect(toolResult?.data['success']).toBe(false)
+      expect(toolResult?.data['error']).toBe('blocked host: loopback addresses are not fetchable')
+    })
+
+    test('emits llm:tool_result with success true for a successful proactive tool call', async () => {
+      setupUserConfig()
+      const provider = createMockProvider()
+      generateTextImpl = (args: GenerateTextCall): Promise<GenerateTextResult> => {
+        generateTextCalls.push(args)
+        args.onToolExecutionEnd?.({
+          toolCall: { toolName: 'get_current_time', toolCallId: 'call-2', input: {} },
+          toolExecutionMs: 7,
+          toolOutput: { type: 'tool-result', output: { now: '2026-09-02T00:00:00Z' } },
+        })
+        return Promise.resolve({
+          text: 'Done',
+          toolCalls: [],
+          toolResults: [],
+          steps: [],
+          finishReason: 'stop',
+          finalStep: { response: { messages: [] } },
+        })
+      }
+      const bus = captureBus()
+      try {
+        await dispatchExecution(makeExecCtx(), 'scheduled', 'check overdue', metadata, () => provider)
+      } finally {
+        bus.stop()
+      }
+
+      const toolResult = bus.events.find((event) => event.type === 'llm:tool_result')
+      expect(toolResult).toBeDefined()
+      expect(String(toolResult?.turnId)).toContain('proactive:')
+      expect(toolResult?.data['toolName']).toBe('get_current_time')
+      expect(toolResult?.data['success']).toBe(true)
+      expect(toolResult?.data['result']).toEqual({ now: '2026-09-02T00:00:00Z' })
     })
   })
 
@@ -283,7 +496,7 @@ describe('dispatchExecution', () => {
           text: '',
           toolCalls: [],
           toolResults: [],
-          steps: undefined,
+          steps: [],
           finalStep: { response: { messages: [] } },
         })
       }
@@ -351,7 +564,7 @@ describe('dispatchExecution', () => {
           text: 'Created task',
           toolCalls: [],
           toolResults: [{ toolName: 'create_task', output: { id: 'task-1', title: 'Thread task', number: 17 } }],
-          steps: undefined,
+          steps: [],
           finalStep: { response: { messages: [] } },
         })
       }
@@ -396,7 +609,7 @@ describe('dispatchExecution', () => {
           text: 'Created task',
           toolCalls: [],
           toolResults: [{ toolName: 'create_task', output: { id: 'task-1', title: 'Scoped thread task', number: 21 } }],
-          steps: undefined,
+          steps: [],
           finalStep: { response: { messages: [] } },
         })
       }
@@ -461,21 +674,21 @@ describe('dispatchExecution', () => {
           text: 'Thread response',
           toolCalls: [],
           toolResults: [],
-          steps: undefined,
+          steps: [],
           finalStep: { response: { messages: [{ role: 'assistant', content: 'new response' }] } },
         }),
         Promise.resolve({
           text: JSON.stringify({ keep_indices: Array.from({ length: 50 }, (_, index) => index), summary: 'trimmed' }),
           toolCalls: [],
           toolResults: [],
-          steps: undefined,
+          steps: [],
           finalStep: { response: { messages: [] } },
         }),
         Promise.resolve({
           text: JSON.stringify({ profile: null, records: [], updates: [] }),
           toolCalls: [],
           toolResults: [],
-          steps: undefined,
+          steps: [],
           finalStep: { response: { messages: [] } },
         }),
       ]

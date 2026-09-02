@@ -284,6 +284,23 @@ describe('handleToolCallFinishEvent', () => {
     expect(captured.some((e) => e.type === 'llm:tool_result')).toBe(true)
   })
 
+  test('llm:tool_result carries the turn id from the tool-call context', () => {
+    handleToolCallFinishEvent(baseContext(), {
+      toolCall: {
+        toolName: 'get_task',
+        toolCallId: 'call-turn-id',
+        input: { id: 'x' },
+      },
+      durationMs: 3,
+      success: true,
+      output: { ok: true },
+    })
+
+    const result = captured.find((e) => e.type === 'llm:tool_result')
+    expect(result).toBeDefined()
+    expect(result?.turnId).toBe('turn-1')
+  })
+
   test('does not send legacy warning reply from hook handling while keeping llm:tool_result debug event', () => {
     const { reporter, finishedEvents } = createReporterSpy()
     const { textCalls } = createMockReply()

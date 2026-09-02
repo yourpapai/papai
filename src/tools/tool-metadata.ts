@@ -189,6 +189,10 @@ export const TOOL_METADATA: Readonly<Record<string, ToolClassification>> = {
   read_llm_traces: read('diagnostics'),
   read_recent_turns: read('diagnostics'),
   read_recent_tool_failures: read('diagnostics'),
+  // Disposable proof-check surface: the runner creates real prompts and spends
+  // LLM tokens (write/create); the reader is a read over the capped JSONL store.
+  run_proof_check: write('diagnostics', 'create'),
+  read_proof_results: read('diagnostics'),
 }
 
 export function getToolMetadata(toolName: string): ToolClassification | undefined {

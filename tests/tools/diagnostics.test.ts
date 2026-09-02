@@ -109,6 +109,70 @@ describe('run_diagnostics gate matrix', () => {
 
 const READER_TOOLS = ['read_recent_logs', 'read_llm_traces', 'read_recent_turns', 'read_recent_tool_failures'] as const
 
+const PROOF_TOOL_NAMES = ['run_proof_check', 'read_proof_results'] as const
+
+describe('proof tools assembly (companion coverage for the diagnostics assembly lines)', () => {
+  beforeEach(async () => {
+    mockLogger()
+    await setupTestDb()
+  })
+
+  test('maybeAddDiagnosticsTools assembles both proof tools beside the reader family', () => {
+    const tools: Record<string, Tool> = {}
+    maybeAddDiagnosticsTools(tools, adminDmOptions())
+
+    for (const name of PROOF_TOOL_NAMES) expect(tools).toHaveProperty(name)
+  })
+
+  test('an empty assembly binding degrades the runner to its structured error', async () => {
+    const tools: Record<string, Tool> = {}
+    maybeAddDiagnosticsTools(tools, adminDmOptions({ storageContextId: undefined, chatUserId: undefined }))
+
+    const result: unknown = await getToolExecutor(tools['run_proof_check']!)({ check: 'bug4_create_response_mode' })
+
+    expect(result).toEqual({
+      status: 'error',
+      error: 'run_proof_check requires the bound storage context and chat user ids.',
+    })
+  })
+
+  test('a defined storage context with an undefined chat user id still degrades to the structured error', async () => {
+    const tools: Record<string, Tool> = {}
+    maybeAddDiagnosticsTools(tools, adminDmOptions({ storageContextId: 'proof-half-bound', chatUserId: undefined }))
+
+    const result: unknown = await getToolExecutor(tools['run_proof_check']!)({ check: 'bug4_create_response_mode' })
+
+    expect(result).toEqual({
+      status: 'error',
+      error: 'run_proof_check requires the bound storage context and chat user ids.',
+    })
+  })
+
+  test('a defined chat user id with an undefined storage context still degrades to the structured error', async () => {
+    const tools: Record<string, Tool> = {}
+    maybeAddDiagnosticsTools(
+      tools,
+      adminDmOptions({ storageContextId: undefined, chatUserId: 'proof-half-bound-chat' }),
+    )
+
+    const result: unknown = await getToolExecutor(tools['run_proof_check']!)({ check: 'bug4_create_response_mode' })
+
+    expect(result).toEqual({
+      status: 'error',
+      error: 'run_proof_check requires the bound storage context and chat user ids.',
+    })
+  })
+
+  test('the reader assembles against the default proof store and reads empty without error', async () => {
+    const tools: Record<string, Tool> = {}
+    maybeAddDiagnosticsTools(tools, adminDmOptions())
+
+    const result: unknown = await getToolExecutor(tools['read_proof_results']!)({})
+
+    expect(result).toEqual({ runs: [] })
+  })
+})
+
 describe('diagnostics reader family gate matrix', () => {
   beforeEach(async () => {
     mockLogger()

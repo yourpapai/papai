@@ -51,6 +51,7 @@ type GenerateTextResult = {
   text: string
   toolCalls: unknown[]
   toolResults: unknown[]
+  steps: unknown[]
   finalStep: { response: { messages: ModelMessage[] } }
 }
 
@@ -66,6 +67,7 @@ describe('pollAlertsOnce — task instance pinning', () => {
         text: 'Alert triggered.',
         toolCalls: [],
         toolResults: [],
+        steps: [],
         finalStep: { response: { messages: [] } },
       })
     void mock.module('ai', () => ({
@@ -158,6 +160,7 @@ describe('pollAlertsOnce — task instance pinning', () => {
         text: 'Should not run.',
         toolCalls: [],
         toolResults: [],
+        steps: [],
         finalStep: { response: { messages: [] } },
       })
     }
@@ -211,6 +214,7 @@ describe('pollAlertsOnce — alert task watch', () => {
         text: 'Alert triggered.',
         toolCalls: [],
         toolResults: [],
+        steps: [],
         finalStep: { response: { messages: [] } },
       })
     void mock.module('ai', () => ({
@@ -698,6 +702,7 @@ describe('pollAlertsOnce — alert task activity', () => {
         text: 'Alert triggered.',
         toolCalls: [],
         toolResults: [],
+        steps: [],
         finalStep: { response: { messages: [] } },
       })
     void mock.module('ai', () => ({
@@ -895,6 +900,7 @@ describe('pollAlertsOnce — alert task activity', () => {
         text: 'Alert triggered.',
         toolCalls: [],
         toolResults: [],
+        steps: [],
         finalStep: { response: { messages: [] } },
       })
     await pollAlertsOnce(chat, buildProviderFn)
