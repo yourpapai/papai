@@ -154,6 +154,12 @@
   "src/db/index.ts": 0.027777777777777776,
   "src/db/migrations/081_alert_task_instance_pin.ts": 0.85,
   "src/db/migrations/082_alert_activity_cursor.ts": 0.8,
+  "src/debug/llm-trace-collector.ts": {
+    "score": 0.8461538461538461,
+    "killed": 143,
+    "timeout": 0,
+    "scored": 169
+  },
   "src/debug/settings/admin/instances-routes.ts": 0.6261127596439169,
   "src/debug/settings/context-task-instance-routes.ts": 0.5808823529411765,
   "src/debug/settings/group-routes.ts": 0.6975476839237057,
@@ -168,13 +174,67 @@
   "src/deferred-prompts/poller-alerts-summary.ts": 0.7608695652173914,
   "src/deferred-prompts/poller-alerts-watch.ts": 0.9859154929577465,
   "src/deferred-prompts/poller-alerts.ts": 0.6948051948051948,
+  "src/deferred-prompts/poller.ts": {
+    "score": 0.5714285714285714,
+    "killed": 44,
+    "timeout": 0,
+    "scored": 77
+  },
   "src/deferred-prompts/proactive-llm-helpers.ts": 0.6952380952380952,
+  "src/deferred-prompts/proactive-llm.ts": {
+    "score": 0.7560975609756098,
+    "killed": 31,
+    "timeout": 0,
+    "scored": 41
+  },
+  "src/deferred-prompts/proof-checks-observe.ts": {
+    "score": 0.668918918918919,
+    "killed": 198,
+    "timeout": 0,
+    "scored": 296
+  },
+  "src/deferred-prompts/proof-checks-prompts.ts": {
+    "score": 0.8106060606060606,
+    "killed": 107,
+    "timeout": 0,
+    "scored": 132
+  },
+  "src/deferred-prompts/proof-checks.ts": {
+    "score": 0.6915887850467289,
+    "killed": 148,
+    "timeout": 0,
+    "scored": 214
+  },
+  "src/deferred-prompts/proof-store.ts": {
+    "score": 0.743455497382199,
+    "killed": 142,
+    "timeout": 0,
+    "scored": 191
+  },
   "src/deferred-prompts/schedule-update-helpers.ts": 0.6447368421052632,
   "src/deferred-prompts/snapshots.ts": 0.8125,
   "src/deferred-prompts/tool-handlers.ts": 0.9675090252707581,
   "src/deferred-prompts/types.ts": 0.8309859154929577,
   "src/errors.ts": 0.9875776397515528,
   "src/history.ts": 0.9891304347826086,
+  "src/llm-orchestrator-events.ts": {
+    "score": 0.5507246376811594,
+    "killed": 38,
+    "timeout": 0,
+    "scored": 69
+  },
+  "src/llm-orchestrator-tool-events.ts": {
+    "score": 0.7156862745098039,
+    "killed": 73,
+    "timeout": 0,
+    "scored": 102
+  },
+  "src/llm-orchestrator-tool-replies.ts": {
+    "score": 0.8478260869565217,
+    "killed": 39,
+    "timeout": 0,
+    "scored": 46
+  },
   "src/memory.ts": 0.6538461538461539,
   "src/plugins/discovery-import-scan.ts": 0.9032258064516129,
   "src/plugins/discovery-imports.ts": 0.8823529411764706,
@@ -242,7 +302,12 @@
   "src/tools/diagnostics-logs.ts": 0.6309523809523809,
   "src/tools/diagnostics-tool-failures.ts": 0.7236842105263158,
   "src/tools/diagnostics-turns.ts": 0.7628865979381443,
-  "src/tools/diagnostics.ts": 0.7122302158273381,
+  "src/tools/diagnostics.ts": {
+    "score": 0.7448275862068966,
+    "killed": 108,
+    "timeout": 0,
+    "scored": 145
+  },
   "src/tools/disclosure/core.ts": 1,
   "src/tools/disclosure/embedding-tool-retriever.ts": 0.8309859154929577,
   "src/tools/disclosure/load-tool.ts": 0.47619047619047616,
@@ -286,6 +351,18 @@
   "src/tools/pause-recurring-task.ts": 0.56,
   "src/tools/permission-gate.ts": 0.9682539682539683,
   "src/tools/promote-memo.ts": 0.4883720930232558,
+  "src/tools/proof-check-run.ts": {
+    "score": 0.5573770491803278,
+    "killed": 34,
+    "timeout": 0,
+    "scored": 61
+  },
+  "src/tools/proof-checks-read.ts": {
+    "score": 0.7142857142857143,
+    "killed": 20,
+    "timeout": 0,
+    "scored": 28
+  },
   "src/tools/provider-independent-tools-builder.ts": 0.7467532467532467,
   "src/tools/remove-attachment.ts": 0.52,
   "src/tools/remove-comment-reaction.ts": 0.4666666666666667,
@@ -313,7 +390,12 @@
   "src/tools/suggest-next-task.ts": 0.7185185185185186,
   "src/tools/tool-aliases.ts": 1,
   "src/tools/tool-logging.ts": 1,
-  "src/tools/tool-metadata.ts": 1,
+  "src/tools/tool-metadata.ts": {
+    "score": 1,
+    "killed": 191,
+    "timeout": 0,
+    "scored": 191
+  },
   "src/tools/tool-preferences.ts": 0.8489208633093526,
   "src/tools/tool-registration.ts": 1,
   "src/tools/tools-builder.ts": 0.7586206896551724,
@@ -333,5 +415,11 @@
   "src/tools/wrap-tool-execution.ts": 0.6216216216216216,
   "src/ts-ast/source-parser.ts": 0.8428571428571429,
   "src/users.ts": 0.6764705882352942,
+  "src/utils/current-time-format.ts": {
+    "score": 0.8947368421052632,
+    "killed": 51,
+    "timeout": 0,
+    "scored": 57
+  },
   "src/utils/fetch.ts": 0
 }
