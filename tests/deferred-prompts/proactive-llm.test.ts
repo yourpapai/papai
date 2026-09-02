@@ -43,6 +43,11 @@ type GenerateTextResult = {
   usage?: { inputTokens: number; outputTokens: number }
   finalStep: { response: { id?: string; modelId?: string; messages: ModelMessage[] } }
 }
+type ToolExecutionEndEvent = {
+  toolCall: { toolName: string; toolCallId: string; input: unknown }
+  toolExecutionMs: number
+  toolOutput: { type: 'tool-result'; output: unknown } | { type: 'tool-error'; error: unknown }
+}
 type GenerateTextCall = {
   model: string
   instructions: string
@@ -51,6 +56,7 @@ type GenerateTextCall = {
   toolsContext?: Record<string, unknown>
   stopWhen?: unknown
   prepareStep?: (arg: { stepNumber: number; steps?: readonly unknown[] }) => { activeTools?: string[] }
+  onToolExecutionEnd?: (event: ToolExecutionEndEvent) => void
 }
 type BuildModelCall = { apiKey: string; baseURL: string; modelId: string }
 
@@ -87,6 +93,22 @@ const containsFact = (
   )
 
 const USER_ID = 'exec-mode-user'
+
+// The with_tool_probe failure shape: the outer wrapper converts a thrown tool
+// error into this structured result, so the SDK reports a tool-result whose
+// output is a failure payload.
+const makeToolFailureResult = (toolCallId: string): Record<string, unknown> => ({
+  success: false,
+  error: 'blocked host: loopback addresses are not fetchable',
+  toolName: 'web_fetch',
+  toolCallId,
+  timestamp: new Date().toISOString(),
+  errorType: 'tool-execution',
+  errorCode: 'blocked-host',
+  userMessage: 'web fetch failed',
+  agentMessage: 'web fetch failed',
+  retryable: false,
+})
 
 function makeExecCtx(): DeferredExecutionContext {
   return {
@@ -275,6 +297,80 @@ describe('dispatchExecution', () => {
       expect(error?.data['contextType']).toBe('dm')
       expect(error?.data['model']).toBe('main-model')
       expect(error?.data['error']).toBe('provider down')
+    })
+
+    test('emits llm:tool_result on the proactive turnId for a structured tool failure', async () => {
+      setupUserConfig()
+      const provider = createMockProvider()
+      generateTextImpl = (args: GenerateTextCall): Promise<GenerateTextResult> => {
+        generateTextCalls.push(args)
+        args.onToolExecutionEnd?.({
+          toolCall: {
+            toolName: 'web_fetch',
+            toolCallId: 'call-1',
+            input: { url: 'http://127.0.0.1:9/proof-check-probe' },
+          },
+          toolExecutionMs: 4,
+          toolOutput: { type: 'tool-result', output: makeToolFailureResult('call-1') },
+        })
+        return Promise.resolve({
+          text: 'Probe failed',
+          toolCalls: [],
+          toolResults: [],
+          steps: [],
+          finishReason: 'stop',
+          finalStep: { response: { messages: [] } },
+        })
+      }
+      const bus = captureBus()
+      try {
+        await dispatchExecution(makeExecCtx(), 'scheduled', 'check overdue', metadata, () => provider)
+      } finally {
+        bus.stop()
+      }
+
+      const toolResult = bus.events.find((event) => event.type === 'llm:tool_result')
+      expect(toolResult).toBeDefined()
+      expect(toolResult?.scope).toEqual({ kind: 'user', userId: USER_ID })
+      expect(String(toolResult?.turnId)).toContain('proactive:')
+      expect(toolResult?.data['toolName']).toBe('web_fetch')
+      expect(toolResult?.data['toolCallId']).toBe('call-1')
+      expect(toolResult?.data['success']).toBe(false)
+      expect(toolResult?.data['error']).toBe('blocked host: loopback addresses are not fetchable')
+    })
+
+    test('emits llm:tool_result with success true for a successful proactive tool call', async () => {
+      setupUserConfig()
+      const provider = createMockProvider()
+      generateTextImpl = (args: GenerateTextCall): Promise<GenerateTextResult> => {
+        generateTextCalls.push(args)
+        args.onToolExecutionEnd?.({
+          toolCall: { toolName: 'get_current_time', toolCallId: 'call-2', input: {} },
+          toolExecutionMs: 7,
+          toolOutput: { type: 'tool-result', output: { now: '2026-09-02T00:00:00Z' } },
+        })
+        return Promise.resolve({
+          text: 'Done',
+          toolCalls: [],
+          toolResults: [],
+          steps: [],
+          finishReason: 'stop',
+          finalStep: { response: { messages: [] } },
+        })
+      }
+      const bus = captureBus()
+      try {
+        await dispatchExecution(makeExecCtx(), 'scheduled', 'check overdue', metadata, () => provider)
+      } finally {
+        bus.stop()
+      }
+
+      const toolResult = bus.events.find((event) => event.type === 'llm:tool_result')
+      expect(toolResult).toBeDefined()
+      expect(String(toolResult?.turnId)).toContain('proactive:')
+      expect(toolResult?.data['toolName']).toBe('get_current_time')
+      expect(toolResult?.data['success']).toBe(true)
+      expect(toolResult?.data['result']).toEqual({ now: '2026-09-02T00:00:00Z' })
     })
   })
 

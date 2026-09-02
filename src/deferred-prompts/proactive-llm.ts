@@ -16,6 +16,8 @@ import { buildChatModel } from '../llm-model-builder.js'
 import { emitLlmEnd, emitLlmStart } from '../llm-orchestrator-events.js'
 import { emitLlmError } from '../llm-orchestrator-logging.js'
 import { collectTurnMessages } from '../llm-orchestrator-messages.js'
+import { handleToolCallFinish } from '../llm-orchestrator-support.js'
+import { adaptToolExecutionEnd } from '../llm-orchestrator-tool-events.js'
 import { logger } from '../logger.js'
 import { createDisclosurePrepareStep } from '../tools/disclosure/prepare-step.js'
 import { buildToolsContextRecord } from '../tools/wrap-tool-execution.js'
@@ -184,6 +186,9 @@ const runScopedGeneration = async (args: ScopedGenerationArgs): Promise<string> 
     stopWhen: deps.stepCountIs(25),
     timeout: 1_200_000,
     prepareStep: createDisclosurePrepareStep(prepared.disclosure, prepared.storageContextId, turnId),
+    onToolExecutionEnd: (event) => {
+      handleToolCallFinish(prepared.storageContextId, undefined, { ...adaptToolExecutionEnd(event), turnId })
+    },
   }
   const result = await generateWithTrace(execCtx, config, prepared, deps, scope, turnId, baseOptions)
   const previousHistory = getCachedHistory(prepared.storageContextId)

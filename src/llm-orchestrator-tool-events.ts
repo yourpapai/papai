@@ -127,7 +127,7 @@ export const buildToolCallStartHandler =
 // the debug/progress plumbing.
 type ToolExecutionEndArg = Parameters<NonNullable<Parameters<typeof generateText>[0]['onToolExecutionEnd']>>[0]
 
-const adaptToolExecutionEnd = (event: ToolExecutionEndArg): ToolCallFinishEvent => {
+export const adaptToolExecutionEnd = (event: ToolExecutionEndArg): ToolCallFinishEvent => {
   const success = event.toolOutput.type === 'tool-result'
   return {
     toolCall: {
