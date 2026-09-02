@@ -174,8 +174,11 @@ integrity-substituted `POLICY-INTEGRITY` blocker renders for the operator and is
 the standard response grammar (F-C2 — one guarded review result feeds both presenters, the settle-time
 expected, and the ladder), and armed deadlines claim in production with their `auto_decision` audit
 events (F-C3 — the foreground waiter carries the expiry ports). With it the C9 scope seed's first item
-drops; the remaining seed is the not-arisen shapes (numeric-ceiling refusal needs a priced run,
-third-strike thrash, `C<n>` cross-artifact finding).
+drops, and the remaining seed — the not-arisen shapes (numeric-ceiling refusal needs a priced run,
+third-strike thrash, `C<n>` cross-artifact finding) — is **decided into U3** (operator decision
+2026-09-02): no C9 scratch-drill cycle; the three shapes ride U3's first live-proof drill list, because
+C8 proved the frontier is operator surface, not think-half state. The C9 seed is spent — U3's drill set
+is its only successor.
 
 The ledger was re-scored after C8 from live-run evidence; the historical U1–U9 seed table stays in
 `openspec/changes/afk-runner/design.md` as the pre-C7 record. U9 is **delivered**: the retirement
