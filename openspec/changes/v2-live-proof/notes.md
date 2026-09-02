@@ -336,3 +336,11 @@ Both C8 lanes copied and the extended oracle green (9/9): `event-driven-suggesti
 - `bun run typecheck`: green. `bun run lint`: green (0 problems).
 - `bun run duplicates`: exit 0 — 88 clones, the pre-existing never-masked drift under the 10% threshold per the R5 adjudication.
 - Docs currency: afk-runner.md re-scored ledger + C8 row + F-A4 record; AGENTS.md docs-table row updated (C1-C8, two live-proof cycles, next: U3).
+
+### Post-cycle operator decisions (2026-09-02)
+
+- **F-A4: FIX** (over the reflection's accept recommendation) — same-process retries will reuse the killed session via the continuation seam; follow-up change `escalation-retry-session-continuation` opened with the C8 scratch ledger as red evidence.
+- **F-C1/C2/C3: fix as one change** — `afk-runner-operator-surface-robustness` opened (steer-settle containment, rendered integrity blocker, wired expiry ports).
+- **Priced route: restore cost-known operation** — `opencode-priced-model-route` opened (machine-global opencode config with official API price tags, the synthetic entry as template; re-arms the numeric-ceiling refusal drill for C9).
+
+All three validate --strict and are ready for a fresh explore/propose session.
