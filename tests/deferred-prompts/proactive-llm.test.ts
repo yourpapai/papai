@@ -299,6 +299,37 @@ describe('dispatchExecution', () => {
       expect(error?.data['error']).toBe('provider down')
     })
 
+    test('attributes group-targeted llm:end to the prompt owner, not the group context id', async () => {
+      setupUserConfig()
+      const provider = createMockProvider()
+      generateTextImpl = (args: GenerateTextCall): Promise<GenerateTextResult> => {
+        generateTextCalls.push(args)
+        return Promise.resolve({
+          text: 'Proactive group reply',
+          toolCalls: [],
+          toolResults: [],
+          steps: [],
+          usage: { inputTokens: 5, outputTokens: 3 },
+          finishReason: 'stop',
+          finalStep: { response: { id: 'resp-2', modelId: 'main-model', messages: [] } },
+        })
+      }
+      const bus = captureBus()
+      try {
+        await dispatchExecution(makeGroupThreadExecCtx(), 'scheduled', 'check overdue', metadata, () => provider)
+      } finally {
+        bus.stop()
+      }
+
+      const end = bus.events.find((event) => event.type === 'llm:end')
+      expect(end).toBeDefined()
+      expect(end?.data['contextType']).toBe('group')
+      // chatUserId is the real chat actor (prompt owner); the group context id
+      // must never land there or usage rows attribute spend to the group.
+      expect(end?.data['chatUserId']).toBe(USER_ID)
+      expect(end?.data['chatUserId']).not.toBe(makeGroupThreadExecCtx().deliveryTarget.contextId)
+    })
+
     test('emits llm:tool_result on the proactive turnId for a structured tool failure', async () => {
       setupUserConfig()
       const provider = createMockProvider()

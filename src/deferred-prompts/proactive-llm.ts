@@ -113,9 +113,11 @@ type ScopedGenerationArgs = Readonly<{
 /**
  * Debug-trace emission parity with invokeModel (llm:start/end/error): the proof
  * checks correlate the run's own trace from recentLlm, so the proactive execution
- * must land one. chatUserId is the delivery target's context id — the prompt
- * owner's native chat user id for DM targets (admin/DM storage contexts are
- * user-keyed), which is what findOwnTrace attributes against.
+ * must land one. chatUserId is the prompt owner's native chat user id (the
+ * delivery target's context id only for DM targets, where the two coincide),
+ * which is what findOwnTrace attributes against — and what usage recording
+ * treats as the real chat actor, so group-targeted prompts must not land their
+ * spend on the group id.
  */
 const generateWithTrace = async (
   execCtx: DeferredExecutionContext,
@@ -134,7 +136,7 @@ const generateWithTrace = async (
     )
     emitLlmEnd(
       prepared.storageContextId,
-      execCtx.deliveryTarget.contextId,
+      execCtx.deliveryTarget.createdByUserId,
       execCtx.deliveryTarget.contextType,
       config.mainModel,
       result,
@@ -147,7 +149,7 @@ const generateWithTrace = async (
   } catch (error) {
     emitLlmError(
       prepared.storageContextId,
-      execCtx.deliveryTarget.contextId,
+      execCtx.deliveryTarget.createdByUserId,
       execCtx.deliveryTarget.contextType,
       config.mainModel,
       start,
