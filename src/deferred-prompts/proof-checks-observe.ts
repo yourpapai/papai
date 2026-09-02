@@ -3,11 +3,10 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import type { ModelMessage } from 'ai'
-
 import type { DebugEvent } from '../debug/event-bus.js'
 import type { LlmTrace } from '../debug/llm-trace-collector.js'
 import { logger } from '../logger.js'
+import { lastCurrentTimeTag } from '../utils/current-time-format.js'
 import { localDatetimeToUtc } from '../utils/datetime.js'
 import { finalizeDeliveryText } from './proactive-llm-helpers.js'
 import { appendRecord, makeRecord, resolveLocale, resolveTimezone, SCHEDULED_POLL_MS } from './proof-checks-prompts.js'
@@ -16,7 +15,13 @@ import { appendProofJsonLine, type ProofVerdict } from './proof-store.js'
 
 const log = logger.child({ scope: 'deferred:proof-checks' })
 
-const BUG2_TOLERANCE_MS = 2 * SCHEDULED_POLL_MS
+// bug2 compares the freshest <current_time> tag in the message stream the run
+// consumed against the recorded fire_at. On master that anchor is the invoking
+// turn's tag — fire_at is the next minute boundary (fire lead = 60s), so the
+// delta is exactly 60s (or 120s when the tool call crossed a minute). A fixed
+// trigger tag is minute-aligned with fire_at, delta 0. Half a poll tick sits
+// strictly between the two.
+const BUG2_TOLERANCE_MS = SCHEDULED_POLL_MS / 2
 
 export interface ProofDeliveryRecord {
   runId: string
@@ -79,20 +84,6 @@ const findOwnTrace = (
   return own
 }
 
-const CURRENT_TIME_TAG_RE = /<current_time>([^<]*)<\/current_time>/gu
-
-const lastCurrentTimeTag = (messages: readonly ModelMessage[]): string | null => {
-  let last: string | null = null
-  for (const message of messages) {
-    if (typeof message.content !== 'string') continue
-    for (const match of message.content.matchAll(CURRENT_TIME_TAG_RE)) {
-      const captured = match[1]
-      if (captured !== undefined && captured.trim() !== '') last = captured
-    }
-  }
-  return last
-}
-
 const TIME_TAG_RE = /^(\d{4}-\d{2}-\d{2})[T\s](\d{2}:\d{2})/u
 
 const parseTimeTag = (tag: string, timezone: string): number | null => {
@@ -131,12 +122,25 @@ const collectRowReads = (
 const bug2Verdict = (
   deps: ProofCheckDeps,
   request: ProofCheckRequest,
-  executionTs: number,
+  state: AsyncRunState,
+  trace: LlmTrace,
   observations: string[],
 ): ProofVerdict => {
-  const tag = lastCurrentTimeTag(deps.readCachedHistory(request.storageContextId))
-  if (tag === null) {
-    observations.push('no <current_time> tag found in the cached history')
+  const fireAtMs = state.fireAtMs
+  if (fireAtMs === null) {
+    observations.push('no fire_at recorded for the run')
+    return 'inconclusive'
+  }
+  // The anchor must come from the message stream the run actually consumed: on
+  // master the freshest tag is the invoking turn's replayed history tag (the
+  // proactive trigger carries none), and once a fresh tag lands in the trigger's
+  // user message it never reaches the persisted history — only the captured
+  // trace sees it. The history read stays as the fallback for runs whose trace
+  // carried no tag (generation error, legacy emitter).
+  const fromTrace = trace.currentTimeTag !== undefined
+  const tag = fromTrace ? trace.currentTimeTag : lastCurrentTimeTag(deps.readCachedHistory(request.storageContextId))
+  if (tag === undefined || tag === null) {
+    observations.push('no <current_time> tag found in the message stream the run consumed')
     return 'inconclusive'
   }
   const anchorMs = parseTimeTag(tag, resolveTimezone(request.storageContextId))
@@ -144,9 +148,11 @@ const bug2Verdict = (
     observations.push(`unparseable_time_tag: ${tag}`)
     return 'inconclusive'
   }
-  const deltaMs = Math.abs(anchorMs - executionTs)
+  const deltaMs = Math.abs(anchorMs - fireAtMs)
+  observations.push(`anchor_source: ${fromTrace ? 'trace' : 'history'}`)
   observations.push(`anchor_tag: ${tag}`)
   observations.push(`anchor_at: ${new Date(anchorMs).toISOString()}`)
+  observations.push(`fire_at: ${new Date(fireAtMs).toISOString()}`)
   observations.push(`delta_ms: ${deltaMs}`)
   observations.push(`tolerance_ms: ${BUG2_TOLERANCE_MS}`)
   return deltaMs > BUG2_TOLERANCE_MS ? 'fail' : 'pass'
@@ -208,7 +214,7 @@ const computeVerdict = (
     observations.push('no own llm trace correlated the run')
     return 'inconclusive'
   }
-  if (state.checkId === 'bug2_context_time') return bug2Verdict(deps, request, executionTs, observations)
+  if (state.checkId === 'bug2_context_time') return bug2Verdict(deps, request, state, trace, observations)
   return bug1Verdict(request, state.runId, trace, observations)
 }
 

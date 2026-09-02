@@ -514,6 +514,45 @@ describe('chatUserId attribution', () => {
     expect(trace.duration).toBe(4)
     expect(trace.error).toBeUndefined()
   })
+
+  test('llm:end copies data.currentTimeTag onto the trace', () => {
+    handleLlmTraceEvent(
+      { type: 'llm:start', timestamp: 1, scope: userScope('u6'), data: { model: 'm' } },
+      callbacks(pushed),
+      stats,
+      () => {},
+    )
+    handleLlmTraceEvent(
+      {
+        type: 'llm:end',
+        timestamp: 2,
+        scope: userScope('u6'),
+        data: { currentTimeTag: '2026-05-25 09:30 (Monday)' },
+      },
+      callbacks(pushed),
+      stats,
+      () => {},
+    )
+
+    expect(pushed[0]!.currentTimeTag).toBe('2026-05-25 09:30 (Monday)')
+  })
+
+  test('llm:end without a captured tag leaves trace currentTimeTag undefined', () => {
+    handleLlmTraceEvent(
+      { type: 'llm:start', timestamp: 1, scope: userScope('u7'), data: { model: 'm' } },
+      callbacks(pushed),
+      stats,
+      () => {},
+    )
+    handleLlmTraceEvent(
+      { type: 'llm:end', timestamp: 2, scope: userScope('u7'), data: {} },
+      callbacks(pushed),
+      stats,
+      () => {},
+    )
+
+    expect(pushed[0]!.currentTimeTag).toBeUndefined()
+  })
 })
 
 describe('shapeLlmTrace', () => {

@@ -242,6 +242,9 @@ describe('dispatchExecution', () => {
     test('emits llm:start/llm:end attributed to the delivery target for trace correlation', async () => {
       setupUserConfig()
       const provider = createMockProvider()
+      appendHistory(USER_ID, [
+        { role: 'user', content: '<current_time>2026-05-25 07:00 (Monday)</current_time> earlier turn' },
+      ])
       generateTextImpl = (args: GenerateTextCall): Promise<GenerateTextResult> => {
         generateTextCalls.push(args)
         return Promise.resolve({
@@ -274,6 +277,7 @@ describe('dispatchExecution', () => {
       expect(end?.data['generatedText']).toBe('Proactive reply')
       expect(end?.data['finishReason']).toBe('stop')
       expect(end?.data['totalDuration']).toBeNumber()
+      expect(end?.data['currentTimeTag']).toBe('2026-05-25 07:00 (Monday)')
       expect(String(end?.turnId)).toContain('proactive:')
     })
 

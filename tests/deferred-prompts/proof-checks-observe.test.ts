@@ -8,6 +8,8 @@ import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
+import type { ModelMessage } from 'ai'
+
 import type { DebugEvent } from '../../src/debug/event-bus.js'
 import type { LlmTrace } from '../../src/debug/llm-trace-collector.js'
 import {
@@ -470,6 +472,28 @@ describe('proof check async observation', () => {
 
     expect(observed.records[0]?.verdict).toBe('inconclusive')
     expect(observed.records[0]?.observations.join('\n')).toContain('no own llm trace correlated the run')
+  })
+
+  test('bug2 is inconclusive when the run recorded no fire_at', async () => {
+    const row = makeScheduledRow(CLOCK_BASE_MS + 30_000)
+    const taggedHistory = [
+      { role: 'user', content: '<current_time>2023-11-14 22:27 (Tuesday)</current_time>' },
+    ] as ModelMessage[]
+    arm(
+      { checkId: 'bug2_context_time', fireAtMs: null },
+      {
+        getScheduledPrompt: (): ScheduledPrompt | null => row,
+        readRecentLlm: () => [makeTrace({ timestamp: CLOCK_BASE_MS + 29_000 })],
+        readCachedHistory: () => taggedHistory,
+      },
+    )
+
+    observed.clock.advance(2 * 60_000 + 1_000)
+    await waitFor(() => observed.records.length > 0)
+    await waitFor(() => observed.releaseCalls() > 0)
+
+    expect(observed.records[0]?.verdict).toBe('inconclusive')
+    expect(observed.records[0]?.observations.join('\n')).toContain('no fire_at recorded for the run')
   })
 
   test('an observation error records an inconclusive verdict and still tears down', async () => {

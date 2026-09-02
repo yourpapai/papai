@@ -341,6 +341,11 @@ const makeTrace = (overrides: Partial<LlmTrace> = {}): LlmTrace => ({
 const historyMessages = (...contents: string[]): ModelMessage[] =>
   contents.map((content) => ({ role: 'user', content }) as ModelMessage)
 
+const innerTimeTag = (ms: number): string =>
+  formatCurrentTimeTag(new Date(ms), 'UTC')
+    .replace(/^<current_time>/u, '')
+    .replace(/<\/current_time>$/u, '')
+
 const singleKey = (rows: ReadonlyMap<string, unknown>): string => {
   expect(rows.size).toBe(1)
   return [...rows.keys()][0]!
@@ -790,9 +795,10 @@ describe('proof checks runner', () => {
 
   test('bug2 passes when the anchor is within tolerance', async () => {
     const fireMs = CLOCK_BASE_MS + 5 * MINUTE_MS
+    const fireAtMs = CLOCK_BASE_MS + MINUTE_MS
     harness.world.history = historyMessages(
       formatCurrentTimeTag(new Date(fireMs - 10 * MINUTE_MS), 'UTC'),
-      formatCurrentTimeTag(new Date(fireMs - MINUTE_MS), 'UTC'),
+      formatCurrentTimeTag(new Date(fireAtMs), 'UTC'),
     )
     harness.world.traces = [makeTrace({ timestamp: fireMs + 1_000 })]
 
@@ -837,6 +843,38 @@ describe('proof checks runner', () => {
     const record = await waitForRecord()
 
     expect(record.verdict).toBe('inconclusive')
+  })
+
+  test('bug2 reads the anchor from the tag the run trace captured, not the stale history', async () => {
+    const fireAtMs = CLOCK_BASE_MS + MINUTE_MS
+    harness.world.history = historyMessages(formatCurrentTimeTag(new Date(fireAtMs - 10 * MINUTE_MS), 'UTC'))
+    harness.world.traces = [makeTrace({ timestamp: fireAtMs + 1_000, currentTimeTag: innerTimeTag(fireAtMs) })]
+
+    await expectStarted(makeRequest())
+    await waitFor(() => harness.world.createCalls.length > 0)
+    const proofId = singleKey(harness.world.scheduled)
+    harness.timers.nowMs = fireAtMs + 45_000
+    harness.bus.emitUserPromptEvent('deferred:fired', proofId, ADMIN_STORAGE_ID, harness.timers.nowMs)
+
+    const record = await waitForRecord()
+
+    expect(record.verdict).toBe('pass')
+    expect(record.observations.join('\n')).toContain('anchor_source: trace')
+  })
+
+  test('bug2 fails while the consumed stream still anchors at the invoking turn', async () => {
+    const fireAtMs = CLOCK_BASE_MS + MINUTE_MS
+    harness.world.traces = [makeTrace({ timestamp: fireAtMs + 1_000, currentTimeTag: innerTimeTag(CLOCK_BASE_MS) })]
+
+    await expectStarted(makeRequest())
+    await waitFor(() => harness.world.createCalls.length > 0)
+    const proofId = singleKey(harness.world.scheduled)
+    harness.timers.nowMs = fireAtMs + 45_000
+    harness.bus.emitUserPromptEvent('deferred:fired', proofId, ADMIN_STORAGE_ID, harness.timers.nowMs)
+
+    const record = await waitForRecord()
+
+    expect(record.verdict).toBe('fail')
   })
 
   test('bug1 fails when the delivered text is the localized doneFallback stub while the trace shows good text', async () => {

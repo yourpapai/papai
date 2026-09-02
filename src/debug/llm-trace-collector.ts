@@ -39,6 +39,7 @@ export type LlmTrace = {
   routingReason: string | undefined
   generatedText: string | undefined
   stepsDetail: ReturnType<typeof parseStepsDetail>
+  currentTimeTag?: string
 }
 
 type PendingLlmTrace = {
@@ -184,6 +185,7 @@ function buildEndTrace(event: TraceEvent, userId: string, pending: PendingLlmTra
     routingReason: str(event.data['routingReason']),
     generatedText: str(event.data['generatedText']),
     stepsDetail: parseStepsDetail(event.data['stepsDetail']),
+    currentTimeTag: optStr(event.data['currentTimeTag']),
   }
 }
 
