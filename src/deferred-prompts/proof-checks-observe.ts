@@ -52,13 +52,23 @@ export interface AsyncRunState {
   executions: number[]
 }
 
-const findOwnTrace = (traces: readonly LlmTrace[], chatUserId: string, sinceMs: number): LlmTrace | null => {
-  for (let index = traces.length - 1; index >= 0; index--) {
-    const trace = traces[index]
-    if (trace === undefined) continue
-    if (trace.chatUserId === chatUserId && trace.timestamp >= sinceMs) return trace
+const findOwnTrace = (
+  traces: readonly LlmTrace[],
+  chatUserId: string,
+  sinceMs: number,
+  anchorMs: number,
+): LlmTrace | null => {
+  let own: LlmTrace | null = null
+  let ownDelta = Number.POSITIVE_INFINITY
+  for (const trace of traces) {
+    if (trace.chatUserId !== chatUserId || trace.timestamp < sinceMs) continue
+    const delta = Math.abs(trace.timestamp - anchorMs)
+    if (delta > ownDelta) continue
+    if (delta === ownDelta && own !== null && trace.timestamp > own.timestamp) continue
+    own = trace
+    ownDelta = delta
   }
-  return null
+  return own
 }
 
 const CURRENT_TIME_TAG_RE = /<current_time>([^<]*)<\/current_time>/gu
@@ -181,7 +191,7 @@ const computeVerdict = (
     return 'inconclusive'
   }
   observations.push(`executed_at: ${new Date(executionTs).toISOString()}`)
-  const trace = findOwnTrace(deps.readRecentLlm(), request.chatUserId, state.startMs)
+  const trace = findOwnTrace(deps.readRecentLlm(), request.chatUserId, state.startMs, executionTs)
   if (trace === null) {
     observations.push('no own llm trace correlated the run')
     return 'inconclusive'

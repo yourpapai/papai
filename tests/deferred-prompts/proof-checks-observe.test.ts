@@ -9,6 +9,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
 import type { DebugEvent } from '../../src/debug/event-bus.js'
+import type { LlmTrace } from '../../src/debug/llm-trace-collector.js'
 import {
   observeAsyncRun,
   recordProofDelivery,
@@ -169,6 +170,57 @@ const makeState = (overrides: Partial<AsyncRunState> = {}): AsyncRunState => ({
 
 const makeRequest = (): ProofCheckRequest => ({ storageContextId: OWNER, chatUserId: CHAT_USER })
 
+const makeScheduledRow = (executedAtMs: number): ScheduledPrompt => ({
+  type: 'scheduled',
+  id: PROOF_ID,
+  createdByUserId: OWNER,
+  createdByUsername: null,
+  deliveryTarget: {
+    contextId: OWNER,
+    contextType: 'dm',
+    threadId: null,
+    audience: 'personal',
+    mentionUserIds: [],
+    createdByUserId: OWNER,
+    createdByUsername: null,
+    storageContextId: OWNER,
+  },
+  prompt: 'proof prompt',
+  fireAt: new Date(CLOCK_BASE_MS).toISOString(),
+  rrule: null,
+  dtstartUtc: null,
+  timezone: null,
+  status: 'active',
+  createdAt: new Date(CLOCK_BASE_MS).toISOString(),
+  lastExecutedAt: new Date(executedAtMs).toISOString(),
+  executionMetadata: { delivery_brief: '', context_snapshot: null },
+})
+
+const makeTrace = (overrides: Partial<LlmTrace> & Pick<LlmTrace, 'timestamp'>): LlmTrace => ({
+  userId: OWNER,
+  chatUserId: CHAT_USER,
+  model: 'test-model',
+  steps: 1,
+  totalTokens: { inputTokens: 0, outputTokens: 0 },
+  duration: 0,
+  toolCalls: [],
+  error: undefined,
+  responseId: undefined,
+  actualModel: undefined,
+  finishReason: 'stop',
+  messageCount: undefined,
+  toolCount: undefined,
+  exposedToolCount: undefined,
+  fullToolCount: undefined,
+  toolSchemaBytes: undefined,
+  routingIntent: undefined,
+  routingConfidence: undefined,
+  routingReason: undefined,
+  generatedText: undefined,
+  stepsDetail: undefined,
+  ...overrides,
+})
+
 describe('proof check async observation', () => {
   let observed: Observed
   let state: AsyncRunState
@@ -282,6 +334,53 @@ describe('proof check async observation', () => {
     expect(observed.bus.listeners.size).toBe(0)
     expect(observed.cancelCalls).toEqual([PROOF_ID])
     expect(observed.releaseCalls()).toBe(1)
+  })
+
+  test('timeout-path trace correlation anchors at the observed execution and ignores later unrelated turns', async () => {
+    const executedAtMs = CLOCK_BASE_MS + 500
+    const row = makeScheduledRow(executedAtMs)
+    const preStartTrace = makeTrace({ timestamp: CLOCK_BASE_MS - 1, generatedText: 'pre-start turn' })
+    const proofTrace = makeTrace({ timestamp: executedAtMs + 1_000, generatedText: 'proof reply' })
+    const unrelatedTrace = makeTrace({ timestamp: executedAtMs + 20_000, generatedText: 'unrelated admin turn' })
+    recordProofDelivery('run-1', 'proof reply', new Date(CLOCK_BASE_MS).toISOString())
+    arm(
+      { checkId: 'bug1_delivery_matches_execution', variant: 'no_tools' },
+      {
+        getScheduledPrompt: (): ScheduledPrompt | null => row,
+        readRecentLlm: () => [preStartTrace, proofTrace, unrelatedTrace],
+      },
+    )
+
+    observed.clock.advance(2 * 60_000 + 1_000)
+    await waitFor(() => observed.records.length > 0)
+    await waitFor(() => observed.releaseCalls() > 0)
+
+    expect(observed.records[0]?.verdict).toBe('pass')
+    expect(observed.records[0]?.observations.join('\n')).toContain('generated_text: proof reply')
+  })
+
+  test('event-path trace correlation picks the proof turn that completed before the fired event', async () => {
+    const fireMs = CLOCK_BASE_MS + 90_000
+    const earlierUnrelated = makeTrace({ timestamp: CLOCK_BASE_MS + 30_000, generatedText: 'earlier admin turn' })
+    const foreignUserTrace = makeTrace({
+      timestamp: fireMs - 500,
+      chatUserId: 'someone-else',
+      generatedText: 'foreign turn',
+    })
+    const proofTrace = makeTrace({ timestamp: fireMs - 1_000, generatedText: 'proof reply' })
+    recordProofDelivery('run-1', 'proof reply', new Date(CLOCK_BASE_MS).toISOString())
+    arm(
+      { checkId: 'bug1_delivery_matches_execution', variant: 'no_tools' },
+      { readRecentLlm: () => [earlierUnrelated, foreignUserTrace, proofTrace] },
+    )
+
+    observed.clock.nowMs = fireMs
+    observed.bus.emitUserPromptEvent('deferred:fired', PROOF_ID, fireMs)
+    await waitFor(() => observed.records.length > 0)
+    await waitFor(() => observed.releaseCalls() > 0)
+
+    expect(observed.records[0]?.verdict).toBe('pass')
+    expect(observed.records[0]?.observations.join('\n')).toContain('generated_text: proof reply')
   })
 
   test('an observation error records an inconclusive verdict and still tears down', async () => {
