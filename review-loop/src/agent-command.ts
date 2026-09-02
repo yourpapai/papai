@@ -114,6 +114,12 @@ export interface AgentCommandOptions {
   claude?: ClaudeSpawnContext
   /** Optional appended system prompt; refused over the single-argument byte cap. */
   systemPrompt?: string
+  /**
+   * Continuation session id (escalation-retry-session-continuation D4):
+   * `--session <id>` on opencode, `--resume <id>` on claude — the mapping is
+   * backend-aware here, never hardcoded at a caller. Absent adds no flag.
+   */
+  continueSessionId?: string
 }
 
 function opencodeCommand(options: AgentCommandOptions): AgentCommand {
@@ -129,6 +135,7 @@ function opencodeCommand(options: AgentCommandOptions): AgentCommand {
       '--dir',
       options.cwd,
       ...options.extraArgs,
+      ...(options.continueSessionId === undefined ? [] : ['--session', options.continueSessionId]),
       options.prompt,
     ],
   }
@@ -218,6 +225,7 @@ function claudeCommand(options: AgentCommandOptions): AgentCommand {
       allowlistForLabel(options.label, options.cwd),
       '--model',
       modelIdForCli(options.model),
+      ...(options.continueSessionId === undefined ? [] : ['--resume', options.continueSessionId]),
       ...(system === undefined ? [] : ['--append-system-prompt', system]),
     ],
     stdin: options.prompt,

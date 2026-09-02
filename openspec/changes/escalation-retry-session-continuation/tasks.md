@@ -18,8 +18,8 @@ See LICENSE in the project root for details.
 
 ## 3. review-loop: stall retry continues the captured session
 
-- [ ] 3.1 Red, then green: extend `tests/review-loop/agent-command.test.ts` — the command builder maps a continuation id per backend (`--session <id>` opencode, `--resume <id>` claude); absent id adds no flag (design D4). Verify: `bun test tests/review-loop/agent-command.test.ts`
-- [ ] 3.2 Red, then green: extend `tests/review-loop/agent-runner.test.ts` — the stall retry re-spawns continuing `ctx.sessionId` when one was captured; with no captured id the retry is byte-identical to today's fresh re-spawn. Implement in `review-loop/src/agent-runner.ts`. Verify: `bun test tests/review-loop/agent-runner.test.ts`
+- [x] 3.1 Red, then green: extend `tests/review-loop/agent-command.test.ts` — the command builder maps a continuation id per backend (`--session <id>` opencode, `--resume <id>` claude); absent id adds no flag (design D4). Verify: `bun test tests/review-loop/agent-command.test.ts`
+- [x] 3.2 Red, then green: extend `tests/review-loop/agent-runner.test.ts` — the stall retry re-spawns continuing `ctx.sessionId` when one was captured; with no captured id the retry is byte-identical to today's fresh re-spawn. Implement in `review-loop/src/agent-runner.ts`. Verify: `bun test tests/review-loop/agent-runner.test.ts`
 
 ## 4. Docs and full gates
 
