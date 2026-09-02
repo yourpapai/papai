@@ -63,6 +63,9 @@ export interface AsyncRunState {
   fireAtMs: number | null
   isAlertVariant: boolean
   executions: number[]
+  // Set at window close from the alert row's matched-set bookkeeping, which
+  // the alert lane only writes when it actually evaluated the alert.
+  alertEvaluated?: boolean
 }
 
 const findOwnTrace = (
@@ -109,6 +112,7 @@ const collectRowReads = (
       const ts = Date.parse(triggeredAt)
       if (!Number.isNaN(ts)) state.executions.push(ts)
     }
+    if ((row?.matchedTaskIds.length ?? 0) > 0) state.alertEvaluated = true
     return
   }
   const row = deps.getScheduledPrompt(proofPromptId, request.storageContextId)
@@ -192,7 +196,16 @@ const computeVerdict = (
     for (const ts of state.executions) observations.push(`execution_at: ${new Date(ts).toISOString()}`)
     if (state.isAlertVariant) {
       observations.push(`executions_inside_window: ${state.executions.length}`)
-      return state.executions.length > 0 ? 'fail' : 'pass'
+      if (state.executions.length > 0) return 'fail'
+      // Zero executions alone is not a pass: the alert lane evaluates filter
+      // alerts only when the snapshot change gate opens, so a closed gate also
+      // produces zero executions. Only matched-set bookkeeping proves the
+      // alert was actually evaluated.
+      if (state.alertEvaluated === true) return 'pass'
+      observations.push(
+        'alert never evaluated: the alert lane gates evaluation behind the snapshot change gate — verify a pre-existing matching task exists and the context holds no up-to-date snapshots',
+      )
+      return 'inconclusive'
     }
     const fireAtMs = state.fireAtMs
     if (fireAtMs === null) return 'inconclusive'

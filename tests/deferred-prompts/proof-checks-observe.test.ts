@@ -20,7 +20,7 @@ import {
 } from '../../src/deferred-prompts/proof-checks-observe.js'
 import type { ProofCheckDeps, ProofCheckRequest } from '../../src/deferred-prompts/proof-checks.js'
 import type { ProofCheckRecord } from '../../src/deferred-prompts/proof-store.js'
-import type { CancelResult, CreateResult, ScheduledPrompt } from '../../src/deferred-prompts/types.js'
+import type { AlertPrompt, CancelResult, CreateResult, ScheduledPrompt } from '../../src/deferred-prompts/types.js'
 import { flushMicrotasks, mockLogger, setupTestDb, waitFor } from '../utils/test-helpers.js'
 
 const CLOCK_BASE_MS = 1_700_000_040_000
@@ -197,6 +197,34 @@ const makeScheduledRow = (executedAtMs: number): ScheduledPrompt => ({
   executionMetadata: { delivery_brief: '', context_snapshot: null },
 })
 
+const makeAlertRow = (overrides: Partial<AlertPrompt> = {}): AlertPrompt => ({
+  type: 'alert',
+  id: PROOF_ID,
+  createdByUserId: OWNER,
+  createdByUsername: null,
+  deliveryTarget: {
+    contextId: OWNER,
+    contextType: 'dm',
+    threadId: null,
+    audience: 'personal',
+    mentionUserIds: [],
+    createdByUserId: OWNER,
+    createdByUsername: null,
+    storageContextId: OWNER,
+  },
+  prompt: 'proof prompt',
+  condition: { field: 'task.status', op: 'neq', value: '__proof_check_never__' },
+  status: 'active',
+  createdAt: new Date(CLOCK_BASE_MS).toISOString(),
+  lastTriggeredAt: null,
+  lastActivityCursor: null,
+  cooldownMinutes: 60,
+  executionMetadata: { delivery_brief: '', context_snapshot: null },
+  matchedTaskIds: [],
+  taskInstanceId: null,
+  ...overrides,
+})
+
 const makeTrace = (overrides: Partial<LlmTrace> & Pick<LlmTrace, 'timestamp'>): LlmTrace => ({
   userId: OWNER,
   chatUserId: CHAT_USER,
@@ -294,6 +322,30 @@ describe('proof check async observation', () => {
     expect(observed.cancelCalls).toEqual([PROOF_ID])
     expect(observed.bus.listeners.size).toBe(0)
     expect(observed.releaseCalls()).toBe(1)
+  })
+
+  test('an alert variant with no executions is inconclusive unless the row shows evaluation bookkeeping', async () => {
+    const alertState = {
+      checkId: 'bug3_fires_on_creation',
+      isAlertVariant: true,
+      fireAtMs: null,
+      variant: 'alert',
+    } as const
+
+    arm({ ...alertState }, { getAlertPrompt: (): AlertPrompt | null => makeAlertRow() })
+    observed.clock.advance(2 * MINUTE_MS + 1_000)
+    await waitFor(() => observed.records.length > 0)
+    await waitFor(() => observed.releaseCalls() > 0)
+    expect(observed.records[0]?.verdict).toBe('inconclusive')
+    expect(observed.records[0]?.observations.join('\n')).toContain('alert never evaluated')
+
+    arm({ ...alertState }, { getAlertPrompt: (): AlertPrompt | null => makeAlertRow({ matchedTaskIds: ['task-1'] }) })
+    observed.clock.advance(2 * MINUTE_MS + 1_000)
+    await waitFor(() => observed.records.length > 0)
+    await waitFor(() => observed.releaseCalls() > 0)
+    expect(observed.records[0]?.verdict).toBe('pass')
+    expect(observed.records[0]?.observations.join('\n')).toContain('executions_inside_window: 0')
+    expect(observed.cancelCalls).toEqual([PROOF_ID])
   })
 
   test('the timeout path finalizes through the row-read fallback and unsubscribes the listener', async () => {
