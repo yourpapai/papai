@@ -14,7 +14,6 @@ import type { CreateResult } from '../../src/deferred-prompts/types.js'
 import { maybeAddDiagnosticsTools } from '../../src/tools/diagnostics.js'
 import { applyGuestReadOnlyFilter, makeTools } from '../../src/tools/index.js'
 import { makeRunProofCheckTool } from '../../src/tools/proof-check-run.js'
-import { makeReadProofResultsTool } from '../../src/tools/proof-checks-read.js'
 import type { MakeToolsOptions } from '../../src/tools/types.js'
 import { getToolExecutor, mockLogger, schemaValidates, setupTestDb } from '../utils/test-helpers.js'
 import { createMockProvider } from './mock-provider.js'
@@ -61,15 +60,6 @@ const createdWithExecutionMode = (): CreateResult =>
     rrule: null,
     execution: { mode: 'scheduled' },
   }) as CreateResult
-
-const recordFor = (runId: string, check: string): ProofCheckRecord => ({
-  run_id: runId,
-  check,
-  started_at: '2026-08-31T00:00:00.000Z',
-  finished_at: '2026-08-31T00:01:00.000Z',
-  verdict: 'pass',
-  observations: [],
-})
 
 const getInputFieldDescription = (schema: unknown, fieldName: string): string | undefined => {
   if (!(schema instanceof z.ZodType)) return undefined
@@ -175,24 +165,6 @@ describe('run_proof_check input schema', () => {
   })
 })
 
-describe('read_proof_results input schema', () => {
-  beforeEach(() => {
-    mockLogger()
-  })
-
-  test('accepts empty, run_id, and positive limit inputs and rejects invalid ones', () => {
-    const tool = makeReadProofResultsTool(makeFakeProofDeps().store)
-
-    expect(schemaValidates(tool, {})).toBe(true)
-    expect(schemaValidates(tool, { run_id: 'run-1' })).toBe(true)
-    expect(schemaValidates(tool, { limit: 5 })).toBe(true)
-    expect(schemaValidates(tool, { run_id: 'run-1', limit: 5 })).toBe(true)
-    expect(schemaValidates(tool, { limit: 0 })).toBe(false)
-    expect(schemaValidates(tool, { limit: -1 })).toBe(false)
-    expect(schemaValidates(tool, { run_id: 42 })).toBe(false)
-  })
-})
-
 describe('run_proof_check execution', () => {
   beforeEach(async () => {
     mockLogger()
@@ -270,79 +242,6 @@ describe('run_proof_check execution', () => {
       status: 'error',
       error: 'run_proof_check requires the bound storage context and chat user ids.',
     })
-  })
-})
-
-describe('read_proof_results execution', () => {
-  beforeEach(() => {
-    mockLogger()
-  })
-
-  test('lists the most recent runs first with their verdicts', async () => {
-    const store = {
-      append: (): Promise<void> => Promise.resolve(),
-      load: (): Promise<ProofCheckRecord[]> =>
-        Promise.resolve([
-          recordFor('run-a', 'bug4_create_response_mode'),
-          recordFor('run-b', 'bug2_context_time'),
-          recordFor('run-c', 'bug3_fires_on_creation'),
-        ]),
-    }
-    const tool = makeReadProofResultsTool(store)
-
-    const result: unknown = await getToolExecutor(tool)({})
-
-    expect(result).toEqual({
-      runs: [
-        recordFor('run-c', 'bug3_fires_on_creation'),
-        recordFor('run-b', 'bug2_context_time'),
-        recordFor('run-a', 'bug4_create_response_mode'),
-      ],
-    })
-  })
-
-  test('filters by run_id', async () => {
-    const store = {
-      append: (): Promise<void> => Promise.resolve(),
-      load: (): Promise<ProofCheckRecord[]> =>
-        Promise.resolve([recordFor('run-a', 'bug4_create_response_mode'), recordFor('run-b', 'bug2_context_time')]),
-    }
-    const tool = makeReadProofResultsTool(store)
-
-    const result: unknown = await getToolExecutor(tool)({ run_id: 'run-b' })
-
-    expect(result).toEqual({ runs: [recordFor('run-b', 'bug2_context_time')] })
-  })
-
-  test('limit truncates the most-recent window', async () => {
-    const store = {
-      append: (): Promise<void> => Promise.resolve(),
-      load: (): Promise<ProofCheckRecord[]> =>
-        Promise.resolve([
-          recordFor('run-a', 'bug4_create_response_mode'),
-          recordFor('run-b', 'bug2_context_time'),
-          recordFor('run-c', 'bug3_fires_on_creation'),
-        ]),
-    }
-    const tool = makeReadProofResultsTool(store)
-
-    const result: unknown = await getToolExecutor(tool)({ limit: 2 })
-
-    expect(result).toEqual({
-      runs: [recordFor('run-c', 'bug3_fires_on_creation'), recordFor('run-b', 'bug2_context_time')],
-    })
-  })
-
-  test('an unknown run_id filter yields an empty list without erroring', async () => {
-    const store = {
-      append: (): Promise<void> => Promise.resolve(),
-      load: (): Promise<ProofCheckRecord[]> => Promise.resolve([recordFor('run-a', 'bug4_create_response_mode')]),
-    }
-    const tool = makeReadProofResultsTool(store)
-
-    const result: unknown = await getToolExecutor(tool)({ run_id: 'missing' })
-
-    expect(result).toEqual({ runs: [] })
   })
 })
 

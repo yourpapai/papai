@@ -7,23 +7,19 @@ import { tool } from 'ai'
 import type { Tool } from 'ai'
 import { z } from 'zod'
 
-import type { ProofCheckDeps } from '../deferred-prompts/proof-checks.js'
-import { appendProofRecord, loadProofRecords, type ProofCheckRecord } from '../deferred-prompts/proof-store.js'
+import { loadProofRecords, type ProofCheckRecord } from '../deferred-prompts/proof-store.js'
 import { logger } from '../logger.js'
 
 const log = logger.child({ scope: 'tool:read-proof-results' })
 
-const defaultStore = {
-  append: (record: ProofCheckRecord): Promise<void> => appendProofRecord(record),
-  load: (): Promise<ProofCheckRecord[]> => loadProofRecords(),
-}
+const defaultStore = { load: (): Promise<ProofCheckRecord[]> => loadProofRecords() }
 
 /**
  * Admin-only disposable reader for recorded proof-check runs. The store is
  * process-global and deliberately unkeyed (the assembly gate guarantees a
  * single admin principal), so no chatUserId binding is needed here.
  */
-export const makeReadProofResultsTool = (store: ProofCheckDeps['store'] = defaultStore): Tool => {
+export const makeReadProofResultsTool = (store: { load: () => Promise<ProofCheckRecord[]> } = defaultStore): Tool => {
   return tool({
     description:
       'List recent deferred-prompt proof-check runs with their verdicts, most recent first. Admin-only disposable diagnostics; records carry admin-own observations only.',
