@@ -59,6 +59,13 @@ const isProofCheckRecord = (value: unknown): value is ProofCheckRecord => {
   )
 }
 
+const isProofDeliveryRecord = (value: unknown): boolean =>
+  isRecordObject(value) &&
+  typeof value['runId'] === 'string' &&
+  typeof value['responseText'] === 'string' &&
+  value['delivered'] === true &&
+  typeof value['at'] === 'string'
+
 let writeChain: Promise<unknown> = Promise.resolve()
 
 const enqueue = <T>(operation: () => T): Promise<T> => {
@@ -107,6 +114,7 @@ export const loadProofRecords = (deps?: ProofStoreDeps): Promise<ProofCheckRecor
     for (const line of readFileSync(path, 'utf8').split('\n')) {
       if (line === '') continue
       const parsed = parseJsonLine(line)
+      if (isProofDeliveryRecord(parsed)) continue
       if (!isProofCheckRecord(parsed)) {
         log.warn({ path }, 'Skipping invalid line in proof store')
         continue

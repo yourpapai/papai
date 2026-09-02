@@ -3,7 +3,7 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
+import { afterEach, beforeEach, describe, expect, mock, test } from 'bun:test'
 import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -16,7 +16,7 @@ import {
   type ProofCheckRecord,
   type ProofStoreDeps,
 } from '../../src/deferred-prompts/proof-store.js'
-import { mockLogger } from '../utils/test-helpers.js'
+import { createTrackedLoggerMock, mockLogger } from '../utils/test-helpers.js'
 
 const CLOCK_BASE_MS = 1_700_000_000_000
 const PROOF_STORE_CAP = 50
@@ -26,6 +26,11 @@ const setDbPathEnv = (value: string | undefined): void => {
   if (value === undefined) delete process.env['DB_PATH']
   else process.env['DB_PATH'] = value
 }
+
+type ProofStoreModule = typeof import('../../src/deferred-prompts/proof-store.js')
+
+const importFreshProofStore = (): Promise<ProofStoreModule> =>
+  import(`../../src/deferred-prompts/proof-store.js?test=${crypto.randomUUID()}`)
 
 describe('proof store', () => {
   let dir: string
@@ -166,6 +171,30 @@ describe('proof store', () => {
     const raw = readFileSync(path, 'utf8').trim()
     expect(JSON.parse(raw)).toEqual(line)
     expect(await loadProofRecords(deps())).toEqual([])
+  })
+
+  test('skips delivery records silently while still warning on genuinely invalid lines', async () => {
+    const tracked = createTrackedLoggerMock()
+    void mock.module('../../src/logger.js', () => ({ getLogLevel: tracked.getLogLevel, logger: tracked.logger }))
+    const check = makeRecord(1)
+    const delivery = {
+      runId: 'run-9',
+      responseText: 'delivered text',
+      delivered: true,
+      at: new Date(CLOCK_BASE_MS).toISOString(),
+    }
+    await appendProofJsonLine(delivery, deps())
+    await appendProofRecord(check, deps())
+    await appendProofJsonLine({ broken: true }, deps())
+
+    // proof-store.ts binds `log` at module load; import a fresh instance that
+    // resolves the tracked logger mock (mirrors alerts-logging.test.ts).
+    const fresh = await importFreshProofStore()
+
+    expect(await fresh.loadProofRecords(deps())).toEqual([check])
+    expect(tracked.getCallsByLevel('warn').map((call) => call.args[1])).toEqual([
+      'Skipping invalid line in proof store',
+    ])
   })
 
   test('derives the default path next to DB_PATH', () => {
