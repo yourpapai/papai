@@ -1,4 +1,460 @@
 {
+  "afk-runner/src/accounting.ts": {
+    "score": 0.7529411764705882,
+    "killed": 128,
+    "timeout": 0,
+    "scored": 170
+  },
+  "afk-runner/src/agent-layer.ts": {
+    "score": 0.8503937007874016,
+    "killed": 106,
+    "timeout": 2,
+    "scored": 127
+  },
+  "afk-runner/src/agent-reporter.ts": {
+    "score": 0.6712328767123288,
+    "killed": 49,
+    "timeout": 0,
+    "scored": 73
+  },
+  "afk-runner/src/agent-schemas.ts": {
+    "score": 0.42857142857142855,
+    "killed": 33,
+    "timeout": 0,
+    "scored": 77
+  },
+  "afk-runner/src/agent-seam.ts": {
+    "score": 0.72,
+    "killed": 18,
+    "timeout": 0,
+    "scored": 25
+  },
+  "afk-runner/src/analyze-corpus.ts": {
+    "score": 0.8024691358024691,
+    "killed": 65,
+    "timeout": 0,
+    "scored": 81
+  },
+  "afk-runner/src/analyze-findings.ts": {
+    "score": 0.8586572438162544,
+    "killed": 242,
+    "timeout": 1,
+    "scored": 283
+  },
+  "afk-runner/src/analyze-gates.ts": {
+    "score": 0.6583333333333333,
+    "killed": 237,
+    "timeout": 0,
+    "scored": 360
+  },
+  "afk-runner/src/analyze-io.ts": {
+    "score": 0.7857142857142857,
+    "killed": 132,
+    "timeout": 0,
+    "scored": 168
+  },
+  "afk-runner/src/analyze-report.ts": {
+    "score": 0.2939189189189189,
+    "killed": 87,
+    "timeout": 0,
+    "scored": 296
+  },
+  "afk-runner/src/analyze-truth.ts": {
+    "score": 0.7910447761194029,
+    "killed": 53,
+    "timeout": 0,
+    "scored": 67
+  },
+  "afk-runner/src/analyze-usage.ts": {
+    "score": 0.9565217391304348,
+    "killed": 44,
+    "timeout": 0,
+    "scored": 46
+  },
+  "afk-runner/src/analyze.ts": {
+    "score": 0.9555555555555556,
+    "killed": 43,
+    "timeout": 0,
+    "scored": 45
+  },
+  "afk-runner/src/cli.ts": {
+    "score": 0.49696969696969695,
+    "killed": 164,
+    "timeout": 0,
+    "scored": 330
+  },
+  "afk-runner/src/config.ts": {
+    "score": 0.7288135593220338,
+    "killed": 86,
+    "timeout": 0,
+    "scored": 118
+  },
+  "afk-runner/src/drive/boundary.ts": {
+    "score": 0.7916666666666666,
+    "killed": 19,
+    "timeout": 0,
+    "scored": 24
+  },
+  "afk-runner/src/drive/failure-budget.ts": {
+    "score": 0.7321428571428571,
+    "killed": 41,
+    "timeout": 0,
+    "scored": 56
+  },
+  "afk-runner/src/drive/loop.ts": {
+    "score": 0.8120805369127517,
+    "killed": 121,
+    "timeout": 0,
+    "scored": 149
+  },
+  "afk-runner/src/drive/resume.ts": {
+    "score": 0.5,
+    "killed": 145,
+    "timeout": 0,
+    "scored": 290
+  },
+  "afk-runner/src/errors.ts": {
+    "score": 0,
+    "killed": 0,
+    "timeout": 0,
+    "scored": 2
+  },
+  "afk-runner/src/event-schemas.ts": {
+    "score": 0.7151898734177216,
+    "killed": 113,
+    "timeout": 0,
+    "scored": 158
+  },
+  "afk-runner/src/events.ts": {
+    "score": 0.9565217391304348,
+    "killed": 44,
+    "timeout": 0,
+    "scored": 46
+  },
+  "afk-runner/src/graph/pipeline-work.ts": {
+    "score": 0.42731277533039647,
+    "killed": 95,
+    "timeout": 2,
+    "scored": 227
+  },
+  "afk-runner/src/graph/pipeline.ts": {
+    "score": 1,
+    "killed": 4,
+    "timeout": 0,
+    "scored": 4
+  },
+  "afk-runner/src/kernel/fold.ts": {
+    "score": 0.9271523178807947,
+    "killed": 140,
+    "timeout": 0,
+    "scored": 151
+  },
+  "afk-runner/src/kernel/interpreter.ts": {
+    "score": 0.6075949367088608,
+    "killed": 48,
+    "timeout": 0,
+    "scored": 79
+  },
+  "afk-runner/src/kernel/machine.ts": {
+    "score": 0.8410041841004184,
+    "killed": 201,
+    "timeout": 0,
+    "scored": 239
+  },
+  "afk-runner/src/legacy-fold.ts": {
+    "score": 0.9607843137254902,
+    "killed": 147,
+    "timeout": 0,
+    "scored": 153
+  },
+  "afk-runner/src/memo-project.ts": {
+    "score": 0.7086614173228346,
+    "killed": 89,
+    "timeout": 1,
+    "scored": 127
+  },
+  "afk-runner/src/openspec-driver.ts": {
+    "score": 0.7567567567567568,
+    "killed": 56,
+    "timeout": 0,
+    "scored": 74
+  },
+  "afk-runner/src/run-index.ts": {
+    "score": 0.391304347826087,
+    "killed": 27,
+    "timeout": 0,
+    "scored": 69
+  },
+  "afk-runner/src/run-lite.ts": {
+    "score": 0.36538461538461536,
+    "killed": 19,
+    "timeout": 0,
+    "scored": 52
+  },
+  "afk-runner/src/run-recovery.ts": {
+    "score": 0.49079754601226994,
+    "killed": 80,
+    "timeout": 0,
+    "scored": 163
+  },
+  "afk-runner/src/run-resume.ts": {
+    "score": 0.6126126126126126,
+    "killed": 68,
+    "timeout": 0,
+    "scored": 111
+  },
+  "afk-runner/src/run-state.ts": {
+    "score": 0.9159663865546218,
+    "killed": 109,
+    "timeout": 0,
+    "scored": 119
+  },
+  "afk-runner/src/run.ts": {
+    "score": 0.7297297297297297,
+    "killed": 27,
+    "timeout": 0,
+    "scored": 37
+  },
+  "afk-runner/src/session-id.ts": {
+    "score": 0.7647058823529411,
+    "killed": 13,
+    "timeout": 0,
+    "scored": 17
+  },
+  "afk-runner/src/session-ledger.ts": {
+    "score": 0.9153846153846154,
+    "killed": 119,
+    "timeout": 0,
+    "scored": 130
+  },
+  "afk-runner/src/stop-controller.ts": {
+    "score": 0.925,
+    "killed": 111,
+    "timeout": 0,
+    "scored": 120
+  },
+  "afk-runner/src/work/artifact-consistency.ts": {
+    "score": 0.7391304347826086,
+    "killed": 102,
+    "timeout": 0,
+    "scored": 138
+  },
+  "afk-runner/src/work/assumption-blast.ts": {
+    "score": 0.7843137254901961,
+    "killed": 40,
+    "timeout": 0,
+    "scored": 51
+  },
+  "afk-runner/src/work/atomicity.ts": {
+    "score": 0.8163265306122449,
+    "killed": 38,
+    "timeout": 2,
+    "scored": 49
+  },
+  "afk-runner/src/work/auto-policy.ts": {
+    "score": 0.76,
+    "killed": 171,
+    "timeout": 0,
+    "scored": 225
+  },
+  "afk-runner/src/work/concern-model.ts": {
+    "score": 0.775,
+    "killed": 93,
+    "timeout": 0,
+    "scored": 120
+  },
+  "afk-runner/src/work/decompose.ts": {
+    "score": 0.7551020408163265,
+    "killed": 35,
+    "timeout": 2,
+    "scored": 49
+  },
+  "afk-runner/src/work/draft.ts": {
+    "score": 0.5408163265306123,
+    "killed": 50,
+    "timeout": 3,
+    "scored": 98
+  },
+  "afk-runner/src/work/early-gate.ts": {
+    "score": 0.45714285714285713,
+    "killed": 16,
+    "timeout": 0,
+    "scored": 35
+  },
+  "afk-runner/src/work/gate-answers.ts": {
+    "score": 0.8313253012048193,
+    "killed": 138,
+    "timeout": 0,
+    "scored": 166
+  },
+  "afk-runner/src/work/gate-claims.ts": {
+    "score": 0.7297297297297297,
+    "killed": 54,
+    "timeout": 0,
+    "scored": 74
+  },
+  "afk-runner/src/work/gate-digest-extract.ts": {
+    "score": 0.6,
+    "killed": 90,
+    "timeout": 0,
+    "scored": 150
+  },
+  "afk-runner/src/work/gate-expected.ts": {
+    "score": 0.5735294117647058,
+    "killed": 39,
+    "timeout": 0,
+    "scored": 68
+  },
+  "afk-runner/src/work/gate-expiry.ts": {
+    "score": 0.3389830508474576,
+    "killed": 40,
+    "timeout": 0,
+    "scored": 118
+  },
+  "afk-runner/src/work/gate-files.ts": {
+    "score": 0.6705882352941176,
+    "killed": 57,
+    "timeout": 0,
+    "scored": 85
+  },
+  "afk-runner/src/work/gate-integrity.ts": {
+    "score": 0.8088235294117647,
+    "killed": 55,
+    "timeout": 0,
+    "scored": 68
+  },
+  "afk-runner/src/work/gate-model.ts": {
+    "score": 0.8571428571428571,
+    "killed": 126,
+    "timeout": 0,
+    "scored": 147
+  },
+  "afk-runner/src/work/gate-parse-lines.ts": {
+    "score": 0.20297029702970298,
+    "killed": 41,
+    "timeout": 0,
+    "scored": 202
+  },
+  "afk-runner/src/work/gate-prelude.ts": {
+    "score": 0.7166666666666667,
+    "killed": 86,
+    "timeout": 0,
+    "scored": 120
+  },
+  "afk-runner/src/work/gate-render.ts": {
+    "score": 0.39436619718309857,
+    "killed": 112,
+    "timeout": 0,
+    "scored": 284
+  },
+  "afk-runner/src/work/gate-settle.ts": {
+    "score": 0.7245762711864406,
+    "killed": 171,
+    "timeout": 0,
+    "scored": 236
+  },
+  "afk-runner/src/work/gate-signals.ts": {
+    "score": 0.7433628318584071,
+    "killed": 84,
+    "timeout": 0,
+    "scored": 113
+  },
+  "afk-runner/src/work/gate-waiter.ts": {
+    "score": 0.6296296296296297,
+    "killed": 85,
+    "timeout": 0,
+    "scored": 135
+  },
+  "afk-runner/src/work/intake.ts": {
+    "score": 0.7755102040816326,
+    "killed": 76,
+    "timeout": 0,
+    "scored": 98
+  },
+  "afk-runner/src/work/materialize.ts": {
+    "score": 0.8466666666666667,
+    "killed": 127,
+    "timeout": 0,
+    "scored": 150
+  },
+  "afk-runner/src/work/present-escalation.ts": {
+    "score": 0.7191011235955056,
+    "killed": 64,
+    "timeout": 0,
+    "scored": 89
+  },
+  "afk-runner/src/work/present-final.ts": {
+    "score": 0.47368421052631576,
+    "killed": 27,
+    "timeout": 0,
+    "scored": 57
+  },
+  "afk-runner/src/work/report.ts": {
+    "score": 0.6032786885245902,
+    "killed": 184,
+    "timeout": 0,
+    "scored": 305
+  },
+  "afk-runner/src/work/response-error.ts": {
+    "score": 0.8421052631578947,
+    "killed": 16,
+    "timeout": 0,
+    "scored": 19
+  },
+  "afk-runner/src/work/review-loop.ts": {
+    "score": 0.8524590163934426,
+    "killed": 52,
+    "timeout": 0,
+    "scored": 61
+  },
+  "afk-runner/src/work/review-model.ts": {
+    "score": 0.9215686274509803,
+    "killed": 188,
+    "timeout": 0,
+    "scored": 204
+  },
+  "afk-runner/src/work/review-prompt.ts": {
+    "score": 0.2028985507246377,
+    "killed": 14,
+    "timeout": 0,
+    "scored": 69
+  },
+  "afk-runner/src/work/review-round.ts": {
+    "score": 0.5,
+    "killed": 19,
+    "timeout": 0,
+    "scored": 38
+  },
+  "afk-runner/src/work/review.ts": {
+    "score": 0.11382113821138211,
+    "killed": 14,
+    "timeout": 0,
+    "scored": 123
+  },
+  "afk-runner/src/work/steer.ts": {
+    "score": 0.2230769230769231,
+    "killed": 29,
+    "timeout": 0,
+    "scored": 130
+  },
+  "afk-runner/src/work/veto-updater.ts": {
+    "score": 0.43781094527363185,
+    "killed": 88,
+    "timeout": 0,
+    "scored": 201
+  },
+  "afk-runner/src/work/waiter-probe.ts": {
+    "score": 0.875,
+    "killed": 35,
+    "timeout": 0,
+    "scored": 40
+  },
+  "afk-runner/src/work/waiter-steer.ts": {
+    "score": 0.3615819209039548,
+    "killed": 64,
+    "timeout": 0,
+    "scored": 177
+  },
   "plugins/task-provider-github/classify-error.ts": 0.744,
   "plugins/task-provider-github/constants.ts": 1,
   "plugins/task-provider-github/due-date.ts": 1,
@@ -147,6 +603,18 @@
   "plugins/task-provider-youtrack/schemas/work-item.ts": 1,
   "plugins/task-provider-youtrack/task-helpers.ts": 0.5,
   "plugins/task-provider-youtrack/validate-config.ts": 1,
+  "review-loop/src/agent-command.ts": {
+    "score": 0.8523489932885906,
+    "killed": 127,
+    "timeout": 0,
+    "scored": 149
+  },
+  "review-loop/src/agent-runner.ts": {
+    "score": 0.7867647058823529,
+    "killed": 107,
+    "timeout": 0,
+    "scored": 136
+  },
   "src/coding-sessions/configure.ts": 0.6666666666666666,
   "src/config.ts": 0.6535433070866141,
   "src/conversation.ts": 0.6231884057971014,
