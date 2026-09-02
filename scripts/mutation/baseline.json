@@ -189,6 +189,12 @@
   "src/providers/membership/subscriber.ts": 0.5753424657534246,
   "src/providers/registry.ts": 0.6842105263157895,
   "src/providers/resolver.ts": 0.5535714285714286,
+  "src/recurrence/recurrence.ts": {
+    "score": 0.8347107438016529,
+    "killed": 101,
+    "timeout": 0,
+    "scored": 121
+  },
   "src/recurring.ts": 0.6271186440677966,
   "src/runtime/production-background.ts": 0.9423076923076923,
   "src/runtime/production-extensions.ts": 0,
