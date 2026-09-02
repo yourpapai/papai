@@ -9,7 +9,7 @@ import path from 'node:path'
 
 import { readEvents } from '../../../afk-runner/src/events.js'
 import { appendEvent } from '../../../afk-runner/src/events.js'
-import type { SddEvent } from '../../../afk-runner/src/events.js'
+import type { EventInput, SddEvent } from '../../../afk-runner/src/events.js'
 import { resumeRun } from '../../../afk-runner/src/run-resume.js'
 import { startRun } from '../../../afk-runner/src/run.js'
 import { renderGateAnswers } from '../../../afk-runner/src/work/gate-answers.js'
@@ -117,6 +117,28 @@ function answeredGateEvents(events: readonly SddEvent[]): SddEvent[] {
   return events.filter((event) => event.type === 'gate' && event.action === 'answered')
 }
 
+function rearmedEvents(events: readonly SddEvent[]): SddEvent[] {
+  return events.filter((event) => event.type === 'gate' && event.action === 'rearmed')
+}
+
+type AutoDecisionEvent = Extract<SddEvent, { type: 'auto_decision' }>
+
+function autoDecisionEvents(events: readonly SddEvent[]): AutoDecisionEvent[] {
+  return events.flatMap((event): AutoDecisionEvent[] => (event.type === 'auto_decision' ? [event] : []))
+}
+
+function isPendingDecision(event: AutoDecisionEvent): boolean {
+  return event.decision === 'pending'
+}
+
+function isSettleDecision(event: AutoDecisionEvent): boolean {
+  return event.decision === 'extend' || event.decision === 'approve'
+}
+
+function hasRoundOpen(events: readonly SddEvent[], round: number): boolean {
+  return events.some((event) => event.type === 'round_open' && event.round === round)
+}
+
 type Token = string
 
 function skeletonTokens(logPath: string): Token[] {
@@ -134,6 +156,191 @@ function skeletonTokens(logPath: string): Token[] {
     return []
   })
 }
+
+describe('deadline expiry claims through the production waiter (F-C3/D5)', () => {
+  /** Release ticks (a no-op release while the waiter is mid-async-work) until the predicate holds. */
+  async function deadlineTicksUntil(
+    clock: { readonly release: () => void },
+    done: () => boolean,
+    budgetMs = 5_000,
+  ): Promise<void> {
+    const deadline = Date.now() + budgetMs
+    while (Date.now() < deadline) {
+      clock.release()
+      await new Promise((resolve) => {
+        setTimeout(resolve, 5)
+      })
+      if (done()) return
+    }
+  }
+
+  it('a parked gate whose ladder refuses re-arms exactly once through waitSettledGates, the pending record after the rearmed event', async () => {
+    const pipeline = makeFakePipeline({ sidecarOverrides: BLOCKER_ROUND })
+    const clock = fakeClock()
+    let clockOffsetMs = 0
+    const taskFile = path.join(pipeline.repoRoot, 'task.md')
+    fs.writeFileSync(taskFile, TASK_TEXT)
+    const runPromise = startRun(
+      {
+        ...pipeline.deps,
+        config: { ...pipeline.deps.config, deadline: 1 },
+        gateWait: { tick: clock.tick },
+        now: () => new Date(Date.now() + clockOffsetMs),
+      },
+      { taskFile },
+    )
+    await waitFor((): boolean => pipeline.stdoutLines.some((line) => line.includes('gate-pending')))
+    const runDir = pipeline.runDirOf(firstRunOf(pipeline))
+    const logPath = path.join(runDir, 'events.ndjson')
+    const hasRearmed = (): boolean => rearmedEvents(readEvents(logPath)).length > 0
+    // pre-deadline ticks are inert
+    await releaseTick(clock)
+    await releaseTick(clock)
+    expect(hasRearmed()).toBe(false)
+    // the injected now advances past the armed deadline across ticks
+    clockOffsetMs = 10 * 60_000
+    await deadlineTicksUntil(clock, hasRearmed)
+    const events = readEvents(logPath)
+    const rearmed = rearmedEvents(events)
+    expect(rearmed).toHaveLength(1)
+    const pending = autoDecisionEvents(events).filter(isPendingDecision)
+    expect(pending).toHaveLength(1)
+    expect(pending[0]).toMatchObject({ rule: 'none', decision: 'pending', gateVersion: 1 })
+    expect(events.indexOf(pending[0]!)).toBeGreaterThan(events.indexOf(rearmed[0]!))
+    expect(answeredGateEvents(events)).toHaveLength(0)
+    // the re-armed deadline is now + 1 minute again: further ticks stay inert
+    for (let i = 0; i < 3; i += 1) await releaseTick(clock)
+    expect(rearmedEvents(readEvents(logPath))).toHaveLength(1)
+    const probe = await Promise.race([runPromise.then((): boolean => true), Promise.resolve(false)])
+    expect(probe).toBe(false)
+    void runPromise
+  })
+
+  it('a parked gate whose ladder holds a conservative branch auto-settles at expiry: R2 extend, the auto_decision after the settle write', async () => {
+    // The W4 crash window (presentation without its ladder record) is the
+    // honest parked shape whose expiry ladder still holds a branch: the log
+    // records a two-round decreasing trajectory that capped at round 2.
+    const pipeline = makeFakePipeline({
+      sidecarOverrides: {
+        'findings-1.json': JSON.stringify({
+          findings: [0, 1, 2].map((i) => ({
+            id: `F${i + 1}`,
+            class: 'MATERIAL',
+            gap: `gap ${i + 1}`,
+            question: `q ${i + 1}`,
+            code_evidence_attempted: 'searched',
+          })),
+        }),
+        'resolutions-1.json': JSON.stringify({
+          resolutions: [0, 1, 2].map((i) => ({
+            id: `F${i + 1}`,
+            class: 'MATERIAL',
+            resolution: 'dismissed',
+            justification: 'kept',
+          })),
+          assumptions: [],
+        }),
+        'findings-2.json': JSON.stringify({
+          findings: [
+            { id: 'F1', class: 'MATERIAL', gap: 'still open', question: 'q', code_evidence_attempted: 'searched' },
+          ],
+        }),
+        'resolutions-2.json': JSON.stringify({
+          resolutions: [{ id: 'F1', class: 'MATERIAL', resolution: 'dismissed', justification: 'kept' }],
+          assumptions: [],
+        }),
+        'findings-3.json': JSON.stringify({ findings: [] }),
+        'resolutions-3.json': JSON.stringify({ resolutions: [], assumptions: [] }),
+      },
+    })
+    const runDir = path.join(pipeline.workDir, 'runs', 'w4-expiry-run')
+    const sidecarDir = path.join(runDir, 'sidecars')
+    const changeDir = path.join(pipeline.repoRoot, 'openspec', 'changes', 'add-thing')
+    fs.mkdirSync(sidecarDir, { recursive: true })
+    fs.mkdirSync(path.join(changeDir, 'specs', 'thing'), { recursive: true })
+    fs.writeFileSync(path.join(changeDir, 'proposal.md'), 'w4 fixture\n')
+    fs.writeFileSync(path.join(runDir, 'task.md'), TASK_TEXT)
+    const past = '2026-08-27T00:00:01.000Z'
+    const logPath = path.join(runDir, 'events.ndjson')
+    const events: EventInput[] = [
+      { altitude: 'L2', type: 'stage_enter', stage: 'intake' },
+      { altitude: 'L2', type: 'depth', profile: 'S', rationale: 'one module', source: 'estimator' },
+      { altitude: 'L2', type: 'stage_exit', stage: 'intake' },
+      { altitude: 'L2', type: 'stage_enter', stage: 'draft' },
+      { altitude: 'L2', type: 'stage_exit', stage: 'draft' },
+      { altitude: 'L2', type: 'stage_enter', stage: 'review' },
+      { altitude: 'L2', type: 'round_open', round: 1, cap: 1 },
+      {
+        altitude: 'L2',
+        type: 'convergence',
+        round: 1,
+        verdict: 'open',
+        counts: { blocker: 0, material: 3, nitpick: 0 },
+      },
+      { altitude: 'L2', type: 'round_open', round: 2, cap: 2 },
+      {
+        altitude: 'L2',
+        type: 'convergence',
+        round: 2,
+        verdict: 'open',
+        counts: { blocker: 0, material: 1, nitpick: 0 },
+      },
+      { altitude: 'L2', type: 'stage_exit', stage: 'review' },
+      // the W4 window: presented with its deadline, the ladder record never landed
+      { altitude: 'L2', type: 'gate', action: 'presented', mode: 'early', version: 1, deadlineAt: past },
+    ]
+    for (const event of events) appendEvent(logPath, event, new Date('2026-08-27T00:00:00.000Z'))
+    fs.writeFileSync(
+      path.join(sidecarDir, 'resolutions-1.json'),
+      JSON.stringify({
+        resolutions: [0, 1, 2].map((i) => ({
+          id: `F${i + 1}`,
+          class: 'MATERIAL',
+          resolution: 'dismissed',
+          justification: 'kept',
+        })),
+        assumptions: [],
+      }),
+    )
+    fs.writeFileSync(
+      path.join(sidecarDir, 'resolutions-2.json'),
+      JSON.stringify({
+        resolutions: [{ id: 'F1', class: 'MATERIAL', resolution: 'dismissed', justification: 'kept' }],
+        assumptions: [],
+      }),
+    )
+    fs.writeFileSync(
+      path.join(runDir, 'gate-1.md'),
+      '<!-- gate-1.md -->\n\n## Early gate (cap hit) — change add-thing\n',
+    )
+    fs.writeFileSync(path.join(runDir, 'gate-hashes-1.json'), '{}\n')
+
+    const clock = fakeClock()
+    const resumedPromise = resumeRun(
+      {
+        ...pipeline.deps,
+        config: { ...pipeline.deps.config, deadline: 1 },
+        gateWait: { tick: clock.tick },
+        now: () => new Date('2026-08-27T00:01:00.000Z'),
+      },
+      'w4-expiry-run',
+    )
+    await deadlineTicksUntil(clock, () => answeredGateEvents(readEvents(logPath)).length > 0)
+    const settled = readEvents(logPath)
+    const answered = answeredGateEvents(settled)
+    expect(answered).toHaveLength(1)
+    expect(answered[0]).toMatchObject({ outcome: 'extend' })
+    const decision = autoDecisionEvents(settled).find(isSettleDecision)
+    expect(decision).toMatchObject({ rule: 'R2', decision: 'extend', gateVersion: 1 })
+    expect(settled.indexOf(decision!)).toBeGreaterThan(settled.indexOf(answered[0]!))
+    // the extended round runs to completion: round 3 converges, the tail's
+    // final gate R1-approves, the run completes
+    const halted = await settleViaTicks(resumedPromise, clock, 40)
+    expect(halted).toMatchObject({ halted: 'final', drove: true })
+    expect(pipeline.spawnOrder).toContain('findings-3.json')
+    expect(hasRoundOpen(readEvents(logPath), 3)).toBe(true)
+  })
+})
 
 describe('live-shaped think-half integration (stubbed agents)', () => {
   it('start → intake → draft → review → S tail presents the final gate from decompose and parks gate-pending', async () => {

@@ -51,6 +51,12 @@ export async function waitSettledGates(
       boundary.append(event)
     },
     tick: deps.gateWait.tick,
+    // F-C3 (D5): the production waiter carries the expiry ports so armed
+    // deadlines claim — inert unless deadlines are configured. `now` is the
+    // same clock the append boundary stamps with.
+    repoRoot: deps.config.repoRoot,
+    autonomy: autonomyOf(deps.config),
+    ...(deps.now === undefined ? { now: (): Date => new Date() } : { now: deps.now }),
     ...(deps.stdout === undefined ? {} : { stdout: deps.stdout }),
   })
   if (waited.kind === 'external') deps.stdout?.('gate settled externally — re-evaluating')

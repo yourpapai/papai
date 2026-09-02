@@ -24,8 +24,8 @@ See LICENSE in the project root for details.
 
 ## 4. Expiry wiring (D5)
 
-- [ ] 4.1 Red in `tests/afk-runner/integration/live-run.test.ts` (fake-pipeline harness): a run parked `gate-pending` under an autonomy config with a short `deadlineMinutes`, with the injected `now` advanced past the deadline across `gateWait` ticks, auto-settles through `waitSettledGates` — the `auto_decision{rule, decision}` event lands after the settle write — and the refuse-and-rearm branch re-arms exactly once with the `pending` record; then wire `repoRoot`/`autonomy`/`now` into `awaitGateSettle`'s ports in `afk-runner/src/run-resume.ts`. Verify: `bun test tests/afk-runner/integration/live-run.test.ts`
-- [ ] 4.2 Confirm the fixture-pinned expiry behavior is unchanged by the wiring (existing suite green, no fixture edits). Verify: `bun test tests/afk-runner/work/gate-deadline.test.ts`
+- [x] 4.1 Red in `tests/afk-runner/integration/live-run.test.ts` (fake-pipeline harness): a run parked `gate-pending` under an autonomy config with a short `deadlineMinutes`, with the injected `now` advanced past the deadline across `gateWait` ticks, auto-settles through `waitSettledGates` — the `auto_decision{rule, decision}` event lands after the settle write — and the refuse-and-rearm branch re-arms exactly once with the `pending` record; then wire `repoRoot`/`autonomy`/`now` into `awaitGateSettle`'s ports in `afk-runner/src/run-resume.ts`. Verify: `bun test tests/afk-runner/integration/live-run.test.ts`
+- [x] 4.2 Confirm the fixture-pinned expiry behavior is unchanged by the wiring (existing suite green, no fixture edits). Verify: `bun test tests/afk-runner/work/gate-deadline.test.ts`
 
 ## 5. Full verification and docs close-out
 
