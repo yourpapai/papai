@@ -115,7 +115,7 @@ export const makeRunProofCheckTool = (
       'Run a deferred-prompt proof check against the live pipeline and record the verdict. Sync checks return the finished record; async checks return a started run id and finish in the background. Admin-only disposable diagnostics.',
     inputSchema: proofCheckInputSchema,
     execute: (input) => {
-      log.info(
+      log.debug(
         { check: input.check, variant: input.variant, cleanup: input.cleanup === true },
         'run_proof_check called',
       )
