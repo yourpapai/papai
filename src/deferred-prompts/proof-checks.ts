@@ -102,6 +102,38 @@ const readExecutionMode = (result: CreateResult): string | null => {
   return typeof mode === 'string' && mode !== '' ? mode : null
 }
 
+const observeSyncCheck = (
+  deps: ProofCheckDeps,
+  request: ProofCheckRequest,
+  checkId: ProofCheckId,
+  runId: string,
+  input: CreateInput,
+  result: Exclude<CreateResult, { error: string }>,
+  observations: string[],
+): ProofVerdict => {
+  if (checkId === 'bug4_create_response_mode') {
+    const mode = readExecutionMode(result)
+    observations.push(`create_result_keys: ${Object.keys(result).join(',')}`)
+    observations.push(`execution_mode: ${mode ?? 'absent'}`)
+    return mode === null ? 'fail' : 'pass'
+  }
+  const updateBrief = `${proofMarkerSentence(runId)} (updated by the wipe probe)`
+  const updateResult = deps.executeUpdate(request.storageContextId, {
+    id: result.id,
+    prompt: '',
+    execution: { delivery_brief: updateBrief },
+  })
+  if ('error' in updateResult) observations.push(`update_error: ${updateResult.error}`)
+  const getResult = deps.executeGet(request.storageContextId, { id: result.id })
+  if ('error' in getResult) {
+    observations.push(`get_error: ${getResult.error}`)
+    return 'inconclusive'
+  }
+  observations.push(`prompt_text_before: ${input.prompt}`)
+  observations.push(`prompt_text_after: ${getResult.prompt}`)
+  return getResult.prompt === '' ? 'fail' : 'pass'
+}
+
 const runSyncCheck = async (
   deps: ProofCheckDeps,
   request: ProofCheckRequest,
@@ -119,32 +151,18 @@ const runSyncCheck = async (
     await appendRecord(deps, record)
     return record
   }
-  let verdict: ProofVerdict
-  if (checkId === 'bug4_create_response_mode') {
-    const mode = readExecutionMode(created.result)
-    verdict = mode === null ? 'fail' : 'pass'
-    observations.push(`create_result_keys: ${Object.keys(created.result).join(',')}`)
-    observations.push(`execution_mode: ${mode ?? 'absent'}`)
-  } else {
-    const updateBrief = `${proofMarkerSentence(runId)} (updated by the wipe probe)`
-    const updateResult = deps.executeUpdate(request.storageContextId, {
-      id: created.result.id,
-      prompt: '',
-      execution: { delivery_brief: updateBrief },
-    })
-    if ('error' in updateResult) observations.push(`update_error: ${updateResult.error}`)
-    const getResult = deps.executeGet(request.storageContextId, { id: created.result.id })
-    if ('error' in getResult) {
-      observations.push(`get_error: ${getResult.error}`)
-      verdict = 'inconclusive'
-    } else {
-      verdict = getResult.prompt === '' ? 'fail' : 'pass'
-      observations.push(`prompt_text_before: ${created.input.prompt}`)
-      observations.push(`prompt_text_after: ${getResult.prompt}`)
-    }
+  let verdict: ProofVerdict = 'inconclusive'
+  try {
+    verdict = observeSyncCheck(deps, request, checkId, runId, created.input, created.result, observations)
+  } catch (error) {
+    observations.push(`observation_error: ${error instanceof Error ? error.message : String(error)}`)
   }
-  const cancelResult = deps.executeCancel(request.storageContextId, { id: created.result.id })
-  if ('error' in cancelResult) observations.push(`cancel_error: ${cancelResult.error}`)
+  try {
+    const cancelResult = deps.executeCancel(request.storageContextId, { id: created.result.id })
+    if ('error' in cancelResult) observations.push(`cancel_error: ${cancelResult.error}`)
+  } catch (error) {
+    observations.push(`cancel_error: ${error instanceof Error ? error.message : String(error)}`)
+  }
   const record = makeRecord(runId, checkId, variant, startMs, deps.now(), verdict, observations)
   await appendRecord(deps, record)
   return record

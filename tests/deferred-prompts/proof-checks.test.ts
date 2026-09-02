@@ -514,6 +514,33 @@ describe('proof checks runner', () => {
     expect(harness.world.cancelCalls.map((call) => call.id)).toContain(singleKey(harness.world.scheduled))
   })
 
+  test('a throwing sync observation still cancels the proof prompt and records the error', async () => {
+    harness.deps.executeUpdate = (): UpdateResult => {
+      throw new Error('update exploded')
+    }
+
+    const record = expectCompleted(
+      await runProofCheck(harness.deps, makeRequest({ check: 'bug5_update_preserves_prompt' })),
+    )
+
+    expect(record.verdict).toBe('inconclusive')
+    expect(record.observations.join('\n')).toContain('observation_error: update exploded')
+    expect(harness.world.cancelCalls.map((call) => call.id)).toContain(singleKey(harness.world.scheduled))
+  })
+
+  test('a throwing sync cancel still records the run with the failure observation', async () => {
+    harness.deps.executeCancel = (): CancelResult => {
+      throw new Error('cancel exploded')
+    }
+
+    const record = expectCompleted(
+      await runProofCheck(harness.deps, makeRequest({ check: 'bug4_create_response_mode' })),
+    )
+
+    expect(record.verdict).toBe('fail')
+    expect(record.observations.join('\n')).toContain('cancel_error: cancel exploded')
+  })
+
   test('async check returns started with a run_id matching the created marker and drains with a full teardown', async () => {
     const runId = await expectStarted(makeRequest())
 
