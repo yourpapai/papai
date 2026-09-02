@@ -87,7 +87,7 @@ const KilledEvent = z.object({
   cause: z.enum(['timeout', 'inactivity', 'abort']),
 })
 
-const DoneEvent = z.object({
+const DoneEventSchema = z.object({
   altitude: z.literal('L1'),
   type: z.literal('done'),
   agent: z.string().min(1),
@@ -241,7 +241,7 @@ const EVENT_VARIANTS = [
   SpawnedEvent,
   RetryingEvent,
   KilledEvent,
-  DoneEvent,
+  DoneEventSchema,
   StageEnterEvent,
   StageExitEvent,
   RoundOpenEvent,
@@ -271,7 +271,7 @@ export const SddEventSchema = z.discriminatedUnion('type', [
   SpawnedEvent.extend(StampShape),
   RetryingEvent.extend(StampShape),
   KilledEvent.extend(StampShape),
-  DoneEvent.extend(StampShape),
+  DoneEventSchema.extend(StampShape),
   StageEnterEvent.extend(StampShape),
   StageExitEvent.extend(StampShape),
   RoundOpenEvent.extend(StampShape),
