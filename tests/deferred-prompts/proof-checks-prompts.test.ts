@@ -286,6 +286,22 @@ describe('proof check prompt helpers', () => {
     expect(created.input.schedule).toBeUndefined()
   })
 
+  test('the tool-probe prompt omits the no-tools clause the other variants carry', () => {
+    const prompts: string[] = []
+    const deps = baseDeps()
+    deps.executeCreate = (_userId: string, input: { prompt: string }): CreateResult => {
+      prompts.push(input.prompt)
+      return { status: 'created', type: 'scheduled', id: 'sp-1', fireAt: 'x', rrule: null }
+    }
+
+    createProofPrompt(deps, makeRequest(), 'run-1', null, undefined)
+    createProofPrompt(deps, makeRequest({ variant: 'with_tool_probe' }), 'run-2', null, 'with_tool_probe')
+
+    expect(prompts[0]).toContain('do not call any tools')
+    expect(prompts[1]).not.toContain('do not call any tools')
+    expect(prompts[1]).toContain('follow the delivery brief exactly')
+  })
+
   test('the tool-probe brief instructs one failing web_fetch against the loopback probe URL', () => {
     let brief: string | undefined
     const deps = baseDeps()

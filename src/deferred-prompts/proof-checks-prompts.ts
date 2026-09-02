@@ -27,6 +27,8 @@ const FIRE_AT_LEAD_MS = 90_000
 const BUG3_FIRE_AT_LEAD_MS = 10 * MINUTE_MS
 const PROOF_PROMPT_BODY =
   'Proof-check probe: reply in one short turn and echo the marker sentence from the delivery brief verbatim; do not call any tools.'
+const PROOF_PROBE_PROMPT_BODY =
+  'Proof-check probe: reply in one short turn, follow the delivery brief exactly, and echo the marker sentence from it verbatim.'
 const PROBE_URL = 'http://127.0.0.1:9/proof-check-probe'
 const PROOF_CONDITION_NEVER_VALUE = '__proof_check_never__'
 
@@ -84,7 +86,7 @@ const buildCreateInput = (
   fireAtMs: number | null,
   timezone: string,
 ): CreateInput => {
-  const prompt = `${proofMarker(runId)} ${PROOF_PROMPT_BODY}`
+  const prompt = `${proofMarker(runId)} ${variant === 'with_tool_probe' ? PROOF_PROBE_PROMPT_BODY : PROOF_PROMPT_BODY}`
   const deliveryBrief =
     variant === 'with_tool_probe'
       ? `${proofMarkerSentence(runId)} Then call web_fetch exactly once against ${PROBE_URL} and report that the call failed.`
