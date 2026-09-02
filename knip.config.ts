@@ -100,9 +100,6 @@ export default {
     // usage-failure-queries change (openspec/changes/usage-failure-queries);
     // the follow-up dashboard/settings wiring consumes its exports.
     'src/usage/failures.ts!',
-    // Proof-check store + runner: disposable seam; runner/poller/reader consumers land in later tasks of deferred-prompt-proof-checks.
-    'src/deferred-prompts/proof-store.ts!',
-    'src/deferred-prompts/proof-checks.ts!',
     // First-party plugin entry points are loaded dynamically by the plugin
     // loader, so they have no static importer.
     'plugins/*/index.ts!',
@@ -261,8 +258,9 @@ export default {
     // (openspec/changes/usage-failure-queries) and by tests outside knip's
     // production project scope.
     'src/usage/failures.ts': ['exports'],
-    // Proof-check module exports: later-task consumers (diagnostics tools, poller record line) of
-    // deferred-prompt-proof-checks plus tests outside knip's production graph.
+    // Proof-check module exports: the later-task consumers landed (proof-check-run,
+    // proof-checks-read, poller, diagnostics); this now covers only test-only exports
+    // (resetProofChecksForTest, resetProofDeliveryRecords) and test-only consumption.
     'src/deferred-prompts/proof-*.ts': ['exports', 'types'],
     // Re-export facades whose remaining flagged bindings knip cannot trace:
     // the published plugin-types package export, declared plugin-core-separation
