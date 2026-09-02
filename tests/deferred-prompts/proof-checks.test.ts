@@ -428,6 +428,22 @@ describe('proof checks runner', () => {
     expect(PROOF_CHECKS['bug5_update_preserves_prompt']).toMatchObject({ kind: 'sync', variants: ['default'] })
   })
 
+  test('a variant outside the check def is rejected with a structured error and runs nothing', async () => {
+    expect(await runProofCheck(harness.deps, makeRequest({ variant: 'alert' }))).toEqual({
+      status: 'error',
+      error: "Variant 'alert' is not valid for bug2_context_time (expected one of: default).",
+    })
+    expect(
+      await runProofCheck(harness.deps, makeRequest({ check: 'bug4_create_response_mode', variant: 'alert' })),
+    ).toEqual({
+      status: 'error',
+      error: "Variant 'alert' is not valid for bug4_create_response_mode (expected one of: default).",
+    })
+
+    expect(harness.world.createCalls).toHaveLength(0)
+    expect(harness.records).toHaveLength(0)
+  })
+
   test('bug4 runs inline, fails without execution.mode in the create result, and cancels the proof prompt', async () => {
     const record = expectCompleted(
       await runProofCheck(harness.deps, makeRequest({ check: 'bug4_create_response_mode' })),

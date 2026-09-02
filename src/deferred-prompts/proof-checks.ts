@@ -226,6 +226,12 @@ export const runProofCheck = async (deps: ProofCheckDeps, request: ProofCheckReq
   }
   const def = PROOF_CHECKS[checkId]
   if (def === undefined) return { status: 'error', error: `Unknown proof check: ${checkId}` }
+  if (request.variant !== undefined && !def.variants.includes(request.variant)) {
+    return {
+      status: 'error',
+      error: `Variant '${request.variant}' is not valid for ${checkId} (expected one of: ${def.variants.join(', ')}).`,
+    }
+  }
   if (lockHeld) return { status: 'busy' }
   if (def.kind === 'sync') {
     return { status: 'completed', record: await runSyncCheck(deps, request, checkId) }
