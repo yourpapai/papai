@@ -90,9 +90,14 @@ function processArrowLine(
     state.pendingRedirectFor = null
     return
   }
-  const blockerId = prevLine.match(/^\s*(B\d+)\b/u)?.[1] ?? ''
-  if (blockerIds.has(blockerId)) {
-    state.answers.push({ id: blockerId, answer: payload })
+  // Blocker answers associate by membership (F-C2/D3): the candidate is the
+  // previous line's first token and `blockerIds` decides — the same
+  // membership gate boxes validate by, so a substituted row id
+  // (POLICY-INTEGRITY) acknowledges exactly like a B-prefixed one when the
+  // arrow sits beneath its id line.
+  const candidate = prevLine.match(/^\s*(\S+)/u)?.[1] ?? ''
+  if (blockerIds.has(candidate)) {
+    state.answers.push({ id: candidate, answer: payload })
     return
   }
   throw new Error(`gate response line ${lineNo}: → line with no preceding assumption or blocker`)

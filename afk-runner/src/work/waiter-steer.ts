@@ -63,6 +63,21 @@ export function translateSteer(
   return { outcome: directive, warn: null }
 }
 
+/**
+ * The consumed directive's canonical line (D2): embedded in the steer
+ * rejection's reason — the operator no longer has the file to correlate
+ * against — and digested for the response-error artifact's failed-digest
+ * guard.
+ */
+export function steerLineOf(steer: SteerLanding): string {
+  if (steer.kind === 'veto') {
+    if (steer.id === undefined) return steer.redirect === undefined ? 'veto' : `veto ${steer.redirect}`
+    return steer.redirect === undefined ? `veto ${steer.id}=` : `veto ${steer.id}=${steer.redirect}`
+  }
+  if (steer.kind === 'unknown') return steer.line
+  return steer.kind
+}
+
 export function steerAnswers(steer: SteerLanding): GateAnswers {
   if (steer.kind === 'unknown') {
     // translateSteer always warns on unknown and the waiter consumes without

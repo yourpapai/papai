@@ -164,4 +164,30 @@ describe('presentFinalGate — the tail last work act (C5 D1/D2)', () => {
     expect(fs.existsSync(path.join(fixture.runDir, 'gate-2.md'))).toBe(true)
     expect(fs.existsSync(path.join(fixture.runDir, 'gate-hashes-2.json'))).toBe(true)
   })
+
+  it('renders the substituted POLICY-INTEGRITY blocker row when the round sidecar is unparseable (F-C2/D3)', async () => {
+    // Round-close → final gate is the real corruption window (Run B pass 4):
+    // the reader degrades to empty buckets, so without the guard the ladder
+    // would insta-approve a clean-looking gate over unreadable evidence.
+    const fixture = makeFixture((runDir) => {
+      seedWalkToAtomicity(runDir)
+      const sidecarDir = path.join(runDir, 'sidecars')
+      fs.mkdirSync(sidecarDir, { recursive: true })
+      fs.writeFileSync(path.join(sidecarDir, 'resolutions-1.json'), '{not json')
+    })
+    const result = await presentFinalGate(
+      { config: CONFIG, repoRoot: fixture.runDir, changeName: 'add-thing' },
+      fixture.io,
+    )
+    expect(result.version).toBe(1)
+    const gateMd = fs.readFileSync(path.join(fixture.runDir, 'gate-1.md'), 'utf8')
+    expect(gateMd).toContain('POLICY-INTEGRITY')
+    expect(gateMd).toContain('evidence: sidecar unparseable')
+    expect(gateMd).toContain('→ <answer or OVERRIDE>')
+    const ladder = fixture.appended.find((event) => event.type === 'auto_decision')
+    expect(ladder).toMatchObject({ rule: 'none', decision: 'gate', gateVersion: 1 })
+    const snapshot = foldEvents(pipelineMachine, readEvents(path.join(fixture.runDir, 'events.ndjson'))).snapshot
+    expect(snapshot.value).toEqual({ gate: 'awaiting' })
+    expect(snapshot.context.gate).toEqual({ mode: 'final', version: 1, answered: false })
+  })
 })

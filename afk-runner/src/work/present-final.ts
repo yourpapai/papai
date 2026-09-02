@@ -15,6 +15,7 @@ import { foldEvents } from '../kernel/fold.js'
 import type { KernelContext } from '../kernel/machine.js'
 import { readChangeDigest } from './gate-digest-extract.js'
 import { writeGateFiles } from './gate-files.js'
+import { guardedReviewResult } from './gate-integrity.js'
 import { runGatePrelude } from './gate-prelude.js'
 import { readReviewResultFromSidecars } from './gate-settle.js'
 import { concernHistoryOf, findingsOf, gatherGateSignals } from './gate-signals.js'
@@ -123,7 +124,15 @@ async function finalDigestInput(
 export async function presentFinalGate(deps: PresentFinalDeps, io: WorkIO): Promise<PresentFinalResult> {
   const { runDir, logPath, sidecarDir, changeDir, version, round, emit, settled, signals, autonomy, deadlineAt } =
     await finalGateContext(deps, io)
-  const reviewResult: ReviewLoopResult = await readReviewResultFromSidecars(sidecarDir, round, 'converged')
+  // F-C2 (D3 site 1): the operator surface shows what the ladder sees — the
+  // guarded result substitutes the open POLICY-INTEGRITY BLOCKER when the
+  // sidecar cannot recompute the recorded counts, so the rendered gate
+  // carries the failure as an acknowledgeable row instead of a clean gate.
+  const reviewResult: ReviewLoopResult = await guardedReviewResult(
+    await readReviewResultFromSidecars(sidecarDir, round, 'converged'),
+    settled.perRound,
+    sidecarDir,
+  )
   await writeGateFiles(
     { emit: (): void => undefined, runDir, changeDir, driftCheck: () => Promise.resolve() },
     await finalDigestInput(deps, {

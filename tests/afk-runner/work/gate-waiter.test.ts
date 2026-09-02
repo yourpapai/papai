@@ -12,10 +12,14 @@ import { appendEvent } from '../../../afk-runner/src/events.js'
 import type { EventInput, SddEvent } from '../../../afk-runner/src/events.js'
 import { readEvents } from '../../../afk-runner/src/events.js'
 import { pipelineMachine } from '../../../afk-runner/src/graph/pipeline.js'
+import { foldEvents } from '../../../afk-runner/src/kernel/fold.js'
 import { startRun } from '../../../afk-runner/src/run.js'
 import { holderPath } from '../../../afk-runner/src/stop-controller.js'
 import { renderGateAnswers } from '../../../afk-runner/src/work/gate-answers.js'
 import { presentGate } from '../../../afk-runner/src/work/gate-files.js'
+import { guardedReviewResult } from '../../../afk-runner/src/work/gate-integrity.js'
+import { readReviewResultFromSidecars } from '../../../afk-runner/src/work/gate-settle.js'
+import { findingsOf } from '../../../afk-runner/src/work/gate-signals.js'
 import { awaitGateSettle, digestOf } from '../../../afk-runner/src/work/gate-waiter.js'
 import type { GateWaiterPorts, GateWaiterResult } from '../../../afk-runner/src/work/gate-waiter.js'
 import { readFailedDigest } from '../../../afk-runner/src/work/response-error.js'
@@ -58,7 +62,10 @@ interface WaiterHarness {
   readonly writeSteer: (content: string) => void
 }
 
-async function makeAwaitingGate(mode: 'early' | 'final' = 'early'): Promise<WaiterHarness> {
+async function makeAwaitingGate(
+  mode: 'early' | 'final' = 'early',
+  options: { readonly substituted?: boolean } = {},
+): Promise<WaiterHarness> {
   const runDir = fs.mkdtempSync(path.join(os.tmpdir(), 'afk-waiter-'))
   const changeDir = path.join(runDir, 'change')
   const sidecarDir = path.join(runDir, 'sidecars')
@@ -67,24 +74,39 @@ async function makeAwaitingGate(mode: 'early' | 'final' = 'early'): Promise<Wait
   fs.writeFileSync(path.join(changeDir, 'proposal.md'), 'hello')
   fs.writeFileSync(
     path.join(sidecarDir, 'resolutions-1.json'),
-    JSON.stringify({
-      // Dismissed stays genuinely open under the raised-vs-open split, so the
-      // presented rows and the sidecar re-read agree on F1 being a finding row.
-      resolutions: [{ id: 'F1', class: 'MATERIAL', resolution: 'dismissed', justification: 'kept as documented' }],
-      assumptions: [
-        {
-          id: 'A1',
-          text: 'guests stay read-only',
-          basis: 'code-evidence',
-          confidence: 'high',
-          blast_radius: 'group replies',
-          status: 'open',
-          evidence: { files: ['src/a.ts'] },
-        },
-      ],
-    }),
+    options.substituted === true
+      ? '{not json'
+      : JSON.stringify({
+          // Dismissed stays genuinely open under the raised-vs-open split, so the
+          // presented rows and the sidecar re-read agree on F1 being a finding row.
+          resolutions: [{ id: 'F1', class: 'MATERIAL', resolution: 'dismissed', justification: 'kept as documented' }],
+          assumptions: [
+            {
+              id: 'A1',
+              text: 'guests stay read-only',
+              basis: 'code-evidence',
+              confidence: 'high',
+              blast_radius: 'group replies',
+              status: 'open',
+              evidence: { files: ['src/a.ts'] },
+            },
+          ],
+        }),
   )
   const logPath = path.join(runDir, 'events.ndjson')
+  // the fold's perRound must carry round 1's record — the guard's input
+  const convergence: readonly EventInput[] =
+    options.substituted === true
+      ? [
+          {
+            altitude: 'L2',
+            type: 'convergence',
+            round: 1,
+            verdict: 'open',
+            counts: { blocker: 0, material: 1, nitpick: 0 },
+          },
+        ]
+      : []
   const prelude: readonly EventInput[] = [
     { altitude: 'L2', type: 'stage_enter', stage: 'intake' },
     { altitude: 'L2', type: 'stage_exit', stage: 'intake' },
@@ -92,9 +114,26 @@ async function makeAwaitingGate(mode: 'early' | 'final' = 'early'): Promise<Wait
     { altitude: 'L2', type: 'stage_exit', stage: 'draft' },
     { altitude: 'L2', type: 'stage_enter', stage: 'review' },
     { altitude: 'L2', type: 'round_open', round: 1, cap: 1 },
+    ...convergence,
     { altitude: 'L2', type: 'stage_exit', stage: 'review' },
   ]
   for (const event of prelude) appendEvent(logPath, event, new Date('2026-08-27T00:00:00.000Z'))
+  // The substituted variant renders through the guarded path the presenters
+  // use after D3: the corrupted sidecar substitutes the POLICY-INTEGRITY row.
+  const findings =
+    options.substituted === true
+      ? findingsOf(
+          await guardedReviewResult(
+            await readReviewResultFromSidecars(sidecarDir, 1, 'cap-hit'),
+            foldEvents(pipelineMachine, readEvents(logPath)).snapshot.context.perRound,
+            sidecarDir,
+          ),
+        )
+      : {
+          blockers: [] as { id: string; gap: string; evidence: string }[],
+          material: [{ id: 'F1', gap: 'F1', evidence: 'dismissed — kept as documented' }],
+          nitpicks: [] as { id: string; gap: string; evidence: string }[],
+        }
   await presentGate(
     {
       emit: (event) => {
@@ -109,12 +148,20 @@ async function makeAwaitingGate(mode: 'early' | 'final' = 'early'): Promise<Wait
       mode,
       changeName: 'add-thing',
       runId: 'run-1',
-      assumptions: [
-        { id: 'A1', text: 'guests stay read-only', blast_radius: 'group replies', evidence: { files: ['src/a.ts'] } },
-      ],
-      blockers: [],
-      openMaterial: [{ id: 'F1', gap: 'F1', evidence: 'dismissed — kept as documented' }],
-      openNitpicks: [],
+      assumptions:
+        options.substituted === true
+          ? []
+          : [
+              {
+                id: 'A1',
+                text: 'guests stay read-only',
+                blast_radius: 'group replies',
+                evidence: { files: ['src/a.ts'] },
+              },
+            ],
+      blockers: findings.blockers,
+      openMaterial: findings.material,
+      openNitpicks: findings.nitpicks,
       trajectory: [],
       capHitFired: mode === 'early',
       summary: 'add-thing',
@@ -394,6 +441,24 @@ describe('gate waiter — thrown steer settle stays contained (F-C1/D2)', () => 
     for (let i = 0; i < 3; i += 1) await releaseTick(h.clock)
     const result = await waiter
     expect(result).toEqual({ kind: 'settled', outcome: 'approve' })
+    expect(fs.existsSync(path.join(h.runDir, 'gate-1.response-error.md'))).toBe(false)
+  })
+})
+
+describe('gate waiter — end-to-end at an integrity-substituted gate (F-C2/D3)', () => {
+  it('render → operator writes → acknowledged + APPROVE (the directive trips looksAnswered) → settles approve through the seam', async () => {
+    const h = await makeAwaitingGate('early', { substituted: true })
+    const rendered = fs.readFileSync(path.join(h.runDir, 'gate-1.md'), 'utf8')
+    expect(rendered).toContain('POLICY-INTEGRITY')
+    expect(rendered).toContain('evidence: sidecar unparseable')
+    const waiter = h.start()
+    h.writeGateMd('## Gate response\n\nPOLICY-INTEGRITY POLICY-INTEGRITY\n→ acknowledged\nAPPROVE\n')
+    for (let i = 0; i < 3; i += 1) await releaseTick(h.clock)
+    const result = await waiter
+    expect(result).toEqual({ kind: 'settled', outcome: 'approve' })
+    const events = readEvents(h.logPath)
+    expect(events.at(-2)).toMatchObject({ type: 'gate', action: 'answered', outcome: 'approve' })
+    expect(events.at(-1)).toMatchObject({ type: 'stage_enter', stage: 'decompose' })
     expect(fs.existsSync(path.join(h.runDir, 'gate-1.response-error.md'))).toBe(false)
   })
 })

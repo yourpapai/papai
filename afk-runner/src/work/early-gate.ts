@@ -15,6 +15,7 @@ import { foldEvents } from '../kernel/fold.js'
 import type { KernelContext } from '../kernel/machine.js'
 import { readChangeDigest } from './gate-digest-extract.js'
 import { presentGate } from './gate-files.js'
+import { guardedReviewResult } from './gate-integrity.js'
 import { runGatePrelude } from './gate-prelude.js'
 import { concernHistoryOf, findingsOf, gatherGateSignals } from './gate-signals.js'
 import type { ReviewLoopResult } from './review-loop.js'
@@ -72,7 +73,11 @@ async function earlyDigestInput(
   signals: Awaited<ReturnType<typeof gatherGateSignals>>,
   result: ReviewLoopResult,
 ): Promise<Parameters<typeof presentGate>[1]> {
-  const findings = findingsOf(result)
+  // F-C2 (D3 site 2): the operator surface shows what the ladder sees — the
+  // same guard the prelude's signalsOf applies, so an unreadable sidecar
+  // renders the substituted POLICY-INTEGRITY row here too (double-guarding
+  // downstream is idempotent). Mode-agnostic by invariant, not window size.
+  const findings = findingsOf(await guardedReviewResult(result, settled.perRound, paths.sidecarDir))
   return {
     version,
     mode: 'early',

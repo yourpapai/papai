@@ -3,7 +3,6 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { createHash } from 'node:crypto'
 import { readFile } from 'node:fs/promises'
 import path from 'node:path'
 
@@ -13,48 +12,22 @@ import { flattenPosition } from '../drive/loop.js'
 import type { EventInput, StageId } from '../events.js'
 import { foldLogOrInitial } from '../kernel/fold.js'
 import type { KernelContext, KernelMachine } from '../kernel/machine.js'
+import type { DigestRecord } from '../legacy-fold.js'
 import { claimGateSettle, releaseGateSettle } from './gate-claims.js'
 import { processExpiry } from './gate-expiry.js'
-import { APPROVE_DIRECTIVE_RE, VETO_DIRECTIVE_RE, VETO_REDIRECT_DIRECTIVE_RE } from './gate-model.js'
 import { settleGateWithAnswers } from './gate-settle.js'
 import { expectedContentFor, settleGateFile } from './gate-settle.js'
 import type { SettleInput, SettleOutcome } from './gate-settle.js'
 import { clearResponseError, readFailedDigest, writeResponseError, writeSteerResponseError } from './response-error.js'
 import { consumeSteerFile } from './steer.js'
-import { peekSteer, steerAnswers, translateSteer } from './waiter-steer.js'
+import { digestOf, isStableEdit, looksAnswered } from './waiter-probe.js'
+import { peekSteer, steerAnswers, steerLineOf, translateSteer } from './waiter-steer.js'
 import type { SteerLanding } from './waiter-steer.js'
 export type { SteerLanding } from './waiter-steer.js'
 export { peekSteer, translateSteer } from './waiter-steer.js'
-
-export function digestOf(md: string): string {
-  return createHash('sha256').update(md).digest('hex')
-}
-
-/**
- * Hand-edit stability guard (deadline-waiter copy): a gate file settles
- * through the waiter only when its content hash is unchanged for 3
- * consecutive ticks, guarding against non-atomic editor writes and
- * two-step edits being settled mid-edit.
- */
-export function isStableEdit(digests: readonly string[]): boolean {
-  if (digests.length < 3) return false
-  const last = digests.slice(-3)
-  return last.every((digest) => digest === last[0])
-}
-
-/** Whether a polled gate file parses as human-answered: a checked box, an answer section, or a decision directive (D1). */
-export function looksAnswered(md: string): boolean {
-  return (
-    /-\s\[x\]\s*[AFT]\d+/u.test(md) ||
-    md.includes('## Gate response') ||
-    md
-      .split('\n')
-      .some(
-        (line) =>
-          APPROVE_DIRECTIVE_RE.test(line) || VETO_DIRECTIVE_RE.test(line) || VETO_REDIRECT_DIRECTIVE_RE.test(line),
-      )
-  )
-}
+// The probe grammar (digests, stability, answered-look, the production tick) lives in
+// waiter-probe.ts; re-exported so the waiter's importers are unchanged.
+export { digestOf, isStableEdit, looksAnswered, oneSecondTick } from './waiter-probe.js'
 
 export interface GateWaiterPorts {
   readonly runDir: string
@@ -126,6 +99,8 @@ interface WaiterContext {
   readonly version: number
   readonly gateMode: 'early' | 'final' | 'escalation'
   readonly round: { readonly current: number; readonly cap: number } | null
+  /** The fold's digest records — the F-C2 guard's input for settle-time expected content (D3 site 3). */
+  readonly perRound: readonly DigestRecord[]
   readonly failedStage?: StageId
 }
 
@@ -155,7 +130,16 @@ async function attemptSettleOf(
     },
     version: context.version,
     gateMode: context.gateMode,
-    expected: await expectedContentFor(ports.sidecarDir, context.round?.current ?? 1, context.gateMode),
+    // D3 site 3: settle-time expected content declares the substituted
+    // POLICY-INTEGRITY blocker the rendered gate carries — the row is
+    // acknowledgeable through the standard response grammar, never a
+    // render-only trap that rejects every answer as unknown.
+    expected: await expectedContentFor(
+      ports.sidecarDir,
+      context.round?.current ?? 1,
+      context.gateMode,
+      context.perRound,
+    ),
     round: context.round,
     ...(context.failedStage === undefined ? {} : { failedStage: context.failedStage }),
   }
@@ -189,20 +173,6 @@ async function steerTick(
   clearResponseError(ports.runDir, context.version)
   state.failedDigest = null
   return result
-}
-
-/**
- * The consumed directive's canonical line (D2): embedded in the steer
- * rejection's reason — the operator no longer has the file to correlate
- * against — and digested for the artifact's failed-digest guard.
- */
-function steerLineOf(steer: SteerLanding): string {
-  if (steer.kind === 'veto') {
-    if (steer.id === undefined) return steer.redirect === undefined ? 'veto' : `veto ${steer.redirect}`
-    return steer.redirect === undefined ? `veto ${steer.id}=` : `veto ${steer.id}=${steer.redirect}`
-  }
-  if (steer.kind === 'unknown') return steer.line
-  return steer.kind
 }
 
 /**
@@ -274,6 +244,7 @@ async function step(
     version: gate.version,
     gateMode,
     round: snapshot.context.round,
+    perRound: snapshot.context.perRound,
     ...(escalationStage === null ? {} : { failedStage: escalationStage }),
   }
 
@@ -325,11 +296,4 @@ async function settleStableFile(
   clearResponseError(ports.runDir, context.version)
   state.failedDigest = null
   return result
-}
-
-/** The production tick: one second between polls. */
-export function oneSecondTick(): Promise<void> {
-  return new Promise((resolve) => {
-    setTimeout(resolve, 1_000)
-  })
 }
