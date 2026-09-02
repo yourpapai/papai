@@ -217,6 +217,7 @@ export const runProofCheck = async (deps: ProofCheckDeps, request: ProofCheckReq
     return { status: 'error', error: 'run_proof_check requires the bound storage context and chat user ids.' }
   }
   if (request.cleanup === true) {
+    if (lockHeld) return { status: 'busy' }
     return { status: 'cleaned', cancelled: sweepProofPrompts(deps, request.storageContextId) }
   }
   const checkId = request.check

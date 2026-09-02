@@ -775,6 +775,26 @@ describe('proof checks runner', () => {
     expect(record.run_id).toBe(runId)
   })
 
+  test('cleanup is busy while an async run is in flight and its proof prompt survives the refusal', async () => {
+    const runId = await expectStarted(makeRequest())
+    await waitFor(() => harness.world.createCalls.length > 0)
+    const proofId = singleKey(harness.world.scheduled)
+
+    expect(await runProofCheck(harness.deps, makeRequest({ check: undefined, cleanup: true }))).toEqual({
+      status: 'busy',
+    })
+    expect(harness.world.cancelCalls.map((call) => call.id)).not.toContain(proofId)
+
+    const record = await drainToTimeout()
+    expect(harness.records).toHaveLength(1)
+    expect(record.run_id).toBe(runId)
+    expect(record.verdict).toBe('inconclusive')
+    expect(await runProofCheck(harness.deps, makeRequest({ check: undefined, cleanup: true }))).toEqual({
+      status: 'cleaned',
+      cancelled: [],
+    })
+  })
+
   test('bug2 fails when the last current_time anchor is stale beyond tolerance', async () => {
     const fireMs = CLOCK_BASE_MS + 5 * MINUTE_MS
     harness.world.history = historyMessages(formatCurrentTimeTag(new Date(fireMs - 10 * MINUTE_MS), 'UTC'))
