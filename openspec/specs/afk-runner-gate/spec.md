@@ -82,7 +82,17 @@ Concurrent settle attempts for one gate version SHALL be serialized by an exclus
 
 ### Requirement: Foreground waiter
 
-After a run parks gate-pending, the process SHALL remain alive in a foreground waiter polling the gate file and the steer file, when a deadline is armed or the operator ran the run interactively. A hand-edited file settles only after its content is stable across consecutive polls and parses as answered. A steer directive landing at a parked gate SHALL be translated to its answer equivalent, with extend-at-final-gate rejected as invalid. External settlement (another process answered it) SHALL exit the waiter cleanly. Calm-stop against a gate-pending run SHALL be a no-op.
+The invocation that reaches a gate-pending park SHALL determine the attach policy: `start` SHALL park and exit — reporting the parked reason, the gate file's path, and the resume command that attends — and `resume` SHALL remain alive in a foreground waiter polling the gate file and the steer file; a deadline-armed wait rides an attached waiter. A hand-edited file settles only after its content is stable across consecutive polls and parses as answered. A steer directive landing at a parked gate SHALL be translated to its answer equivalent, with extend-at-final-gate rejected as invalid. External settlement (another process answered it) SHALL exit the waiter cleanly. Calm-stop against a gate-pending run SHALL be a no-op.
+
+#### Scenario: Start parks and exits at a gate
+
+- **WHEN** a `start` invocation drives a run that presents a gate and parks gate-pending
+- **THEN** the process exits without polling, and its summary names the parked reason, the gate file's path, and the resume command
+
+#### Scenario: Resume attaches at a gate
+
+- **WHEN** a `resume` invocation finds the run parked gate-pending
+- **THEN** the process remains alive in the foreground waiter until the gate settles, exiting cleanly on external settlement
 
 #### Scenario: Stable hand-edit settles
 
