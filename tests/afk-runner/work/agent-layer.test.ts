@@ -23,6 +23,7 @@ import { INACTIVITY_TIMEOUT_MS } from '../../../afk-runner/src/config.js'
 import type { RunnerConfig } from '../../../afk-runner/src/config.js'
 import { EventInputSchema } from '../../../afk-runner/src/events.js'
 import type { EventInput } from '../../../afk-runner/src/events.js'
+import { readSessionLedger, recordSessionId, updateSessionStatus } from '../../../afk-runner/src/session-ledger.js'
 import { ResolverOutputSchema } from '../../../afk-runner/src/work/review-loop.js'
 import type { ResolverOutput } from '../../../afk-runner/src/work/review-loop.js'
 import { agentWritePath } from '../../../review-loop/src/agent-runner.js'
@@ -68,6 +69,7 @@ interface FakeSpawn {
   readonly spawn: SpawnFn
   readonly prompts: string[]
   readonly models: string[]
+  readonly argsList: string[][]
   readonly inactivity: Array<number | undefined>
   readonly calls: { count: number }
 }
@@ -82,12 +84,14 @@ function makeFakeSpawn(
 ): FakeSpawn {
   const prompts: string[] = []
   const models: string[] = []
+  const argsList: string[][] = []
   const inactivity: Array<number | undefined> = []
   const calls = { count: 0 }
   const spawn: SpawnFn = (_command, args, options, onLine) => {
     const outcome = outcomes[Math.min(calls.count, outcomes.length - 1)] ?? {}
     calls.count += 1
     prompts.push(String(args[args.length - 1]))
+    argsList.push([...args])
     const modelIndex = args.indexOf('--model')
     models.push(String(args[modelIndex + 1]))
     inactivity.push(options.inactivityTimeoutMs)
@@ -108,7 +112,7 @@ function makeFakeSpawn(
       ...outcome.result,
     })
   }
-  return { spawn, prompts, models, inactivity, calls }
+  return { spawn, prompts, models, argsList, inactivity, calls }
 }
 
 function makeGitExec(
@@ -393,6 +397,10 @@ describe('runStageAgent', () => {
     expect(retryings(emitted)).toEqual([{ reason: 'validation', attempt: 2 }])
     expect(fake.prompts[0]).not.toContain('Previous attempt failed')
     expect(fake.prompts[1]).toContain('Previous attempt failed')
+    // D3 exclusion: the intra-bracket schema-validation retry (attempt 2) is a
+    // fresh spawn — validator error appended, never a --session continuation.
+    expect(fake.argsList[0]!.includes('--session')).toBe(false)
+    expect(fake.argsList[1]!.includes('--session')).toBe(false)
   })
 
   it('halts after the second invalid sidecar instead of retrying forever', async () => {
@@ -572,6 +580,72 @@ describe('runStageAgent', () => {
     expect(fake.prompts[0]).toContain('now.')
     expect(fake.prompts[1]).toBe('Review the artifacts.')
     expect(retryings(emitted)).toEqual([{ reason: 'validation', attempt: 2 }])
+  })
+
+  describe('stage re-entry continuation seam (escalation-retry-session-continuation D1/D2)', () => {
+    const ledgerInput = { label: 'reviewer-r1', role: 'reviewer', round: 1, model: 'default-model' }
+
+    function seedKilled(dir: string, sessionId: string): void {
+      recordSessionId(dir, ledgerInput, sessionId)
+      updateSessionStatus(dir, 'reviewer-r1', 1, 'killed')
+    }
+
+    function sessionIndexOf(argv: readonly string[]): number {
+      return argv.indexOf('--session')
+    }
+
+    it('continues a killed (label, round) entry: continuation prompt, --session arg, same id on a new ledger line', async () => {
+      const dir = makeDir()
+      seedKilled(dir, 'ses-killed')
+      const sessionLine = JSON.stringify({ sessionID: 'ses-killed' })
+      const fake = makeFakeSpawn('findings-1.json', [{ write: VALID_FINDINGS, lines: [sessionLine] }])
+      const { agent } = makeAgent(dir, fake)
+      const info = await runStageAgent(agent, makeOptions(dir, 'findings-1.json'))
+      expect(info.attempts).toBe(1)
+      expect(fake.prompts[0]).toContain('Continue the interrupted task in this session.')
+      expect(fake.prompts[0]).not.toBe('Review the artifacts.')
+      const argIndex = sessionIndexOf(fake.argsList[0]!)
+      expect(argIndex).toBeGreaterThan(-1)
+      expect(fake.argsList[0]![argIndex + 1]).toBe('ses-killed')
+      // ledger honesty (D6): one new attempt line carrying the SAME opencode session id
+      const lines = readSessionLedger(dir).filter((line) => line.label === 'reviewer-r1')
+      expect(lines).toHaveLength(2)
+      expect(lines[0]).toMatchObject({ attempt: 1, opencodeSessionId: 'ses-killed', status: 'killed' })
+      expect(lines[1]).toMatchObject({ attempt: 2, opencodeSessionId: 'ses-killed', status: 'done' })
+    })
+
+    it('spawns fresh with no ledger entry — today argv, no --session', async () => {
+      const dir = makeDir()
+      const fake = makeFakeSpawn('findings-1.json', [{ write: VALID_FINDINGS }])
+      const { agent } = makeAgent(dir, fake)
+      await runStageAgent(agent, makeOptions(dir, 'findings-1.json'))
+      expect(fake.prompts[0]).toBe('Review the artifacts.')
+      expect(sessionIndexOf(fake.argsList[0]!)).toBe(-1)
+    })
+
+    it('a seam continuation failure falls back to the fresh prompt-rebuild spawn with the existing retrying event', async () => {
+      const dir = makeDir()
+      seedKilled(dir, 'ses-killed')
+      const fake = makeFakeSpawn('findings-1.json', [{ result: { exitCode: 1 } }, { write: VALID_FINDINGS }])
+      const { agent, emitted } = makeAgent(dir, fake)
+      const info = await runStageAgent(agent, makeOptions(dir, 'findings-1.json'))
+      expect(info.attempts).toBe(1)
+      expect(fake.prompts[0]).toContain('Continue the interrupted task in this session.')
+      expect(fake.prompts[1]).toBe('Review the artifacts.')
+      expect(sessionIndexOf(fake.argsList[0]!)).toBeGreaterThan(-1)
+      expect(sessionIndexOf(fake.argsList[1]!)).toBe(-1)
+      expect(retryings(emitted)).toEqual([{ reason: 'validation', attempt: 2 }])
+    })
+
+    it('a dangling spawned entry spawns fresh — crashes keep the fresh rebuild for non-review stages', async () => {
+      const dir = makeDir()
+      recordSessionId(dir, ledgerInput, 'ses-dangling')
+      const fake = makeFakeSpawn('findings-1.json', [{ write: VALID_FINDINGS }])
+      const { agent } = makeAgent(dir, fake)
+      await runStageAgent(agent, makeOptions(dir, 'findings-1.json'))
+      expect(fake.prompts[0]).toBe('Review the artifacts.')
+      expect(sessionIndexOf(fake.argsList[0]!)).toBe(-1)
+    })
   })
 
   it('forwards an L0 tool_use event to the bus when the spawned agent emits an opencode tool_use line', async () => {

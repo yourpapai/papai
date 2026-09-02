@@ -22,6 +22,8 @@ export interface FakePipeline {
   readonly spawnOrder: string[]
   /** Every spawn's full prompt, keyed by output basename (append-only audit). */
   readonly spawnPrompts: Record<string, string[]>
+  /** Every spawn's full argv, keyed by output basename (append-only audit). */
+  readonly spawnArgs: Record<string, string[][]>
   readonly stdoutLines: string[]
   readonly runDirOf: (runId: string) => string
 }
@@ -120,6 +122,7 @@ export function makeFakePipeline(options: FakePipelineOptions = {}): FakePipelin
   const workDir = path.join(repoRoot, '.sdd-runner')
   const spawnOrder: string[] = []
   const spawnPrompts: Record<string, string[]> = {}
+  const spawnArgs: Record<string, string[][]> = {}
   const stdoutLines: string[] = []
   const sequenceWrites: Record<string, number> = {}
 
@@ -160,6 +163,7 @@ export function makeFakePipeline(options: FakePipelineOptions = {}): FakePipelin
     const basename = match?.[1] ?? 'unknown.json'
     spawnOrder.push(basename)
     ;(spawnPrompts[basename] ??= []).push(prompt)
+    ;(spawnArgs[basename] ??= []).push([...args])
     const sessionId = options.sessionIdOf?.(basename)
     if (sessionId !== undefined) onLine?.(JSON.stringify({ sessionID: sessionId }))
     options.onSpawn?.(basename)
@@ -235,6 +239,7 @@ export function makeFakePipeline(options: FakePipelineOptions = {}): FakePipelin
     changeDir,
     spawnOrder,
     spawnPrompts,
+    spawnArgs,
     stdoutLines,
     runDirOf: (runId: string): string => path.join(workDir, 'runs', runId),
   }

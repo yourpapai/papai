@@ -16,6 +16,7 @@ import { pipelineMachine } from '../../../afk-runner/src/graph/pipeline.js'
 import { foldEvents } from '../../../afk-runner/src/kernel/fold.js'
 import { resumeRun } from '../../../afk-runner/src/run-resume.js'
 import { PersistedRunStateSchema } from '../../../afk-runner/src/run-state.js'
+import { recordSessionId, updateSessionStatus } from '../../../afk-runner/src/session-ledger.js'
 import { TASK_TEXT, makeFakePipeline } from '../fixtures/fake-pipeline.js'
 
 const STAMP = new Date('2026-08-29T00:00:00.000Z')
@@ -172,5 +173,62 @@ describe('W5 against a live-shaped run — the unpresented park heals on resume'
       mode: 'escalation',
       version: 1,
     })
+  })
+})
+
+describe('escalation-approve re-entry continues the killed session (escalation-retry-session-continuation D1/D2)', () => {
+  it('an approved intake escalation re-enters continuing the ledger killed session id', async () => {
+    const pipeline = makeFakePipeline()
+    const runId = 'add-thing'
+    const runDir = path.join(pipeline.deps.config.workDir, 'runs', runId)
+    fs.mkdirSync(runDir, { recursive: true })
+    fs.writeFileSync(path.join(runDir, 'task.md'), TASK_TEXT)
+    // the artifacts a mid-run crash leaves behind: the change dir intake created
+    const changeDir = path.join(pipeline.deps.config.repoRoot, 'openspec', 'changes', runId)
+    fs.mkdirSync(path.join(changeDir, 'specs'), { recursive: true })
+    fs.writeFileSync(path.join(changeDir, 'proposal.md'), '<!-- content for draft-proposal.json -->\n')
+    const logPath = path.join(runDir, 'events.ndjson')
+    const intakeFailure: EventInput = {
+      altitude: 'L2',
+      type: 'stage_failed',
+      stage: 'intake',
+      kind: 'exhausted',
+      reason: 'stage agent estimator failed validation after 2 attempts: schema invalid',
+      resumeHint: 'resume the run',
+    }
+    const answered = [
+      { altitude: 'L2', type: 'stage_enter', stage: 'intake' } as const,
+      intakeFailure,
+      intakeFailure,
+      { altitude: 'L2', type: 'gate', action: 'presented', mode: 'escalation', version: 1 } as const,
+      {
+        altitude: 'L2',
+        type: 'auto_decision',
+        rule: 'none',
+        decision: 'gate',
+        evidenceDigest: 'x',
+        gateVersion: 1,
+      } as const,
+      { altitude: 'L2', type: 'gate', action: 'answered', mode: 'escalation', version: 1, outcome: 'approve' } as const,
+    ]
+    for (const event of answered) appendEvent(logPath, event, STAMP)
+    fs.writeFileSync(
+      path.join(runDir, 'gate-1.md'),
+      '<!-- gate-1.md -->\n\n## Escalation gate — intake exhausted its retry budget — change add-thing\n\n- [ ] T1 I reviewed the failure ledger above\n',
+    )
+    // the ledger's killed in-flight estimator session the re-entry must continue
+    recordSessionId(runDir, { label: 'estimator', role: 'estimator', round: 0, model: 'test-model' }, 'ses-intake')
+    updateSessionStatus(runDir, 'estimator', 0, 'killed')
+
+    const result = await resumeRun(pipeline.deps, runId)
+    expect(result.drove).toBe(true)
+    expect(result.halted).toBe('final')
+    const depthArgs = pipeline.spawnArgs['depth.json']!
+    const depthPrompts = pipeline.spawnPrompts['depth.json']!
+    expect(depthArgs).toHaveLength(1)
+    const sessionIndex = depthArgs[0]!.indexOf('--session')
+    expect(sessionIndex).toBeGreaterThan(-1)
+    expect(depthArgs[0]![sessionIndex + 1]).toBe('ses-intake')
+    expect(depthPrompts[0]).toContain('Continue the interrupted task in this session.')
   })
 })

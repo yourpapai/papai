@@ -20,6 +20,8 @@ import {
   kernelRootHandlers,
   kernelSetup,
 } from '../../../afk-runner/src/kernel/machine.js'
+import { startRun } from '../../../afk-runner/src/run.js'
+import { TASK_TEXT, makeFakePipeline } from '../fixtures/fake-pipeline.js'
 
 function tempRunDir(): string {
   return mkdtempSync(path.join(tmpdir(), 'afk-fail-'))
@@ -127,6 +129,11 @@ function logTypes(logPath: string): string[] {
 
 const HALT = new StageHaltError('review round 1 failed after 2 attempts: schema invalid', 'resume the run', 'exhausted')
 
+/** A session-id seam reporting one id for exactly the given output basename. */
+function sessionOnlyFor(basename: string, sessionId: string): (candidate: string) => string | undefined {
+  return (candidate) => (candidate === basename ? sessionId : undefined)
+}
+
 describe('drive loop — classified failures are declared run facts (C6 D2/D3)', () => {
   it('catches a StageHaltError: appends stage_failed, skips the exit append, re-runs the bracket, completes', async () => {
     const runDir = tempRunDir()
@@ -208,5 +215,46 @@ describe('drive loop — classified failures are declared run facts (C6 D2/D3)',
     const result = await drive({ machine: stubMachine(), logPath }, workOf(failingThenConvergingWork([precondition])))
     expect(result.parked).toBe('gate-pending')
     expect(readEvents(logPath).filter((event) => event.type === 'stage_failed')).toHaveLength(1)
+  })
+})
+
+describe('drive loop — stage re-entry continues the killed session (escalation-retry-session-continuation D1)', () => {
+  it('an under-budget re-run of a non-review stage re-spawns continuing the killed session id', async () => {
+    const validDepth = JSON.stringify({
+      implicated_files: ['src/thing.ts'],
+      signals: {
+        cross_module: false,
+        db_migration: false,
+        provider_surface: false,
+        credentials: false,
+        novelty: 'existing-modules',
+      },
+      rationale: 'one module',
+    })
+    // two invalid estimator sidecars exhaust the validation attempts (the
+    // killed ledger session), the re-entry's continuation reads the valid one
+    const pipeline = makeFakePipeline({
+      sidecarSequences: { 'depth.json': ['{}', '{}', validDepth] },
+      sessionIdOf: sessionOnlyFor('depth.json', 'ses-intake'),
+    })
+    const result = await startRun(pipeline.deps, { taskText: TASK_TEXT })
+    expect(result.halted).toBe('final')
+    const logPath = path.join(pipeline.runDirOf(result.runId), 'events.ndjson')
+    const failures = readEvents(logPath).filter((event: SddEvent) => event.type === 'stage_failed')
+    expect(failures).toHaveLength(1)
+    expect(failures[0]).toMatchObject({ stage: 'intake', kind: 'exhausted' })
+    const depthArgs = pipeline.spawnArgs['depth.json']!
+    const depthPrompts = pipeline.spawnPrompts['depth.json']!
+    expect(depthArgs).toHaveLength(3)
+    // the first bracket's two attempts are fresh — including the intra-bracket
+    // validation retry (D3), which appends the error and never continues
+    expect(depthArgs[0]!.includes('--session')).toBe(false)
+    expect(depthArgs[1]!.includes('--session')).toBe(false)
+    expect(depthPrompts[1]).toContain('Previous attempt failed')
+    // the under-budget re-entry continues the killed session
+    const sessionIndex = depthArgs[2]!.indexOf('--session')
+    expect(sessionIndex).toBeGreaterThan(-1)
+    expect(depthArgs[2]![sessionIndex + 1]).toBe('ses-intake')
+    expect(depthPrompts[2]).toContain('Continue the interrupted task in this session.')
   })
 })

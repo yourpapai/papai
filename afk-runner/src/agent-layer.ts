@@ -16,7 +16,13 @@ import { createAgentReporter } from './agent-reporter.js'
 import { INACTIVITY_TIMEOUT_MS, WALL_CLOCK_TIMEOUT_MS, modelFor } from './config.js'
 import type { AgentRole, ExecGitFn, RunnerConfig } from './config.js'
 import type { EventInput } from './events.js'
-import { nextSessionAttempt, recordSessionId, settleSessionAttempt, transcriptPathFor } from './session-ledger.js'
+import {
+  nextSessionAttempt,
+  findKilledSession,
+  recordSessionId,
+  settleSessionAttempt,
+  transcriptPathFor,
+} from './session-ledger.js'
 
 export interface AgentLayerDeps {
   readonly spawn: SpawnFn
@@ -42,6 +48,11 @@ export interface RunStageAgentOptions<T> {
    * Resume continuation (D2): continue this opencode session at its exact
    * prior context instead of a fresh prompt-rebuild spawn. Any continuation
    * failure falls back to the prompt-rebuild spawn.
+   *
+   * Also the seam's output (escalation-retry-session-continuation D1): when
+   * undefined, `runStageAgent` consults the session ledger for the latest
+   * id-bearing `killed` entry of this (label, round) and continues it —
+   * precedence explicit id > seam lookup > fresh.
    */
   readonly continueSessionId?: string
 }
@@ -244,11 +255,18 @@ export async function runStageAgent<T>(
   options: RunStageAgentOptions<T>,
 ): Promise<AgentRunInfo<T>> {
   const before = await snapshotWorkingTree(deps.execGit, options.cwd)
-  if (options.continueSessionId !== undefined) {
+  // D1 precedence: explicit continueSessionId > seam lookup > fresh. The
+  // seam consults the ledger's latest id-bearing `killed` entry — the
+  // process-agnostic boundary (D2): in-process failures settle killed
+  // (continue); a true crash dangles spawned and stays fresh outside review.
+  const seam =
+    options.continueSessionId === undefined ? findKilledSession(options.runDir, options.label, options.round) : null
+  const continueSessionId = options.continueSessionId ?? seam?.opencodeSessionId ?? undefined
+  if (continueSessionId !== undefined) {
     // D2: any continuation failure (session pruned, provider error, invalid
     // sidecar) falls back to the prompt-rebuild spawn — never worse than today.
     const continued = await attemptStageAgent(deps, options, 1, null, before, {
-      sessionId: options.continueSessionId,
+      sessionId: continueSessionId,
     }).catch(() => null)
     if (continued !== null) return continued
     deps.emit({
