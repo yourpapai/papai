@@ -325,3 +325,7 @@ intake scaffold-skip re-entered the existing change folder each time).
 ### Harvest record (task 5.2)
 
 Both C8 lanes copied and the extended oracle green (9/9): `event-driven-suggestion-payloads-live` (Run A, 793 events) and `killed-turn-usage-undercount-live` (Run B pass 4, 424 events); lane README updated. Secret scan: the only sk-/key-shaped strings in Run A's log are filename fragments (`task-` substrings of `suggest-next-task-ranking.ts` etc.); Run B clean. Pass 1-3 logs and the scratch stay workdir-resident (analyze reads them there).
+
+### Corpus report (task 6.1)
+
+`corpus-report.json` saved in this folder — `analyze` over the three workdirs + the live lane dir, all 7 runs (outage attempt `failed`, Run A, Run B passes 1-4, Scratch C) era-current and aggregated (era-contaminated: none; the consistency-signature era flag found no contamination in any C8 log — see the D8 correction in the lane oracle). Metrics report known / unknown-with-reason with no errors (e.g. Run A r2: "no cap-hit convergence pairs"; usage costKnown false everywhere after the model switch — the free-tier shape). Ground-truth join reads 0 committed changes (all produced changes are uncommitted in their target worktrees — the honest not-on-a-ref reading). **Read-only contract confirmed**: shasum over every file in all three workdirs before/after the analyze invocation — byte-identical (204 files).
