@@ -3,6 +3,8 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
+import type { ModelMessage } from 'ai'
+
 /**
  * Format a system-provided current-time tag prepended to live user turns.
  *
@@ -12,6 +14,25 @@
  */
 export const formatCurrentTimeTag = (date: Date, timezone: string): string => {
   return `<current_time>${formatLocalDateTime(date, timezone)}</current_time>`
+}
+
+const CURRENT_TIME_TAG_RE = /<current_time>([^<]*)<\/current_time>/gu
+
+/**
+ * Last `<current_time>` tag captured across the string contents of a message
+ * list — the freshest time anchor the model's context carried. Non-string
+ * content (attachment parts) carries no tag and is skipped.
+ */
+export const lastCurrentTimeTag = (messages: readonly ModelMessage[]): string | null => {
+  let last: string | null = null
+  for (const message of messages) {
+    if (typeof message.content !== 'string') continue
+    for (const match of message.content.matchAll(CURRENT_TIME_TAG_RE)) {
+      const captured = match[1]
+      if (captured !== undefined && captured.trim() !== '') last = captured
+    }
+  }
+  return last
 }
 
 const formatLocalDateTime = (date: Date, timezone: string): string => {

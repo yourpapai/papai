@@ -8,6 +8,7 @@ import type { ModelMessage, ToolSet } from 'ai'
 import { emitUser } from './debug/event-bus.js'
 import { buildStepsDetail } from './llm-orchestrator-steps.js'
 import { logger } from './logger.js'
+import { lastCurrentTimeTag } from './utils/current-time-format.js'
 
 const log = logger.child({ scope: 'llm-orchestrator-events' })
 
@@ -173,6 +174,7 @@ export function emitLlmEnd(
       ...buildToolTelemetry(tools),
       generatedText: result.text,
       stepsDetail: buildStepsDetail(result.steps),
+      currentTimeTag: lastCurrentTimeTag(messages) ?? undefined,
       ...attemptAnalyticsData(analytics),
       ...(analytics === undefined ? {} : { timeToFirstTokenMs: analytics.timeToFirstTokenMs }),
     },

@@ -207,6 +207,48 @@ describe('ReviewLoopConfigSchema', () => {
   })
 })
 
+/**
+ * The per-role effort tier (design D4, D5).
+ *
+ * The tier rides each role's agent block beside `model` and is validated by a
+ * Zod refinement duplicating the pipeline-side shape check — lowercase, at most
+ * 16 characters, `^[a-z][a-z0-9-]*$` — across the documented workspace
+ * boundary: the workspaces do not compile against each other, so the check is
+ * duplicated rather than imported and the doctrine test pins the two equal. A
+ * malformed tier refuses at config load, before any subprocess starts.
+ */
+describe('the per-role effort tier', () => {
+  test('a well-shaped tier parses and rides the role config', () => {
+    const parsed = ReviewLoopConfigSchema.parse({
+      workDir: '.review-loop',
+      reviewer: { model: 'm1', effort: 'high' },
+      fixer: { model: 'm2', effort: 'low' },
+      matcher: { model: 'm3' },
+    })
+
+    expect(parsed.reviewer.effort).toBe('high')
+    expect(parsed.fixer.effort).toBe('low')
+    // A role that names no tier has none — never a defaulted one.
+    expect(parsed.matcher.effort).toBeUndefined()
+  })
+
+  test.each([
+    ['whitespace inside', 'very high'],
+    ['uppercase', 'HIGH'],
+    ['a slash', 'openai/high'],
+    ['over-length', 'a'.repeat(17)],
+  ])('a role effort that is %s is refused, naming the field', (_case, value) => {
+    expect(() =>
+      ReviewLoopConfigSchema.parse({
+        workDir: '.review-loop',
+        reviewer: { model: 'm1', effort: value },
+        fixer: { model: 'm2' },
+        matcher: { model: 'm3' },
+      }),
+    ).toThrow(/effort/u)
+  })
+})
+
 function writeConfig(dir: string, config: Record<string, unknown>): string {
   const configPath = path.join(dir, 'config.json')
   writeFileSync(configPath, JSON.stringify(config))

@@ -41,6 +41,8 @@ export interface RunInspectorDeps {
   logPath: string
   reporter: ProgressReporter
   model: string
+  /** The role's reasoning-effort tier (D4); absent is no `--effort` (D6). */
+  effort?: string
   extraArgs: readonly string[]
   backend?: AgentBackend
   claude?: ClaudeRunContext
@@ -73,6 +75,7 @@ export async function runInspector(
   const result = await runAgent({
     spawn: deps.spawn,
     model: deps.model,
+    effort: deps.effort,
     backend: deps.backend,
     claude: deps.claude,
     cwd: deps.cwd,
@@ -115,6 +118,7 @@ export async function runInspectorOrTreatAsRejection(
         logPath: deps.runState.logPath,
         reporter: deps.log,
         model: inspectorConfig.model,
+        effort: inspectorConfig.effort,
         extraArgs: inspectorConfig.extraArgs,
         backend: deps.config.backend,
         claude: deps.config.claude,
@@ -150,6 +154,8 @@ export interface AggregatedInspectorDeps {
   logPath: string
   reporter: ProgressReporter
   model: string
+  /** The role's reasoning-effort tier (D4); absent is no `--effort` (D6). */
+  effort?: string
   extraArgs: readonly string[]
   backend?: AgentBackend
   claude?: ClaudeRunContext
@@ -168,6 +174,7 @@ export async function runAggregatedInspector(
   const result = await runAgent({
     spawn: deps.spawn,
     model: deps.model,
+    effort: deps.effort,
     backend: deps.backend,
     claude: deps.claude,
     cwd: deps.cwd,
@@ -208,11 +215,49 @@ function buildAggregatedInspectorUnavailable(
   }
 }
 
+/** The aggregated inspector's `runAgent` deps, assembled from the resolved role config (design D4). */
+function aggregatedInspectorDeps(
+  deps: {
+    spawn: SpawnFn
+    log: ProgressReporter
+    config: {
+      inspector?: { model: string; effort?: string; extraArgs: readonly string[]; timeoutMs?: number }
+      fixer: { model: string; effort?: string; extraArgs: readonly string[]; timeoutMs?: number }
+      agentTimeoutMs: number
+      backend?: AgentBackend
+      claude?: ClaudeRunContext
+    }
+  },
+  cfg: { model: string; effort?: string; extraArgs: readonly string[]; timeoutMs?: number },
+  worktreePath: string,
+  issues: readonly { id: string; issue: ReviewerIssue }[],
+  baselineSha: string,
+  runDir: string,
+  logPath: string,
+): AggregatedInspectorDeps {
+  return {
+    spawn: deps.spawn,
+    cwd: worktreePath,
+    issues,
+    baselineSha,
+    outputPath: workerOutputPath(runDir, undefined, 'inspect-aggregated.json'),
+    logPath,
+    reporter: deps.log,
+    model: cfg.model,
+    effort: cfg.effort,
+    extraArgs: cfg.extraArgs,
+    backend: deps.config.backend,
+    claude: deps.config.claude,
+    timeoutMs: cfg.timeoutMs ?? deps.config.agentTimeoutMs,
+    label: 'inspector-aggregated',
+  }
+}
+
 export async function runAggregatedInspectorOrTreatAsRejection(
   deps: {
     config: {
-      inspector?: { model: string; extraArgs: readonly string[]; timeoutMs?: number }
-      fixer: { model: string; extraArgs: readonly string[]; timeoutMs?: number }
+      inspector?: { model: string; effort?: string; extraArgs: readonly string[]; timeoutMs?: number }
+      fixer: { model: string; effort?: string; extraArgs: readonly string[]; timeoutMs?: number }
       agentTimeoutMs: number
       backend?: AgentBackend
       claude?: ClaudeRunContext
@@ -235,21 +280,7 @@ export async function runAggregatedInspectorOrTreatAsRejection(
   const cfg = deps.config.inspector ?? deps.config.fixer
   try {
     return await runAggregatedInspector(
-      {
-        spawn: deps.spawn,
-        cwd: worktreePath,
-        issues,
-        baselineSha,
-        outputPath: workerOutputPath(runDir, undefined, 'inspect-aggregated.json'),
-        logPath,
-        reporter: deps.log,
-        model: cfg.model,
-        extraArgs: cfg.extraArgs,
-        backend: deps.config.backend,
-        claude: deps.config.claude,
-        timeoutMs: cfg.timeoutMs ?? deps.config.agentTimeoutMs,
-        label: 'inspector-aggregated',
-      },
+      aggregatedInspectorDeps(deps, cfg, worktreePath, issues, baselineSha, runDir, logPath),
       round,
       deps.trace,
       collector,

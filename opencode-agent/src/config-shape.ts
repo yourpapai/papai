@@ -44,6 +44,20 @@ export interface PipelineConfig {
    */
   claudeCredential: ClaudeCredential | null
   /**
+   * `AGENT_CLAUDE_ENV`, parsed — the claude route's operator-chosen child
+   * environment, or `null` when unset or blank (the house absence shape).
+   *
+   * Carried here and **not** on `OpenAiSettings` (design D2 of
+   * `claude-route-custom-env`): the knob is claude-route-only, and a field on
+   * the settings object is one spread away from `OPENCODE_CONFIG_CONTENT` and
+   * the review-loop subprocesses, which the spec forbids. Parsed at load on
+   * both routes regardless — a malformed document fails startup whichever
+   * backend the job selected, so an operator flipping `AGENT_BACKEND` later
+   * cannot inherit a document that was never validated — while the entries are
+   * *applied* only on the claude route.
+   */
+  claudeEnv: Record<string, string> | null
+  /**
    * `AGENT_SELF_LOGIN`, or `null` to derive it from the token.
    *
    * Not defaulted to the owner here: that default was indistinguishable from a

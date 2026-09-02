@@ -476,4 +476,43 @@ describe('issue-inspector backend threading', () => {
     expect(result.results[0]?.addresses).toBe(true)
     expect(commands[0]).toBe('claude')
   })
+
+  test('the inspector effort rides the spawn as --effort after --model (D4, D6)', async () => {
+    const repoRoot = makeTempDir('inspector-effort-')
+    const context = claudeRunContext()
+    const config = createReviewLoopConfigFixture(repoRoot, { backend: 'claude', claude: context })
+    const runState = await createRunState(config, path.join(repoRoot, 'plan.md'))
+    await setupRepo(runState.worktreePath)
+    const { logger } = createCapturingTraceLogger()
+    const { spawn, args } = claudeRecordingSpawn(
+      claudeScratchResponder(() => ({ addresses: true, reasoning: 'ok', confidence: 0.9 })),
+    )
+
+    // The deps are deliberately built unannotated — a structural superset —
+    // so this assertion states the spawn contract directly rather than
+    // through the deps interface.
+    const deps = {
+      spawn,
+      cwd: runState.worktreePath,
+      issue,
+      baselineSha: 'HEAD',
+      fixerReasoning: 'mock reasoning',
+      outputPath: path.join(runState.runDir, 'inspect.json'),
+      logPath: runState.logPath,
+      reporter: silentReporter(),
+      model: 'm',
+      extraArgs: [],
+      label: 'inspector-w1',
+      backend: 'claude' as const,
+      claude: context,
+      effort: 'high',
+    }
+
+    const result = await runInspector(deps, 1, 'rec-effort', logger)
+
+    expect(result.addresses).toBe(true)
+    const argv = args[0]!
+    const model = argv.indexOf('--model')
+    expect(argv.slice(model + 2, model + 4)).toEqual(['--effort', 'high'])
+  })
 })

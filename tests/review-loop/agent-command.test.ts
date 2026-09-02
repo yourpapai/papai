@@ -5,7 +5,12 @@
 
 import { describe, expect, test } from 'bun:test'
 
-import { AgentCommandError, buildAgentCommand, type ClaudeSpawnContext } from '../../review-loop/src/agent-command.js'
+import {
+  AgentCommandError,
+  buildAgentCommand,
+  type AgentCommandOptions,
+  type ClaudeSpawnContext,
+} from '../../review-loop/src/agent-command.js'
 import { ALLOWLISTS, analysisAllowlist } from '../../review-loop/src/claude-argv.js'
 
 const CWD = '/repo/.review-loop/worktrees/42'
@@ -291,6 +296,75 @@ describe('buildAgentCommand (continuation id mapping — escalation-retry-sessio
       claude: claudeContext(),
     })
     expect(command.args.includes('--resume')).toBe(false)
+  })
+})
+
+/**
+ * The effort tier on the loop's role subprocesses (design D4, D6).
+ *
+ * The tier rides the per-role options beside `model` — the same kind of fact —
+ * and the claude branch composes it immediately after `--model`, the position
+ * the doctrine test's tail pin looks for. The opencode branch ignores it: on
+ * that route the tier reaches the worker as `agent.build.variant` inside
+ * `OPENCODE_CONFIG_CONTENT`, and an argv flag would be a second source of
+ * truth for the same setting.
+ */
+describe('buildAgentCommand (the effort tier)', () => {
+  const tail = ['-p', '--output-format', 'stream-json', '--verbose', '--permission-mode', 'default']
+
+  /** The claude-branch options, with the optional tier spread in only when named. */
+  const claudeOptions = (effort?: string): AgentCommandOptions => ({
+    backend: 'claude',
+    model: 'opencode/claude-sonnet-4-6',
+    cwd: CWD,
+    prompt: 'p',
+    extraArgs: [],
+    label: 'reviewer',
+    claude: claudeContext(),
+    ...(effort === undefined ? {} : { effort }),
+  })
+
+  /** The opencode-branch options, with the optional tier spread in only when named. */
+  const opencodeOptions = (effort?: string): AgentCommandOptions => ({
+    backend: 'opencode',
+    model: 'm',
+    cwd: CWD,
+    prompt: 'p',
+    extraArgs: [],
+    label: 'reviewer',
+    ...(effort === undefined ? {} : { effort }),
+  })
+
+  test('the claude branch emits --effort adjacent to --model when a tier is set (D6)', () => {
+    const command = buildAgentCommand(claudeOptions('high'))
+
+    expect(command.args).toEqual([
+      '--bare',
+      ...tail,
+      '--allowedTools',
+      analysisAllowlist(CWD),
+      '--model',
+      'claude-sonnet-4-6',
+      '--effort',
+      'high',
+    ])
+  })
+
+  test('an absent tier composes no --effort — the claude argv is byte-identical to today’s', () => {
+    const command = buildAgentCommand(claudeOptions())
+
+    expect(command.args).toEqual([
+      '--bare',
+      ...tail,
+      '--allowedTools',
+      analysisAllowlist(CWD),
+      '--model',
+      'claude-sonnet-4-6',
+    ])
+  })
+
+  test('the opencode branch ignores the tier — byte-identical argv either way (D6)', () => {
+    expect(buildAgentCommand(opencodeOptions('high'))).toEqual(buildAgentCommand(opencodeOptions()))
   })
 })
 

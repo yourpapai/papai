@@ -145,4 +145,50 @@ describe('runFixerRaw backend threading', () => {
     expect(result.value.fixed).toBe(true)
     expect(commands[0]).toBe('claude')
   })
+
+  test('the fixer role effort rides the spawn as --effort after --model (D4, D6)', async () => {
+    const repoRoot = makeTempDir('fixer-effort-')
+    const context = claudeRunContext()
+    const config = createReviewLoopConfigFixture(repoRoot, {
+      backend: 'claude',
+      claude: context,
+      fixer: { model: 'opencode/claude-sonnet-4-6', extraArgs: [], effort: 'medium' },
+    })
+    const runState = await createRunState(config, path.join(repoRoot, 'plan.md'))
+    const ledger = await createIssueLedger(runState.runDir)
+    const { logger } = createCapturingTraceLogger()
+    const { spawn, args } = claudeRecordingSpawn(
+      claudeScratchResponder(() => ({
+        verdict: 'valid',
+        fixability: 'auto',
+        reasoning: 'r',
+        targetFiles: [],
+        fixed: true,
+      })),
+    )
+    const { pool, workers } = fakePool({ size: 1, worktreePaths: [runState.worktreePath] })
+    const worker = workers[0]!
+
+    const prompt = `Fix the issue. Write your result as JSON to: ${path.join(runState.worktreePath, '.review-loop', 'result.json')}`
+
+    await runFixerRaw(
+      {
+        config,
+        runState,
+        ledger,
+        spawn,
+        exec: () => Promise.resolve({ exitCode: 0, stdout: '', stderr: '' }),
+        log: silentReporter(),
+        trace: logger,
+        pool,
+      },
+      worker,
+      prompt,
+      'fixer-w1',
+    )
+
+    const argv = args[0]!
+    const model = argv.indexOf('--model')
+    expect(argv.slice(model + 2, model + 4)).toEqual(['--effort', 'medium'])
+  })
 })

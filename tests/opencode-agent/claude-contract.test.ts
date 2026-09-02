@@ -85,6 +85,7 @@ const KNOBS: ClaudeModelKnobs = {
   model: 'claude-sonnet-5',
   lightModel: null,
   planEffort: null,
+  proposeEffort: null,
   buildEffort: null,
 }
 
@@ -113,7 +114,7 @@ describe('decodeClaudeLine (recorded and documented shapes)', () => {
     const result = resultOf('auth-error-turn.ndjson')
     expect(result.isError).toBe(true)
     expect(result.text).toContain('Not logged in')
-    expect(result.usage).toEqual({ input: 0, output: 0, cacheWrite: 0, cacheRead: 0 })
+    expect(result.usage).toEqual({ input: 0, output: 0, cacheWrite: 0, cacheRead: 0, total: 0 })
     expect(result.costUsd).toBe(0)
     expect(result.sessionId).toBe(initSessionIdOf('auth-error-turn.ndjson'))
   })
@@ -137,12 +138,93 @@ describe('decodeClaudeLine (recorded and documented shapes)', () => {
     expect(result.isError).toBe(false)
     expect(result.text).toContain('papai')
     expect(result.sessionId).toBe('0d9f2a55-7b3a-4c1e-9f0a-2f7c8d11ab02')
-    // The four buckets the CLI reported and nothing derived: what the ceiling
-    // counts is decided on the seam, not by a `total` field here whose name
-    // promises every bucket and would go on inviting cache reads back in.
-    expect(result.usage).toEqual({ input: 1052, output: 60, cacheWrite: 0, cacheRead: 0 })
+    // The four buckets the CLI reported plus their sum, `total` — an account
+    // of the reading, never a budget input: what the ceiling counts is
+    // decided on the seam, which leaves the cache reads out.
+    expect(result.usage).toEqual({ input: 1052, output: 60, cacheWrite: 0, cacheRead: 0, total: 1112 })
     // Decoded, and never read as a budget — asserted by the adapter's tests.
     expect(result.costUsd).toBe(0.0123)
+  })
+
+  test('decodes the native success corpus: the result line reads the complete two-model figure', () => {
+    const result = resultOf('native-success-turn.ndjson')
+
+    expect(result.isError).toBe(false)
+
+    // Designs D2/D3: the CLI's top-level `usage` names the main model only —
+    // its four buckets sum to 89624 — while `modelUsage` carries the side
+    // model's marginal 923 tokens (912 in / 11 out). The published buckets are
+    // the per-bucket maximum of the top-level reading and the decoded split
+    // (here exactly the split's sums), and `total` is those buckets summed:
+    // input 4 + 912, output 155 + 11, cacheWrite 28005 + 0, cacheRead 61460 + 0.
+    expect(result.usage).toEqual({
+      input: 916,
+      output: 166,
+      cacheWrite: 28005,
+      cacheRead: 61460,
+      total: 90547,
+    })
+  })
+
+  test('decodes the native success corpus: the result line publishes the models split', () => {
+    const result = resultOf('native-success-turn.ndjson')
+
+    // Read by name rather than off the typed line — the split is the decoder
+    // step's field to publish (change task 1.4), so today it exists on no type
+    // this file imports. Every model the backend billed, keyed by the CLI's
+    // own model id; the side model is visible nowhere else on the line, and
+    // its recorded cost rides along as the top-level `costUsd` does — never a
+    // budget input.
+    expect(result).toHaveProperty('models', {
+      'claude-sonnet-5': {
+        input: 4,
+        output: 155,
+        cacheWrite: 28005,
+        cacheRead: 61460,
+        costUsd: 0.12586999999999998,
+      },
+      'claude-haiku-4-5-20251001': {
+        input: 912,
+        output: 11,
+        cacheWrite: 0,
+        cacheRead: 0,
+        costUsd: 0.0009670000000000001,
+      },
+    })
+  })
+
+  test('the single-model corpus: the split agrees with the top-level reading, so no total moves', () => {
+    // The older recordings carry one modelUsage entry apiece, reading exactly
+    // what the top-level `usage` reads — the per-bucket maximum is the
+    // top-level figure, and today's totals survive the models split verbatim.
+    // Those entries predate `costUSD`, so no per-model cost is published: an
+    // absent field stays absent.
+    const success = resultOf('success-turn.ndjson')
+    expect(success.usage.total).toBe(1112)
+    expect(success).toHaveProperty('models', {
+      'claude-sonnet-5': { input: 1052, output: 60, cacheWrite: 0, cacheRead: 0 },
+    })
+
+    const resume = resultOf('resume-turn.ndjson')
+    expect(resume.usage.total).toBe(2290)
+    expect(resume).toHaveProperty('models', {
+      'claude-sonnet-5': { input: 1210, output: 28, cacheWrite: 0, cacheRead: 1052 },
+    })
+  })
+
+  test('the auth corpus: an empty modelUsage publishes an empty split and keeps today’s total', () => {
+    // Both auth failures bill no model — `modelUsage: {}` — and the split says
+    // so without inventing a figure: the maximum of the top-level reading and
+    // an empty record is the top-level reading.
+    const auth = resultOf('auth-error-turn.ndjson')
+    expect(auth.isError).toBe(true)
+    expect(auth.usage.total).toBe(0)
+    expect(auth).toHaveProperty('models', {})
+
+    const native = resultOf('native-auth-error.ndjson')
+    expect(native.isError).toBe(true)
+    expect(native.usage.total).toBe(0)
+    expect(native).toHaveProperty('models', {})
   })
 
   test('decodes the adversarial plan fixture: the Bash call comes back refused, not run', () => {
@@ -162,7 +244,7 @@ describe('decodeClaudeLine (recorded and documented shapes)', () => {
     expect(result.sessionId).toBe('5e1c7d33-2a44-4b5e-8c6a-7d3e9f20bc31')
     // A resumed turn re-reads the whole prior conversation out of cache; the
     // decoder reports that read, and the ceiling declines to charge for it.
-    expect(result.usage).toEqual({ input: 1210, output: 28, cacheWrite: 0, cacheRead: 1052 })
+    expect(result.usage).toEqual({ input: 1210, output: 28, cacheWrite: 0, cacheRead: 1052, total: 2290 })
   })
 
   test('the init line carries the credential source as an optional fact — recorded as "none" on the env-less route', () => {
@@ -205,6 +287,127 @@ describe('decodeClaudeLine (recorded and documented shapes)', () => {
     ]
 
     for (const stranger of strangers) expect(decodeClaudeLine(stranger)).toBeNull()
+  })
+})
+
+describe('the modelUsage tolerance (design D3 of the run-accounting change)', () => {
+  /**
+   * A hand-built result line shaped like the native recording's, so every
+   * tolerance case below starts from a line that decodes cleanly — the cases
+   * bend only the `modelUsage` record, never the fields the adapter ends a
+   * turn on.
+   */
+  const RESULT_LINE = {
+    type: 'result',
+    is_error: false,
+    result: 'the answer',
+    session_id: 'session-1',
+    usage: {
+      input_tokens: 4,
+      output_tokens: 155,
+      cache_creation_input_tokens: 28005,
+      cache_read_input_tokens: 61460,
+    },
+    total_cost_usd: 0.126837,
+  }
+
+  test('an entry with a renamed or absent token field degrades that entry only', () => {
+    // Three entries, two bent differently — one field renamed, one absent —
+    // and the well-formed one between them.
+    const line = decodeClaudeLine({
+      ...RESULT_LINE,
+      modelUsage: {
+        'claude-sonnet-5': {
+          inputTokens: 4,
+          outputTokens: 155,
+          cacheCreationInputTokens: 28005,
+          cacheReadInputTokens: 61460,
+          costUSD: 0.12587,
+        },
+        'claude-haiku-4-5-20251001': {
+          inputToken: 912,
+          outputTokens: 11,
+          cacheCreationInputTokens: 0,
+          cacheReadInputTokens: 0,
+        },
+        'claude-opus-4-6': { inputTokens: 50, cacheCreationInputTokens: 0, cacheReadInputTokens: 0 },
+      },
+    })
+
+    // The line still decodes, keeping the text, session id and error flag the
+    // adapter reads to end a turn.
+    expect(line).toMatchObject({ kind: 'result', isError: false, text: 'the answer', sessionId: 'session-1' })
+
+    // Of the three entries, only the well-formed one is published.
+    expect(line).toHaveProperty('models', {
+      'claude-sonnet-5': { input: 4, output: 155, cacheWrite: 28005, cacheRead: 61460, costUsd: 0.12587 },
+    })
+  })
+
+  test('a record whose every entry is bent publishes no split, not an empty one', () => {
+    // Every entry failing the entry schema leaves its key in the record with
+    // an `undefined` value — the debris of a bent one. Reading that as the
+    // empty split would state the empty record's falsehood ("billed no
+    // model") over what is shape drift, the same conflation the session-tree
+    // twin stopped reporting as an empty tree; the split is omitted instead,
+    // and the top-level usage still carries the figure.
+    const line = decodeClaudeLine({
+      ...RESULT_LINE,
+      modelUsage: {
+        'claude-sonnet-5': {
+          inputToken: 4,
+          outputTokens: 155,
+          cacheCreationInputTokens: 28005,
+          cacheReadInputTokens: 61460,
+        },
+        'claude-haiku-4-5-20251001': 'not an entry',
+      },
+    })
+
+    expect(line).toMatchObject({ kind: 'result', isError: false, text: 'the answer', sessionId: 'session-1' })
+    expect(line).not.toHaveProperty('models')
+    expect(line).toHaveProperty('usage', { input: 4, output: 155, cacheWrite: 28005, cacheRead: 61460, total: 89624 })
+  })
+
+  test('a modelUsage that is not an object degrades the whole split, never the line', () => {
+    // This pin predates the split and must survive it: the regression the
+    // schema work could introduce is a modelUsage shape failing the line the
+    // adapter needs, so the guard holds before and after the change on purpose.
+    const line = decodeClaudeLine({ ...RESULT_LINE, modelUsage: 'not an object' })
+
+    expect(line).toMatchObject({ kind: 'result', isError: false, text: 'the answer', sessionId: 'session-1' })
+    expect(line).not.toHaveProperty('models')
+  })
+
+  test('a partial split below the top-level usage still publishes the top-level figure', () => {
+    // The maximum is per bucket, and `total` is those published buckets
+    // summed: a split that bills less than the top-level reading can never
+    // drag the published figure below it — a plain fold would report 765.
+    const line = decodeClaudeLine({
+      ...RESULT_LINE,
+      usage: {
+        input_tokens: 100,
+        output_tokens: 50,
+        cache_creation_input_tokens: 200,
+        cache_read_input_tokens: 400,
+      },
+      modelUsage: {
+        'claude-haiku-4-5-20251001': {
+          inputTokens: 10,
+          outputTokens: 5,
+          cacheCreationInputTokens: 0,
+          cacheReadInputTokens: 0,
+          costUSD: 0.0001,
+        },
+      },
+    })
+
+    expect(line).toHaveProperty('usage', { input: 100, output: 50, cacheWrite: 200, cacheRead: 400, total: 750 })
+
+    // The partial split is still published — small, not dropped.
+    expect(line).toHaveProperty('models', {
+      'claude-haiku-4-5-20251001': { input: 10, output: 5, cacheWrite: 0, cacheRead: 0, costUsd: 0.0001 },
+    })
   })
 })
 
@@ -488,18 +691,18 @@ describe('buildClaudeArgv', () => {
   })
 
   test('effort is passed when the profile has one and omitted when it does not', () => {
-    const knobs: ClaudeModelKnobs = { ...KNOBS, planEffort: 'low', buildEffort: 'high' }
+    const knobs: ClaudeModelKnobs = { ...KNOBS, planEffort: 'low', proposeEffort: 'medium', buildEffort: 'high' }
 
     const plan = buildClaudeArgv({ prompt: 'x', agent: 'plan' }, knobs, silent).argv
     const build = buildClaudeArgv({ prompt: 'x', agent: 'build' }, knobs, silent).argv
     const propose = buildClaudeArgv({ prompt: 'x', agent: 'propose' }, knobs, silent).argv
 
     expect(flagValue(plan, '--effort')).toBe('low')
+    expect(flagValue(propose, '--effort')).toBe('medium')
     expect(flagValue(build, '--effort')).toBe('high')
-    // `propose` carries no effort on either backend; an unset one is omitted,
-    // never invented.
-    expect(flagValue(propose, '--effort')).toBeNull()
+    // An unset tier is omitted, never invented — on every profile.
     expect(flagValue(buildClaudeArgv({ prompt: 'x', agent: 'plan' }, KNOBS, silent).argv, '--effort')).toBeNull()
+    expect(flagValue(buildClaudeArgv({ prompt: 'x', agent: 'propose' }, KNOBS, silent).argv, '--effort')).toBeNull()
   })
 })
 

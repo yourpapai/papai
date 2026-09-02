@@ -106,6 +106,14 @@ export interface AgentCommandOptions {
   /** Default `'opencode'`; both this and `claude` absent is the opencode route. */
   backend?: AgentBackend
   model: string
+  /**
+   * The reasoning-effort tier this subprocess runs at (design D4); absent
+   * composes no flag. The claude branch emits it as `--effort` immediately
+   * after `--model` (D6); the opencode branch ignores it — on that route the
+   * tier reaches the worker as `agent.build.variant` inside
+   * `OPENCODE_CONFIG_CONTENT`, and a flag would be a second source of truth.
+   */
+  effort?: string
   cwd: string
   prompt: string
   extraArgs: readonly string[]
@@ -225,6 +233,7 @@ function claudeCommand(options: AgentCommandOptions): AgentCommand {
       allowlistForLabel(options.label, options.cwd),
       '--model',
       modelIdForCli(options.model),
+      ...(options.effort === undefined ? [] : ['--effort', options.effort]),
       ...(options.continueSessionId === undefined ? [] : ['--resume', options.continueSessionId]),
       ...(system === undefined ? [] : ['--append-system-prompt', system]),
     ],

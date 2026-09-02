@@ -441,6 +441,13 @@ const DELIBERATELY_ABSENT: ReadonlySet<string> = new Set([
   // value), so it never appears in the pipeline step's own env keys. Documented
   // as a README table row like every other knob; the row resolves through here.
   'AGENT_BACKEND',
+  // Pending a maintainer's hand-applied forwarding (issue #388): the agent's
+  // token cannot push `.github/workflows/`, so the two `env:` lines beside the
+  // existing AGENT_EFFORT_PLAN / AGENT_EFFORT_BUILD pair travel in the pull
+  // request body instead. Once they land, remove both entries — the test then
+  // enforces the forwarding like every other knob's.
+  'AGENT_EFFORT',
+  'AGENT_EFFORT_PROPOSE',
 ])
 
 /** Documented knobs the workflow neither forwards nor excuses. The filtering

@@ -317,7 +317,7 @@ describe('buildReviewLoopConfig backend hand-off', () => {
   const agentOf = (
     config: Record<string, unknown>,
     role: string,
-  ): { model: string; backend?: unknown; extraArgs: unknown } => {
+  ): { model: string; backend?: unknown; extraArgs: unknown; effort: unknown } => {
     const block = config[role]
     if (typeof block !== 'object' || block === null || Array.isArray(block)) {
       throw new Error(`missing agent block: ${role}`)
@@ -327,7 +327,12 @@ describe('buildReviewLoopConfig backend hand-off', () => {
       fields[key] = value
     }
     if (typeof fields['model'] !== 'string') throw new Error(`missing model on ${role}`)
-    return { model: fields['model'], backend: fields['backend'], extraArgs: fields['extraArgs'] }
+    return {
+      model: fields['model'],
+      backend: fields['backend'],
+      extraArgs: fields['extraArgs'],
+      effort: fields['effort'],
+    }
   }
 
   test('the opencode route is unchanged: provider-prefixed model, no backend key', () => {
@@ -349,6 +354,54 @@ describe('buildReviewLoopConfig backend hand-off', () => {
       expect(agent.model).toBe('m')
       expect(agent.backend).toBe('claude')
       expect(agent.extraArgs).toEqual([])
+    }
+  })
+
+  test('the claude route carries the resolved build tier into every agent block (D4)', () => {
+    const config = buildReviewLoopConfig(
+      settings({
+        backend: 'claude',
+        openai: {
+          ...settings().openai,
+          profiles: { light: null, planEffort: 'low', proposeEffort: null, buildEffort: 'xhigh' },
+        },
+      }),
+    )
+
+    for (const role of ROLES) {
+      const agent = agentOf(config, role)
+      // Every loop worker resolves to the primary `build` agent on the opencode
+      // route, so the tier a worker would inherit there is `buildEffort` — the
+      // claude route writes the same fact into the role config it spawns with.
+      expect(agent.effort).toBe('xhigh')
+    }
+  })
+
+  test('no tier resolves, no effort key — the loop-side schema refuses null', () => {
+    const config = buildReviewLoopConfig(settings({ backend: 'claude' }))
+
+    for (const role of ROLES) {
+      const agent = agentOf(config, role)
+      // Absent, never `null`: the loop's `AgentConfigSchema` types the tier as
+      // an optional string, and a written null would refuse the whole config.
+      expect(agent.effort).toBeUndefined()
+    }
+  })
+
+  test('the opencode route never carries the tier — it rides OPENCODE_CONFIG_CONTENT', () => {
+    const config = buildReviewLoopConfig(
+      settings({
+        backend: 'opencode',
+        openai: {
+          ...settings().openai,
+          profiles: { light: null, planEffort: null, proposeEffort: null, buildEffort: 'xhigh' },
+        },
+      }),
+    )
+
+    for (const role of ROLES) {
+      const agent = agentOf(config, role)
+      expect(agent.effort).toBeUndefined()
     }
   })
 

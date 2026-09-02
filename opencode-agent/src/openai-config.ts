@@ -49,11 +49,17 @@ export interface ModelProfiles {
    */
   light: string | null
   planEffort: string | null
+  proposeEffort: string | null
   buildEffort: string | null
 }
 
 /** Nothing configured: the ordinary case, and the shape an absent block takes. */
-export const NO_MODEL_PROFILES: ModelProfiles = { light: null, planEffort: null, buildEffort: null }
+export const NO_MODEL_PROFILES: ModelProfiles = {
+  light: null,
+  planEffort: null,
+  proposeEffort: null,
+  buildEffort: null,
+}
 
 /**
  * What this run knows about its model, in the shape OpenCode's own config accepts.
@@ -243,8 +249,10 @@ const agentProfiles = (
     // the gates that would catch it cost wall clock rather than tokens. And
     // deliberately no MCP grant either (the knob design's D1): this is the most
     // confined profile the pipeline prompts, and MCP tools would be its only
-    // unconfined egress — drafting turns compose prose, not tool calls.
-    propose: profile(PROPOSE_PERMISSION, {}),
+    // unconfined egress — drafting turns compose prose, not tool calls. The
+    // effort tier rides here too (D7): a "shared" variable that silently
+    // skipped a phase would be the wrong knob.
+    propose: profile(PROPOSE_PERMISSION, { variant: profiles.proposeEffort }),
     // Implementation and CI repair, and the review-loop subprocesses: `opencode
     // run` without `--agent` resolves to the primary agent, which
     // `opencode agent list` reports as `build`. That is exactly why the effort is

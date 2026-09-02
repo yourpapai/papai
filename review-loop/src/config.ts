@@ -20,8 +20,33 @@ import { detectGitRoot } from './worktree.js'
  */
 export type AgentBackend = 'opencode' | 'claude'
 
+/**
+ * The effort-tier shape check, duplicated from the pipeline side's
+ * `effortTier` (`opencode-agent/src/config-model-values.ts`) rather than
+ * imported — the documented workspace boundary (`claude-argv.ts`'s header):
+ * the two workspaces do not compile against each other. Deliberately a
+ * **shape** check and not a list, for the reason recorded on the twin: the
+ * valid set is model- and release-date-dependent, and a copied list would
+ * reject tiers that work — the model refuses the rest. If either side ever
+ * loosens its shape, the doctrine test is where the two get pinned equal.
+ */
+export const EFFORT_MAX_LENGTH = 16
+export const EFFORT_PATTERN = /^[a-z][a-z0-9-]*$/u
+
 const AgentConfigSchema = z.object({
   model: z.string().min(1),
+  /**
+   * The reasoning-effort tier this role's subprocess runs at (design D4);
+   * absent names none. Shape-checked at load, before any subprocess starts.
+   */
+  effort: z
+    .string()
+    .max(EFFORT_MAX_LENGTH)
+    .refine((value) => EFFORT_PATTERN.test(value), {
+      error: (iss) =>
+        `effort must be a lowercase effort tier such as \`low\`, \`high\` or \`xhigh\`, got ${JSON.stringify(iss.input)}`,
+    })
+    .optional(),
   /**
    * See {@link AgentBackend}; omit-or-agree per role, resolved run-wide. The
    * error names the received value because a bare expected-one-of message does

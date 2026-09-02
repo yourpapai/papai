@@ -20,6 +20,8 @@ import { makeReadLlmTracesTool } from './diagnostics-llm-traces.js'
 import { makeReadRecentLogsTool } from './diagnostics-logs.js'
 import { makeReadRecentToolFailuresTool } from './diagnostics-tool-failures.js'
 import { makeReadRecentTurnsTool } from './diagnostics-turns.js'
+import { makeRunProofCheckTool } from './proof-check-run.js'
+import { makeReadProofResultsTool } from './proof-checks-read.js'
 import { toolErrorClass } from './tool-logging.js'
 import type { MakeToolsOptions } from './types.js'
 
@@ -193,4 +195,6 @@ export function maybeAddDiagnosticsTools(tools: Record<string, Tool>, options: M
   tools['read_llm_traces'] = makeReadLlmTracesTool(options.chatUserId)
   tools['read_recent_turns'] = makeReadRecentTurnsTool(options.chatUserId)
   tools['read_recent_tool_failures'] = makeReadRecentToolFailuresTool(options.chatUserId)
+  tools['run_proof_check'] = makeRunProofCheckTool(options.storageContextId ?? '', options.chatUserId ?? '')
+  tools['read_proof_results'] = makeReadProofResultsTool()
 }

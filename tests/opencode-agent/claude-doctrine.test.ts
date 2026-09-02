@@ -6,6 +6,7 @@
 import { describe, expect, test } from 'bun:test'
 
 import { ALLOWLISTS, buildClaudeArgv, MAX_ARG_STRLEN } from '../../opencode-agent/src/claude-argv.js'
+import { EFFORT_MAX_LENGTH, EFFORT_PATTERN } from '../../opencode-agent/src/config-model-values.js'
 import type { Logger } from '../../opencode-agent/src/logger.js'
 import { buildAgentCommand } from '../../review-loop/src/agent-command.js'
 import {
@@ -13,6 +14,10 @@ import {
   analysisAllowlist,
   MAX_ARG_STRLEN as LOOP_MAX_ARG_STRLEN,
 } from '../../review-loop/src/claude-argv.js'
+import {
+  EFFORT_MAX_LENGTH as LOOP_EFFORT_MAX_LENGTH,
+  EFFORT_PATTERN as LOOP_EFFORT_PATTERN,
+} from '../../review-loop/src/config.js'
 
 /**
  * Two workspaces, one claude-CLI doctrine. `review-loop` duplicates the argv
@@ -37,9 +42,28 @@ function tailOf(argv: readonly string[]): readonly string[] {
   return argv.slice(start, start + STREAMING_TAIL.length)
 }
 
+/** Everything from `--model` onward — the region the effort tier rides — as a comparable array. */
+function modelOnwardOf(argv: readonly string[]): readonly string[] {
+  const start = argv.indexOf('--model')
+  expect(start).toBeGreaterThan(-1)
+  return argv.slice(start)
+}
+
 describe('the claude argv doctrine has one definition across the workspaces', () => {
   test('MAX_ARG_STRLEN is equal', () => {
     expect(LOOP_MAX_ARG_STRLEN).toBe(MAX_ARG_STRLEN)
+  })
+
+  test('the duplicated effort-tier shape check is equal', () => {
+    // The shape check gates the tier before it ever reaches the argv builder on
+    // both routes (`review-loop/src/config.ts` duplicates the pipeline side's
+    // `effortTier` constants rather than importing them), so a one-sided
+    // loosening — a raised length bound, a widened character class — admits a
+    // tier one side then refuses. Source and flags both, so every way the
+    // pattern can move is caught here.
+    expect(LOOP_EFFORT_MAX_LENGTH).toBe(EFFORT_MAX_LENGTH)
+    expect(LOOP_EFFORT_PATTERN.source).toBe(EFFORT_PATTERN.source)
+    expect(LOOP_EFFORT_PATTERN.flags).toBe(EFFORT_PATTERN.flags)
   })
 
   test('the fixer allowlist string is equal to the parent build set', () => {
@@ -62,7 +86,7 @@ describe('the claude argv doctrine has one definition across the workspaces', ()
   test('the streaming argv tail equals buildClaudeArgv composition', () => {
     const parent = buildClaudeArgv(
       { prompt: 'p' },
-      { model: 'm', lightModel: null, planEffort: null, buildEffort: null },
+      { model: 'm', lightModel: null, planEffort: null, proposeEffort: null, buildEffort: null },
       silentLogger,
     )
 
@@ -88,5 +112,37 @@ describe('the claude argv doctrine has one definition across the workspaces', ()
     // allowlist-only pin while degrading the route to result-only lines.
     expect(tailOf(loop.args)).toEqual([...tailOf(parent.argv)])
     expect(tailOf(loop.args)).toEqual([...STREAMING_TAIL])
+
+    // The tier-set half of the pin (design D6): with a tier resolved on both
+    // sides, everything from `--model` onward must still compose identically,
+    // so a one-sided `--effort` change — added, dropped or moved on either
+    // side of the boundary — fails here instead of degrading the route.
+    const tieredParent = buildClaudeArgv(
+      { prompt: 'p' },
+      { model: 'm', lightModel: null, planEffort: 'low', proposeEffort: null, buildEffort: null },
+      silentLogger,
+    )
+    const tieredLoop = buildAgentCommand({
+      backend: 'claude',
+      model: 'm',
+      cwd: '/repo/.review-loop/worktrees/1',
+      prompt: 'p',
+      extraArgs: [],
+      label: 'reviewer',
+      effort: 'low',
+      claude: {
+        profile: 'bare',
+        credentialName: 'ANTHROPIC_API_KEY',
+        credentialValue: 'sk-ant-secret-0123456789',
+        configDir: '/tmp/review-loop-claude-run/spawn-1',
+        mcpConfigPath: null,
+        envSource: {},
+      },
+    })
+
+    expect(modelOnwardOf(tieredLoop.args)).toEqual([...modelOnwardOf(tieredParent.argv)])
+    // The position itself is the doctrine, so it is pinned absolutely too: a
+    // `--effort` both sides moved together fails here just the same.
+    expect(modelOnwardOf(tieredLoop.args)).toEqual(['--model', 'm', '--effort', 'low'])
   })
 })

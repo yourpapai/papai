@@ -27,6 +27,7 @@ import {
   optional,
   optionalOrNull,
   OUTPUT_RANGE,
+  parseClaudeEnv,
   parseMcpServers,
   POOL_RANGE,
   providerId,
@@ -78,37 +79,47 @@ export const DEFAULT_LABEL_PREFIX = 'agent:'
  * carries the model knobs both routes read, and the review runner still
  * consumes it).
  */
-export const loadOpenAiSettings = (env: Env, backend: BackendSelection = 'opencode'): OpenAiSettings => ({
-  apiKey: backend === 'claude' ? '' : required(env, 'LLM_API_KEY'),
-  baseUrl: backend === 'claude' ? '' : required(env, 'LLM_BASE_URL'),
-  model: required(env, 'LLM_MODEL'),
-  // Optional and defaulted, unlike the three above, because the default is
-  // exactly today's behaviour: `openai` is the id the pipeline hardcoded before
-  // this knob existed, so an unset variable emits the same config it always did.
-  provider: providerId(env, 'LLM_PROVIDER', DEFAULT_PROVIDER_ID),
-  // Read as three separate absences rather than one defaulted block: each is a
-  // fact about somebody else's server that only an operator can state, and a
-  // guessed default is either a window that compacts every turn or one that
-  // never compacts at all.
-  overrides: {
-    context: boundedIntOrNull(env, 'AGENT_MODEL_CONTEXT', CONTEXT_RANGE),
-    output: boundedIntOrNull(env, 'AGENT_MODEL_OUTPUT', OUTPUT_RANGE),
-    reasoning: boolOrNull(env, 'AGENT_MODEL_REASONING'),
-  },
-  // Which profile gets which model and how much effort. All three absent by
-  // default, so a repository that sets none of them emits the config it always
-  // did — the light model is only the read-only profile's, never `build`'s.
-  profiles: {
-    light: optionalOrNull(env, 'LLM_MODEL_LIGHT'),
-    planEffort: effortTier(env, 'AGENT_EFFORT_PLAN'),
-    buildEffort: effortTier(env, 'AGENT_EFFORT_BUILD'),
-  },
-  // The second non-scalar knob, read here so an unloadable value fails at job
-  // start — before any model turn is spent — and riding the settings so the
-  // one config builder both execution paths read carries it by construction.
-  // Unset is the ordinary case and emits nothing at all.
-  mcpServers: parseMcpServers(env['AGENT_MCP_SERVERS']),
-})
+export const loadOpenAiSettings = (env: Env, backend: BackendSelection = 'opencode'): OpenAiSettings => {
+  // The shared tier (design D1/D2), read once: a per-profile variable wins,
+  // `AGENT_EFFORT` fills the profiles the operator has not named a tier for,
+  // and `null` — both absent — leaves the profile's tier out of the emitted
+  // config entirely. Nothing below this fold ever learns a shared variable
+  // exists; every emit site reads a resolved `string | null`.
+  const sharedEffort = effortTier(env, 'AGENT_EFFORT')
+  return {
+    apiKey: backend === 'claude' ? '' : required(env, 'LLM_API_KEY'),
+    baseUrl: backend === 'claude' ? '' : required(env, 'LLM_BASE_URL'),
+    model: required(env, 'LLM_MODEL'),
+    // Optional and defaulted, unlike the three above, because the default is
+    // exactly today's behaviour: `openai` is the id the pipeline hardcoded before
+    // this knob existed, so an unset variable emits the same config it always did.
+    provider: providerId(env, 'LLM_PROVIDER', DEFAULT_PROVIDER_ID),
+    // Read as three separate absences rather than one defaulted block: each is a
+    // fact about somebody else's server that only an operator can state, and a
+    // guessed default is either a window that compacts every turn or one that
+    // never compacts at all.
+    overrides: {
+      context: boundedIntOrNull(env, 'AGENT_MODEL_CONTEXT', CONTEXT_RANGE),
+      output: boundedIntOrNull(env, 'AGENT_MODEL_OUTPUT', OUTPUT_RANGE),
+      reasoning: boolOrNull(env, 'AGENT_MODEL_REASONING'),
+    },
+    // Which profile gets which model and how much effort. All four absent by
+    // default, so a repository that sets none of them emits the config it always
+    // did — the light model is only the read-only profile's, never `build`'s.
+    // Each per-profile variable wins over the shared tier read above.
+    profiles: {
+      light: optionalOrNull(env, 'LLM_MODEL_LIGHT'),
+      planEffort: effortTier(env, 'AGENT_EFFORT_PLAN') ?? sharedEffort,
+      proposeEffort: effortTier(env, 'AGENT_EFFORT_PROPOSE') ?? sharedEffort,
+      buildEffort: effortTier(env, 'AGENT_EFFORT_BUILD') ?? sharedEffort,
+    },
+    // The second non-scalar knob, read here so an unloadable value fails at job
+    // start — before any model turn is spent — and riding the settings so the
+    // one config builder both execution paths read carries it by construction.
+    // Unset is the ordinary case and emits nothing at all.
+    mcpServers: parseMcpServers(env['AGENT_MCP_SERVERS']),
+  }
+}
 
 /** Loader roots, first-hit-wins (D11): in-repo OpenSpec trees first, then the pinned superpowers checkout. */
 const DEFAULT_SKILL_ROOTS = ['.opencode/skills', '.agents/skills', '.superpowers/skills', '.claude/skills'] as const
@@ -171,11 +182,22 @@ const buildJobDeadline = (env: Env): number | null => {
  * config loads ahead of the logger, the scrub, every GitHub call and every
  * spawn.
  */
-const loadBackend = (env: Env): { backend: BackendSelection; claudeCredential: ClaudeCredential | null } => {
+const loadBackend = (
+  env: Env,
+): {
+  backend: BackendSelection
+  claudeCredential: ClaudeCredential | null
+  claudeEnv: Record<string, string> | null
+} => {
   const backend = backendSelection(env, 'AGENT_BACKEND')
-  if (backend !== 'claude') return { backend, claudeCredential: null }
+  // Parsed on both routes (design D1 of `claude-route-custom-env`: parse
+  // always, apply on the claude route only) — the knob's one validation point,
+  // ahead of every spawn and every model spend, beside the reads it is scoped
+  // like. `undefined` for unset converts to the house absence shape.
+  const claudeEnv = parseClaudeEnv(env['AGENT_CLAUDE_ENV']) ?? null
+  if (backend !== 'claude') return { backend, claudeCredential: null, claudeEnv }
 
-  return { backend, claudeCredential: claudeCredential(env) }
+  return { backend, claudeCredential: claudeCredential(env), claudeEnv }
 }
 
 /** Builds the pipeline config from the runner environment. */
@@ -193,6 +215,7 @@ export const loadConfig = (env: Env, repoRoot: string): PipelineConfig => {
     githubToken: required(env, 'GITHUB_TOKEN'),
     backend: backend.backend,
     claudeCredential: backend.claudeCredential,
+    claudeEnv: backend.claudeEnv,
     selfLoginOverride: optionalOrNull(env, 'AGENT_SELF_LOGIN'),
     selfWorkflowName: optional(env, 'AGENT_WORKFLOW_NAME', 'OpenCode Issue Agent'),
     openai: loadOpenAiSettings(env, backend.backend),

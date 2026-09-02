@@ -55,6 +55,7 @@ type GenerateTextResult = {
   text: string
   toolCalls: unknown[]
   toolResults: unknown[]
+  steps: unknown[]
   finalStep: { response: { messages: ModelMessage[] } }
 }
 
@@ -83,6 +84,7 @@ describe('pollScheduledOnce', () => {
         text: 'Task completed.',
         toolCalls: [],
         toolResults: [],
+        steps: [],
         finalStep: { response: { messages: [] } },
       })
     void mock.module('ai', () => ({
@@ -180,6 +182,7 @@ describe('pollScheduledOnce', () => {
         text: 'Should not run.',
         toolCalls: [],
         toolResults: [],
+        steps: [],
         finalStep: { response: { messages: [] } },
       })
     }
@@ -206,6 +209,7 @@ describe('pollScheduledOnce', () => {
         text: 'Should not run.',
         toolCalls: [],
         toolResults: [],
+        steps: [],
         finalStep: { response: { messages: [] } },
       })
     }
@@ -231,6 +235,7 @@ describe('pollScheduledOnce', () => {
         text: 'Should not run.',
         toolCalls: [],
         toolResults: [],
+        steps: [],
         finalStep: { response: { messages: [] } },
       })
     }
@@ -304,6 +309,7 @@ describe('pollScheduledOnce', () => {
         text: 'All tasks handled.',
         toolCalls: [],
         toolResults: [],
+        steps: [],
         finalStep: { response: { messages: [] } },
       })
     }
@@ -352,6 +358,7 @@ describe('pollScheduledOnce', () => {
         text: 'Done.',
         toolCalls: [],
         toolResults: [],
+        steps: [],
         finalStep: { response: { messages: [] } },
       })
     }
@@ -424,6 +431,7 @@ describe('pollScheduledOnce — error handling', () => {
         text: 'Task completed.',
         toolCalls: [],
         toolResults: [],
+        steps: [],
         finalStep: { response: { messages: [] } },
       })
     void mock.module('ai', () => ({
@@ -698,6 +706,7 @@ describe('pollAlertsOnce', () => {
         text: 'Alert triggered.',
         toolCalls: [],
         toolResults: [],
+        steps: [],
         finalStep: { response: { messages: [] } },
       })
     void mock.module('ai', () => ({
@@ -829,6 +838,7 @@ describe('pollAlertsOnce', () => {
         text: 'Should not run.',
         toolCalls: [],
         toolResults: [],
+        steps: [],
         finalStep: { response: { messages: [] } },
       })
     }
@@ -864,6 +874,7 @@ describe('pollAlertsOnce', () => {
         text: 'Should not run.',
         toolCalls: [],
         toolResults: [],
+        steps: [],
         finalStep: { response: { messages: [] } },
       })
     }
@@ -899,6 +910,7 @@ describe('pollAlertsOnce', () => {
         text: 'Should not run.',
         toolCalls: [],
         toolResults: [],
+        steps: [],
         finalStep: { response: { messages: [] } },
       })
     }
@@ -1129,7 +1141,7 @@ describe('pollScheduledOnce Race Condition', () => {
     })
 
     // Resolve LLM
-    resolveLlm({ text: 'Done.', toolCalls: [], toolResults: [], finalStep: { response: { messages: [] } } })
+    resolveLlm({ text: 'Done.', toolCalls: [], toolResults: [], steps: [], finalStep: { response: { messages: [] } } })
 
     await Promise.all([poll1, poll2])
 
@@ -1150,6 +1162,7 @@ describe('delivery target routing', () => {
         text: 'Done.',
         toolCalls: [],
         toolResults: [],
+        steps: [],
         finalStep: { response: { messages: [] } },
       })
     void mock.module('ai', () => ({
@@ -1463,6 +1476,7 @@ describe('delivery target routing', () => {
         text: 'Done.',
         toolCalls: [],
         toolResults: [],
+        steps: [],
         finalStep: { response: { messages: [] } },
       })
     }
@@ -1497,6 +1511,7 @@ describe('delivery target routing', () => {
         text: 'Done.',
         toolCalls: [],
         toolResults: [],
+        steps: [],
         finalStep: { response: { messages: [] } },
       })
     }
@@ -1541,6 +1556,7 @@ describe('delivery target routing', () => {
         text: 'Done.',
         toolCalls: [],
         toolResults: [],
+        steps: [],
         finalStep: { response: { messages: [] } },
       })
     }

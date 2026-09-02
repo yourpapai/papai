@@ -3,10 +3,8 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-// Extracted, not inline: oxlint's pedantic max-lines rule caps this file at
-// 300 lines, and the scoped graphql-client ignore below
-// (github-provider-graphql-api) pushed the inline form to 301. Re-inline only
-// alongside an equal size reduction here.
+// Extracted, not inline: oxlint's pedantic max-lines rule caps this file at 300 lines, and the scoped
+// graphql-client ignore below (github-provider-graphql-api) pushed the inline form to 301. Re-inline only alongside an equal size reduction.
 import { svelteCompiler } from './knip-svelte-compiler.js'
 
 // GUARDRAIL: keep the ignore surface minimal. New ignores require an inline
@@ -260,6 +258,10 @@ export default {
     // (openspec/changes/usage-failure-queries) and by tests outside knip's
     // production project scope.
     'src/usage/failures.ts': ['exports'],
+    // Proof-check module exports: the later-task consumers landed (proof-check-run,
+    // proof-checks-read, poller, diagnostics); this now covers only test-only exports
+    // (resetProofChecksForTest, resetProofDeliveryRecords) and test-only consumption.
+    'src/deferred-prompts/proof-*.ts': ['exports', 'types'],
     // Re-export facades whose remaining flagged bindings knip cannot trace:
     // the published plugin-types package export, declared plugin-core-separation
     // compatibility boundaries, and bindings consumed by byte-frozen 0Q

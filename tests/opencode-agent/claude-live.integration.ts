@@ -238,6 +238,7 @@ const recorderKnobs = (): ClaudeModelKnobs => ({
   model: process.env['LLM_MODEL'] ?? 'sonnet',
   lightModel: null,
   planEffort: null,
+  proposeEffort: null,
   buildEffort: null,
 })
 

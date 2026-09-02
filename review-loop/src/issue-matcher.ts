@@ -25,6 +25,8 @@ export interface MatchIssuesDeps {
   logPath: string
   cwd: string
   model: string
+  /** The role's reasoning-effort tier (D4); absent is no `--effort` (D6). */
+  effort?: string
   extraArgs: readonly string[]
   backend?: AgentBackend
   claude?: ClaudeRunContext
@@ -81,6 +83,7 @@ export async function matchIssues(deps: MatchIssuesDeps): Promise<{ matches: Iss
   const agentResult = await runAgent({
     spawn: deps.spawn,
     model: deps.model,
+    effort: deps.effort,
     backend: deps.backend,
     claude: deps.claude,
     cwd: deps.cwd,

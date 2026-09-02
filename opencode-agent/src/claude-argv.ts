@@ -47,6 +47,24 @@ export const ALLOWLISTS = {
  */
 export type ClaudeInvocationProfile = 'bare' | 'native'
 
+/**
+ * The credential spelling each profile re-adds — one rule, spelled twice
+ * (design D3 of the native-OAuth change): bare carries the API key, native
+ * the OAuth token. A credential whose spelling does not match the profile
+ * injects nothing at all, so a mismatched pair can never smuggle the other
+ * spelling through.
+ *
+ * Lives beside the profile type rather than beside its only consumer in
+ * `claude-connect.ts`: it is a property of the profile, the same shape as
+ * `ALLOWLISTS` above.
+ */
+export const PROFILE_CREDENTIAL: Readonly<
+  Record<ClaudeInvocationProfile, 'ANTHROPIC_API_KEY' | 'CLAUDE_CODE_OAUTH_TOKEN'>
+> = {
+  bare: 'ANTHROPIC_API_KEY',
+  native: 'CLAUDE_CODE_OAUTH_TOKEN',
+}
+
 export interface ClaudeTurnRequest {
   prompt: string
   system?: string
@@ -75,6 +93,8 @@ export interface ClaudeModelKnobs {
   lightModel: string | null
   /** `AGENT_EFFORT_PLAN`, passed through when set. */
   planEffort: string | null
+  /** `AGENT_EFFORT_PROPOSE`, passed through when set (design D7). */
+  proposeEffort: string | null
   /** `AGENT_EFFORT_BUILD`, passed through when set. */
   buildEffort: string | null
 }
@@ -129,7 +149,7 @@ const profileSelection = (
   if (agent === 'plan') {
     return { allowlist: ALLOWLISTS.plan, model: knobs.lightModel ?? knobs.model, effort: knobs.planEffort }
   }
-  if (agent === 'propose') return { allowlist: ALLOWLISTS.propose, model: knobs.model, effort: null }
+  if (agent === 'propose') return { allowlist: ALLOWLISTS.propose, model: knobs.model, effort: knobs.proposeEffort }
   if (agent === 'build') return { allowlist: ALLOWLISTS.build, model: knobs.model, effort: knobs.buildEffort }
 
   // The weaker profile is the default, so an agent this pipeline does not name

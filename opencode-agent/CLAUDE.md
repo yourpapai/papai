@@ -668,10 +668,13 @@ findings: `ROADMAP.md`.
   read-only phases — and `small_model`, and deliberately **not** `propose` or
   `build`: a weak spec is the input to every later phase, and the gates that would
   catch one cost wall clock rather than tokens. `AGENT_EFFORT_PLAN` /
-  `AGENT_EFFORT_BUILD` become `agent.<name>.variant`, and config-level is forced
-  rather than preferred — the pinned SDK's prompt body has **no** `variant` field,
-  and the review loop's `opencode run` workers carry no `--agent` and so resolve
-  to `build`, which a per-call setting could never reach. Note the two pins are
+  `AGENT_EFFORT_PROPOSE` / `AGENT_EFFORT_BUILD` become `agent.<name>.variant`,
+  and config-level is forced rather than preferred — the pinned SDK's prompt
+  body has **no** `variant` field, and the review loop's `opencode run` workers
+  carry no `--agent` and so resolve to `build`, which a per-call setting could
+  never reach. `AGENT_EFFORT` is the shared tier: every profile gets it unless
+  its own variable names one, and the fold happens once at config load, so
+  nothing downstream knows a shared variable exists. Note the two pins are
   different versions: `@opencode-ai/sdk@1.18.12` types the config, `opencode-ai@1.18.7`
   reads it, and it is the **server's** version that decides which agent keys are
   honoured — its loader merges `model`, `variant`, `options`, `temperature`,
@@ -1096,15 +1099,24 @@ not permitted to create or approve pull requests` is a repository or
   the phases it cascades through.
 - **Cost is reported, never enforced on, and "unknown" is a value it can take.**
   `run-spend.ts` resolves what a run cost on a ladder: the backend's own figure
-  when non-zero (`total_cost_usd` on the claude route, `session.get`'s `cost` on
-  the other), else the token buckets repriced through models.dev via
-  `sdd-runner/src/pricing.ts`, else **unpriced**. A `0` and an absent figure both
+  when non-zero (`total_cost_usd` on the claude route, `usage()`'s session-tree
+  sum on the other), else the token buckets repriced through models.dev via
+  `sdd-runner/src/pricing.ts`, else **unpriced**. The backend figure is the
+  complete account on both routes: on the claude route `line.usage` is the
+  per-bucket maximum of the CLI's two readings — the top-level figure names only
+  the main model, and the `modelUsage` split carries the side models — and on
+  the opencode route `usage()` walks the session tree breadth-first, summing
+  every session the backend billed and degrading to the session's own figure
+  when the tree cannot be read whole (no marker on the type; one warning). A `0`
+  and an absent figure both
   fall through the first rung deliberately — OpenCode reports a literal `0` for a
   model it cannot price, so treating `0` as an answer pins exactly the wrong
   number; a genuinely free run still reaches `$0` through the catalogue rung,
   having actually been priced. A bucket the backend never reported fails the
   whole reprice rather than pricing the rest, which would under-charge a
-  cache-heavy run while looking exact. Nothing here may fail a phase: an
+  cache-heavy run while looking exact — and the tree sum keeps an absent bucket
+  absent, so a subtree that omits one reads as unpriced, never under-priced.
+  Nothing here may fail a phase: an
   unreadable catalogue and a model reference `resolveCost` cannot split both
   degrade to unpriced.
 - **`usdSpent` and `usdUnpriced` ride beside `tokensSpent`, and the ceiling does

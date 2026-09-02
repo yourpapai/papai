@@ -3,8 +3,11 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { beforeEach, describe, expect, it, test } from 'bun:test'
+import { beforeEach, describe, expect, it, test, afterEach } from 'bun:test'
 import assert from 'node:assert/strict'
+import { mkdtempSync, rmSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 
 import { makeTools } from '../../src/tools/index.js'
 import { getToolMetadata } from '../../src/tools/tool-metadata.js'
@@ -600,6 +603,134 @@ describe('diagnostics reader family tool preferences', () => {
 
     for (const name of READER_NAMES) expect(tools).toHaveProperty(name)
     const result: unknown = await getToolExecutor(tools['read_llm_traces']!)({})
+    assert(isRecord(result))
+    expect(result).not.toMatchObject({ status: 'permission_denied' })
+  })
+})
+
+const PROOF_TOOL_NAMES = ['run_proof_check', 'read_proof_results'] as const
+
+const proofDmOptions = (
+  askPermission: MakeToolsOptions['askPermission'],
+  overrides: Partial<MakeToolsOptions> = {},
+): MakeToolsOptions => ({
+  storageContextId: 'proof-prefs-ctx',
+  chatUserId: 'proof-prefs-ctx',
+  contextType: 'dm',
+  mode: 'normal',
+  isBotAdmin: true,
+  askPermission,
+  ...overrides,
+})
+
+describe('proof tool preferences', () => {
+  let envDir: string
+  let originalDbPath: string | undefined
+
+  beforeEach(async () => {
+    mockLogger()
+    await setupTestDb()
+    envDir = mkdtempSync(join(tmpdir(), 'papai-proof-prefs-'))
+    originalDbPath = process.env['DB_PATH']
+    process.env['DB_PATH'] = join(envDir, 'papai.db')
+  })
+
+  afterEach(() => {
+    if (originalDbPath === undefined) delete process.env['DB_PATH']
+    else process.env['DB_PATH'] = originalDbPath
+    rmSync(envDir, { recursive: true, force: true })
+  })
+
+  test('the diagnostics domain deny resolves both proof tools to deny', () => {
+    const prefs: ToolPrefs = { riskDefaults: {}, domainDefaults: { diagnostics: 'deny' }, toolOverrides: {} }
+    for (const name of PROOF_TOOL_NAMES) {
+      expect(resolveToolPermission(prefs, name)).toBe('deny')
+    }
+  })
+
+  test('a per-tool override wins over the diagnostics domain default', () => {
+    const prefs: ToolPrefs = {
+      riskDefaults: {},
+      domainDefaults: { diagnostics: 'deny' },
+      toolOverrides: { run_proof_check: 'allow' },
+    }
+    expect(resolveToolPermission(prefs, 'run_proof_check')).toBe('allow')
+    expect(resolveToolPermission(prefs, 'read_proof_results')).toBe('deny')
+  })
+
+  test('presets never ask for the read-risk reader, and only read-only asks for the write-risk runner', () => {
+    for (const preset of PRESET_KEYS) {
+      expect(resolveToolPermission(applyPreset(preset), 'read_proof_results')).toBe('allow')
+    }
+    expect(resolveToolPermission(applyPreset('allow-all'), 'run_proof_check')).toBe('allow')
+    expect(resolveToolPermission(applyPreset('non-destructive'), 'run_proof_check')).toBe('allow')
+    expect(resolveToolPermission(applyPreset('read-only'), 'run_proof_check')).toBe('ask')
+  })
+
+  test('a diagnostics domain deny removes both proof tools from the resolved ToolSet', async () => {
+    const ctx = 'proof-prefs-deny-domain'
+    setToolPrefs(ctx, { riskDefaults: {}, domainDefaults: { diagnostics: 'deny' }, toolOverrides: {} })
+
+    const tools = await makeTools(
+      createMockProvider(),
+      proofDmOptions(undefined, { storageContextId: ctx, chatUserId: ctx }),
+    )
+
+    for (const name of PROOF_TOOL_NAMES) expect(tools).not.toHaveProperty(name)
+  })
+
+  test('a diagnostics domain ask keeps both proof tools present and approval executes the runner', async () => {
+    const ctx = 'proof-prefs-ask-approve'
+    setToolPrefs(ctx, { riskDefaults: {}, domainDefaults: { diagnostics: 'ask' }, toolOverrides: {} })
+    const decisions: string[] = []
+
+    const tools = await makeTools(
+      createMockProvider(),
+      proofDmOptions(
+        ({ toolName }) => {
+          decisions.push(toolName)
+          return Promise.resolve('allow' as const)
+        },
+        { storageContextId: ctx, chatUserId: ctx },
+      ),
+    )
+
+    for (const name of PROOF_TOOL_NAMES) expect(tools).toHaveProperty(name)
+    const result: unknown = await getToolExecutor(tools['run_proof_check']!)(
+      { _permission_reason: 'probe the delivery pipeline', check: 'bug4_create_response_mode' },
+      { toolCallId: 't1', messages: [], context: {} },
+    )
+    assert(isRecord(result))
+    expect(result).toMatchObject({ status: 'completed', record: { check: 'bug4_create_response_mode' } })
+    expect(decisions).toEqual(['run_proof_check'])
+  })
+
+  test('a diagnostics domain ask wraps the reader: decline returns structured permission_denied', async () => {
+    const ctx = 'proof-prefs-ask-decline'
+    setToolPrefs(ctx, { riskDefaults: {}, domainDefaults: { diagnostics: 'ask' }, toolOverrides: {} })
+
+    const tools = await makeTools(
+      createMockProvider(),
+      proofDmOptions(() => Promise.resolve('deny' as const), { storageContextId: ctx, chatUserId: ctx }),
+    )
+
+    const result: unknown = await getToolExecutor(tools['read_proof_results']!)(
+      { _permission_reason: 'read recent proof runs' },
+      { toolCallId: 't2', messages: [], context: {} },
+    )
+    expect(result).toMatchObject({ status: 'permission_denied' })
+  })
+
+  test('implicit allow default exposes both proof tools unwrapped and directly executable', async () => {
+    const ctx = 'proof-prefs-implicit-allow'
+
+    const tools = await makeTools(
+      createMockProvider(),
+      proofDmOptions(undefined, { storageContextId: ctx, chatUserId: ctx }),
+    )
+
+    for (const name of PROOF_TOOL_NAMES) expect(tools).toHaveProperty(name)
+    const result: unknown = await getToolExecutor(tools['read_proof_results']!)({})
     assert(isRecord(result))
     expect(result).not.toMatchObject({ status: 'permission_denied' })
   })

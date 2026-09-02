@@ -217,4 +217,37 @@ describe('issue-matcher backend threading', () => {
     expect(result.matches[0]?.existingId).toBe('existing-001')
     expect(commands[0]).toBe('claude')
   })
+
+  test('the matcher effort rides the spawn as --effort after --model (D4, D6)', async () => {
+    const dir = makeTempDir('matcher-effort-')
+    const outputPath = path.join(dir, 'matches.json')
+    const { spawn, args } = claudeRecordingSpawn(
+      claudeScratchResponder(() => ({ matches: [{ newIssueIndex: 0, existingId: 'existing-001' }] })),
+    )
+
+    // The deps are deliberately built unannotated — a structural superset —
+    // so this assertion states the spawn contract directly rather than
+    // through the deps interface.
+    const deps = {
+      spawn,
+      newIssues: [newIssue],
+      existingRecords: [existingRecord],
+      outputPath,
+      logPath: path.join(dir, 'log.txt'),
+      cwd: dir,
+      model: 'test-model',
+      extraArgs: [],
+      reporter: silentReporter(),
+      backend: 'claude' as const,
+      claude: claudeRunContext(),
+      effort: 'low',
+    }
+
+    const result = await matchIssues(deps)
+
+    expect(result.matches[0]?.existingId).toBe('existing-001')
+    const argv = args[0]!
+    const model = argv.indexOf('--model')
+    expect(argv.slice(model + 2, model + 4)).toEqual(['--effort', 'low'])
+  })
 })

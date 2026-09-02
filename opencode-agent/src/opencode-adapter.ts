@@ -93,7 +93,8 @@ export const createOpenCodeAgent = async (options: OpenCodeAgentOptions): Promis
   // can see it. Names only, never the key or the endpoint: a CI log is
   // world-readable on a public repository.
   options.log.debug({ ...model }, 'Resolved the model reference OpenCode will look up')
-  const connect = options.connect ?? ((): Promise<OpenCodeConnection> => connectSdk(options.directory, options.openai))
+  const connect =
+    options.connect ?? ((): Promise<OpenCodeConnection> => connectSdk(options.directory, options.openai, options.log))
   const connection = await connect()
 
   let sessionId: string

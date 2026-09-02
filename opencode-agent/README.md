@@ -1676,8 +1676,10 @@ cannot drift.
 | `AGENT_MODEL_OUTPUT`                       | no                                   | unset — ask the catalogue                                                       | Output cap, same case                                                                                                                                                                                                                                                                     |
 | `AGENT_MODEL_REASONING`                    | no                                   | unset — ask the catalogue                                                       | `true`/`false`: does this model support reasoning                                                                                                                                                                                                                                         |
 | `LLM_MODEL_LIGHT`                          | no                                   | unset — the main model                                                          | Cheaper model for the read-only phases; see below                                                                                                                                                                                                                                         |
-| `AGENT_EFFORT_PLAN`                        | no                                   | unset — OpenCode's default                                                      | Reasoning effort for the read-only profile                                                                                                                                                                                                                                                |
-| `AGENT_EFFORT_BUILD`                       | no                                   | unset — OpenCode's default                                                      | Reasoning effort for implement / CI-fix / review                                                                                                                                                                                                                                          |
+| `AGENT_EFFORT`                             | no                                   | unset — no shared tier                                                          | Shared reasoning effort for every profile that names none of its own; a tier only reaches a model that reasons (see below)                                                                                                                                                                |
+| `AGENT_EFFORT_PLAN`                        | no                                   | unset — falls back to `AGENT_EFFORT`                                            | Reasoning effort for the read-only profile                                                                                                                                                                                                                                                |
+| `AGENT_EFFORT_PROPOSE`                     | no                                   | unset — falls back to `AGENT_EFFORT`                                            | Reasoning effort for the drafting profile                                                                                                                                                                                                                                                 |
+| `AGENT_EFFORT_BUILD`                       | no                                   | unset — falls back to `AGENT_EFFORT`                                            | Reasoning effort for implement / CI-fix / review                                                                                                                                                                                                                                          |
 | `AGENT_COMMIT_NAME` / `AGENT_COMMIT_EMAIL` | no                                   | `github-actions[bot]` / `41898282+github-actions[bot]@users.noreply.github.com` | Commit identity — explicit pin wins per field; otherwise author is the per-run actor (`issue`/`pull-request` → `senderLogin` via `GET /users/:login`, `id+login` noreply) and committer is `github-actions[bot]`; `ci`/`pr-merged` and lookup failures fall back to `github-actions[bot]` |
 | `AGENT_LABEL_PREFIX`                       | no                                   | `agent:`                                                                        | Namespace for the status labels; `none` disables them                                                                                                                                                                                                                                     |
 | `AGENT_LOG_LEVEL`                          | no                                   | `info`                                                                          | `debug`, `info`, `warn`, `error`                                                                                                                                                                                                                                                          |
@@ -1804,6 +1806,62 @@ The route's trade-offs, so an operator sees them before choosing:
 The claude fixtures and their provenance live under
 `tests/opencode-agent/fixtures/claude-cli/`; the recorder is the only writer.
 
+### The custom child environment: `AGENT_CLAUDE_ENV`
+
+On this route — and only on this route — the repository **variable**
+`AGENT_CLAUDE_ENV` carries a JSON object mapping environment-variable names to
+string values, validated at job start before any turn, and every entry reaches
+every `claude -p` child environment of the job:
+
+```json
+{
+  "CLAUDE_CODE_DISABLE_ADAPTIVE_THINKING": "1",
+  "CLAUDE_CODE_SUBAGENT_MODEL": "claude-haiku-4-5"
+}
+```
+
+Names the route strips from or injects into the child environment itself are
+refused at startup, whichever backend the job selected: `ANTHROPIC_API_KEY` and
+`CLAUDE_CODE_OAUTH_TOKEN` (a custom entry can never shadow the credential that
+selects the invocation profile), `CLAUDE_CONFIG_DIR` and `DISABLE_AUTOUPDATER`
+(the route writes both itself), `LLM_BASE_URL` and `AGENT_MCP_SERVERS`.
+Everything else is passed through as spelled — the pipeline refuses only the
+names it owns, and which `CLAUDE_CODE_*` variables the pinned CLI honours is
+the CLI's business; the two examples above are guidance, not an allowlist.
+
+Three boundaries to read before using it:
+
+- **The values are readable by the CLI's `Bash` children.** Every value joins
+  the pipeline's credential list — scrubbed from every other spawned
+  environment, and redacted from everything the pipeline posts and from the
+  debug transcript — but the `claude` child receives them through its
+  environment by design, and that child's `Bash` tool children inherit it. The
+  model can read them with one `env`: the same residual the credential itself
+  carries above.
+- **Secrets do not belong here.** Only the Actions **variable** spelling
+  reaches the job — a same-named Actions secret is never forwarded — and
+  anything placed in a variable is readable by every maintainer and rides the
+  run's own environment. Credentials keep their dedicated secret spellings.
+- **The review loop's claude subprocesses are out of scope.** A claude-route
+  `/review` runs its roles as `claude -p` children whose environments carry
+  exactly what they carry today; the knob reaches this route's turn spawns
+  alone, and extending it there is a later change's decision.
+
+Until the workflow forwards the variable, the knob is unset and the route is
+byte-identical to the pipeline before it existed. A maintainer applies the one
+line this pipeline cannot write itself, beside the other `vars.*` forwardings
+in the pipeline step's `env:` block:
+
+```yaml
+env:
+  AGENT_EFFORT_PLAN: ${{ vars.AGENT_EFFORT_PLAN }}
+  AGENT_CLAUDE_ENV: ${{ vars.AGENT_CLAUDE_ENV }}
+```
+
+Parsing is route-independent: a malformed document fails startup on the
+OpenCode backend too, so an operator flipping `AGENT_BACKEND` later cannot
+inherit a document that was never validated.
+
 `LLM_MODEL` and `LLM_BASE_URL` are both required rather than defaulted (on the
 claude route both become optional-empty and the gateway credential is refused
 instead — see [Backend selection](#backend-selection-the-claude-cli-route)); with a
@@ -1869,11 +1927,11 @@ never compact" is a log read rather than a rerun.
 The pipeline runs three **agent profiles**, which already differ by what they
 may do and now differ by what they cost:
 
-| Profile   | Phases                                                          | Model             | Effort               |
-| --------- | --------------------------------------------------------------- | ----------------- | -------------------- |
-| `plan`    | triage, comment classification, `/ask`, both review gates       | `LLM_MODEL_LIGHT` | `AGENT_EFFORT_PLAN`  |
-| `propose` | drafting proposal / spec / design / tasks                       | `LLM_MODEL`       | —                    |
-| `build`   | implement, CI fix, and the review loop's `opencode run` workers | `LLM_MODEL`       | `AGENT_EFFORT_BUILD` |
+| Profile   | Phases                                                    | Model             | Effort                 |
+| --------- | --------------------------------------------------------- | ----------------- | ---------------------- |
+| `plan`    | triage, comment classification, `/ask`, both review gates | `LLM_MODEL_LIGHT` | `AGENT_EFFORT_PLAN`    |
+| `propose` | drafting proposal / spec / design / tasks                 | `LLM_MODEL`       | `AGENT_EFFORT_PROPOSE` |
+| `build`   | implement, CI fix, and the review loop's workers          | `LLM_MODEL`       | `AGENT_EFFORT_BUILD`   |
 
 `LLM_MODEL_LIGHT` is a model on the **same** endpoint and key — not a second
 provider — and it reaches `plan` and OpenCode's `small_model` (title and summary
@@ -1889,12 +1947,20 @@ and be wrong on the next model. A malformed value is refused at load; an
 unknown-but-well-formed one is refused by OpenCode at the first prompt, which is
 where that knowledge lives. An effort tier only exists at all when the model is
 known to support reasoning — see `LLM_PROVIDER` and `AGENT_MODEL_REASONING`
-above.
+above. That caveat applies to the shared variable exactly as to the per-profile
+ones: a catalogue row with `reasoning: false` empties every profile's variants,
+whatever variable named the tier.
 
-Both are set as `agent.<name>.variant` in the generated config rather than per
-call, which is what makes them reach the review loop: it shells out to
-`opencode run` with no `--agent`, so its workers resolve to `build` and pick the
-variant up from the same config the in-process session reads.
+One variable serves every profile: `AGENT_EFFORT` sets a shared tier, and each
+per-profile variable — `AGENT_EFFORT_PLAN`, `AGENT_EFFORT_PROPOSE`,
+`AGENT_EFFORT_BUILD` — wins over it where that profile is named. The fold
+happens once, at config load, so nothing downstream knows a shared variable
+exists; every emit site reads a resolved tier or none.
+
+Each resolved tier is set as `agent.<name>.variant` in the generated config
+rather than per call, which is what makes them reach the review loop: it shells
+out to `opencode run` with no `--agent`, so its workers resolve to `build` and
+pick the variant up from the same config the in-process session reads.
 
 ### MCP servers
 
@@ -2145,14 +2211,18 @@ not. To switch (Settings → Secrets and variables → Actions):
 4. `LLM_API_KEY` and `LLM_BASE_URL` can stay exactly as they are: the workflow
    forwards both empty on the claude route, and the route's guard never sees
    them.
-5. `LLM_PROVIDER` and the `AGENT_MODEL_*` overrides are ignored here — the
+5. `LLM_PROVIDER` and the `AGENT_MODEL_*` overrides are unused here — the
    claude route skips the boot-time **model-facts** catalogue read, which is
    what they feed. It does still price a run against models.dev when the CLI
    reports no cost of its own, and there it resolves the model under
    `anthropic` and under the same id the CLI was invoked with (the `provider/`
    prefix stripped) — never under `LLM_PROVIDER`, whose value belongs to the
-   gateway route. A leftover id there is harmless. `LLM_MODEL_LIGHT` and
-   `AGENT_EFFORT_PLAN` / `AGENT_EFFORT_BUILD` still apply, per profile.
+   gateway route. A leftover id there is harmless. `LLM_MODEL_LIGHT` and the
+   effort variables still apply, per profile (`AGENT_EFFORT` shared,
+   `AGENT_EFFORT_PLAN` / `AGENT_EFFORT_PROPOSE` / `AGENT_EFFORT_BUILD` winning
+   per profile): a resolved tier composes `--effort` immediately after
+   `--model`, and the review loop's claude subprocesses carry it the same way
+   through the per-role config this pipeline writes them.
 
 Read [Backend selection](#backend-selection-the-claude-cli-route) before
 pointing a credential at it — the route's trade-offs (no retry layer, the
