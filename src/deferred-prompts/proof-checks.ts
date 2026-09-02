@@ -208,9 +208,9 @@ export const runProofCheck = async (deps: ProofCheckDeps, request: ProofCheckReq
   }
   const def = PROOF_CHECKS[checkId]
   if (def === undefined) return { status: 'error', error: `Unknown proof check: ${checkId}` }
+  if (lockHeld) return { status: 'busy' }
   if (def.kind === 'sync') {
     return { status: 'completed', record: await runSyncCheck(deps, request, checkId) }
   }
-  if (lockHeld) return { status: 'busy' }
   return startAsyncCheck(deps, request, checkId)
 }
