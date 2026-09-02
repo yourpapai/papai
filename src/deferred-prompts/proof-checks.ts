@@ -184,7 +184,7 @@ const startAsyncCheck = async (
   try {
     sweepProofPrompts(deps, request.storageContextId)
     const windowMs = resolveWindowMs(request, isAlertVariant)
-    const fireAtMs = isAlertVariant ? null : minuteFloorMs(startMs + fireAtLeadFor(checkId))
+    const fireAtMs = isAlertVariant ? null : minuteFloorMs(startMs + fireAtLeadFor(checkId, windowMs))
     const created = createProofPrompt(deps, request, runId, fireAtMs, isAlertVariant ? 'alert' : variant)
     if ('error' in created.result) {
       await appendRecord(

@@ -663,12 +663,12 @@ describe('proof checks runner', () => {
     expect(harness.timers.delays).toHaveLength(4)
   })
 
-  test('fire_at derivation targets about now+90s, bug3 pins about +10 minutes, and stays inside a shrunk window', async () => {
+  test('fire_at derivation targets half the effective window, bug3 pins the lead, and stays inside a shrunk window', async () => {
     harness.timers.nowMs = CLOCK_BASE_MS
     await expectStarted(makeRequest())
     await waitFor(() => harness.world.createCalls.length > 0)
     const defaultFireAt = reconstructedFireAtMs(0)
-    expect(defaultFireAt).toBe(minuteFloorMs(CLOCK_BASE_MS + 90_000))
+    expect(defaultFireAt).toBe(minuteFloorMs(CLOCK_BASE_MS + 60_000))
     expect(defaultFireAt).toBeLessThanOrEqual(CLOCK_BASE_MS + 2 * SCHEDULED_POLL_MS)
     await drainToTimeout()
 
@@ -678,12 +678,13 @@ describe('proof checks runner', () => {
     expect(reconstructedFireAtMs(1)).toBe(CLOCK_BASE_MS + 10 * MINUTE_MS)
     await drainToTimeout()
 
-    harness.timers.nowMs = CLOCK_BASE_MS
+    harness.timers.nowMs = CLOCK_BASE_MS + 7_000
     await expectStarted(makeRequest({ wait_seconds: 60 }))
     await waitFor(() => harness.world.createCalls.length > 2)
     const shrunkFireAt = reconstructedFireAtMs(2)
-    expect(shrunkFireAt).toBeGreaterThan(CLOCK_BASE_MS)
-    expect(shrunkFireAt).toBeLessThanOrEqual(CLOCK_BASE_MS + MINUTE_MS)
+    const shrunkWindowClose = CLOCK_BASE_MS + 7_000 + 60_000
+    expect(shrunkFireAt).toBeLessThanOrEqual(shrunkWindowClose)
+    expect(shrunkFireAt).toBeLessThan(minuteFloorMs(CLOCK_BASE_MS + 7_000 + 90_000))
     await drainToTimeout()
 
     await runProofCheck(harness.deps, makeRequest({ check: 'bug4_create_response_mode' }))

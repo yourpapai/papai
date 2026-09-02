@@ -45,8 +45,11 @@ export const proofMarkerSentence = (runId: string): string =>
 
 export const minuteFloorMs = (ms: number): number => Math.floor(ms / MINUTE_MS) * MINUTE_MS
 
-export const fireAtLeadFor = (checkId: ProofCheckId): number =>
-  checkId === 'bug3_fires_on_creation' ? BUG3_FIRE_AT_LEAD_MS : FIRE_AT_LEAD_MS
+export const fireAtLeadFor = (checkId: ProofCheckId, windowMs?: number): number => {
+  if (checkId === 'bug3_fires_on_creation') return BUG3_FIRE_AT_LEAD_MS
+  if (windowMs === undefined) return FIRE_AT_LEAD_MS
+  return Math.min(FIRE_AT_LEAD_MS, Math.max(2 * MIN_WINDOW_MS, windowMs / 2))
+}
 
 export const resolveWindowMs = (request: ProofCheckRequest, isAlertVariant: boolean): number => {
   const waitSeconds = request.wait_seconds
