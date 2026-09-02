@@ -45,6 +45,9 @@ export const proofMarkerSentence = (runId: string): string =>
 
 export const minuteFloorMs = (ms: number): number => Math.floor(ms / MINUTE_MS) * MINUTE_MS
 
+export const fireAtMsFor = (startMs: number, leadMs: number): number =>
+  Math.max(minuteFloorMs(startMs + leadMs), minuteFloorMs(startMs) + MINUTE_MS)
+
 export const fireAtLeadFor = (checkId: ProofCheckId, windowMs?: number): number => {
   if (checkId === 'bug3_fires_on_creation') return BUG3_FIRE_AT_LEAD_MS
   if (windowMs === undefined) return FIRE_AT_LEAD_MS

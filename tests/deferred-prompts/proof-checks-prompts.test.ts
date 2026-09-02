@@ -9,6 +9,7 @@ import {
   appendRecord,
   createProofPrompt,
   fireAtLeadFor,
+  fireAtMsFor,
   makeRecord,
   minuteFloorMs,
   proofMarker,
@@ -131,6 +132,18 @@ describe('proof check prompt helpers', () => {
     expect(fireAtLeadFor('bug3_fires_on_creation')).toBe(10 * MINUTE_MS)
     expect(fireAtLeadFor('bug2_context_time')).toBe(90_000)
     expect(fireAtLeadFor('bug5_update_preserves_prompt')).toBe(90_000)
+  })
+
+  test('fireAtMsFor keeps the floored target when it is already future and never lands at or before the start', () => {
+    expect(fireAtMsFor(CLOCK_BASE_MS, 90_000)).toBe(minuteFloorMs(CLOCK_BASE_MS + 90_000))
+    expect(fireAtMsFor(CLOCK_BASE_MS + 40_000, 30_000)).toBe(CLOCK_BASE_MS + MINUTE_MS)
+    expect(fireAtMsFor(CLOCK_BASE_MS + 7_000, 30_000)).toBe(CLOCK_BASE_MS + MINUTE_MS)
+    expect(fireAtMsFor(CLOCK_BASE_MS + 59_999, 10 * MINUTE_MS)).toBe(CLOCK_BASE_MS + 10 * MINUTE_MS)
+    for (const offsetMs of [0, 1_000, 7_000, 30_000, 59_999]) {
+      for (const leadMs of [2_000, 30_000, 60_000, 90_000, 10 * MINUTE_MS]) {
+        expect(fireAtMsFor(CLOCK_BASE_MS + offsetMs, leadMs)).toBeGreaterThan(CLOCK_BASE_MS + offsetMs)
+      }
+    }
   })
 
   test('window defaults to two poll intervals, doubles for the alert variant, and clamps wait_seconds', () => {

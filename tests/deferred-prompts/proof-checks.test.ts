@@ -697,10 +697,12 @@ describe('proof checks runner', () => {
     harness.timers.nowMs = CLOCK_BASE_MS + 7_000
     await expectStarted(makeRequest({ wait_seconds: 60 }))
     await waitFor(() => harness.world.createCalls.length > 2)
+    const shrunkStartMs = CLOCK_BASE_MS + 7_000
     const shrunkFireAt = reconstructedFireAtMs(2)
     const shrunkWindowClose = CLOCK_BASE_MS + 7_000 + 60_000
+    expect(shrunkFireAt).toBe(CLOCK_BASE_MS + MINUTE_MS)
+    expect(shrunkFireAt).toBeGreaterThan(shrunkStartMs)
     expect(shrunkFireAt).toBeLessThanOrEqual(shrunkWindowClose)
-    expect(shrunkFireAt).toBeLessThan(minuteFloorMs(CLOCK_BASE_MS + 7_000 + 90_000))
     await drainToTimeout()
 
     await runProofCheck(harness.deps, makeRequest({ check: 'bug4_create_response_mode' }))

@@ -13,8 +13,8 @@ import {
   appendRecord,
   createProofPrompt,
   fireAtLeadFor,
+  fireAtMsFor,
   makeRecord,
-  minuteFloorMs,
   proofMarkerSentence,
   resolveWindowMs,
   sweepProofPrompts,
@@ -144,7 +144,7 @@ const runSyncCheck = async (
   const variant = request.variant
   const observations: string[] = []
   sweepProofPrompts(deps, request.storageContextId)
-  const created = createProofPrompt(deps, request, runId, minuteFloorMs(startMs + fireAtLeadFor(checkId)), variant)
+  const created = createProofPrompt(deps, request, runId, fireAtMsFor(startMs, fireAtLeadFor(checkId)), variant)
   if ('error' in created.result) {
     observations.push(`create_error: ${created.result.error}`)
     const record = makeRecord(runId, checkId, variant, startMs, deps.now(), 'inconclusive', observations)
@@ -184,7 +184,7 @@ const startAsyncCheck = async (
   try {
     sweepProofPrompts(deps, request.storageContextId)
     const windowMs = resolveWindowMs(request, isAlertVariant)
-    const fireAtMs = isAlertVariant ? null : minuteFloorMs(startMs + fireAtLeadFor(checkId, windowMs))
+    const fireAtMs = isAlertVariant ? null : fireAtMsFor(startMs, fireAtLeadFor(checkId, windowMs))
     const created = createProofPrompt(deps, request, runId, fireAtMs, isAlertVariant ? 'alert' : variant)
     if ('error' in created.result) {
       await appendRecord(
