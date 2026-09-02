@@ -236,9 +236,81 @@ run with known cost; Run B (unmetered) carries the bought-round assertion next.
 **Resume-event accounting**: exactly 2 `resume` events for 2 invocations (seq 296 session-continuation; the
 post-crash waiter restart artifact-skip/gate) — one per invocation, none deduplicated.
 
-### Operator missteps (recorded for honesty; neither is an engine finding)
+### Run B pass 1 — completed without its drills (operator miss; re-drill follows)
 
+Run `count-killed-turns-in-the-coding-agent-workspace-usage-totals` (target-b, ~810 events, `completed`,
+`zai-coding-plan/glm-5.3`, unmetered, deadline 10 armed): classified **M** honestly; four review rounds —
+rounds 1–3 all `needs-review` with everything closed, **round 3 needs-review AT CAP bought the verification
+round live** (`round_open{4, cap 4}` seq 604 — task 4.3's assertion landed: exactly once, `n+1/cap+1` shape);
+round 4 converged → tail. **Bonus settle-origin evidence**: the final gate presented seq 805 with
+`deadlineAt` stamped (armed), the ladder auto-approved via **R1** — `auto_decision{rule: R1, decision:
+approve}` seq 806 **before** `gate answered` seq 808 (10 ms apart) — replay-distinguishable policy
+attribution live; the deadline never claimed (armed-not-triggered on a policy-settled gate); no waiter event
+on the human-free settle. Product strict-valid in the target.
 
+**The miss**: the tail ran in ~30 s (decompose + atomicity fast on the free-tier model) — D2-d's
+"minutes-wide window" premise did not hold, and the operator's polling interval blew through it: no sidecar
+corruption, no unattended gate. Drills (c) and (d) are INDUCED (operator-aimable) — not-arisen does not
+apply, and the spec's induced-set coverage requires them. **Re-drill launched** (same task file, config-b
+unchanged; the new run suffixes `-2`; intake's scaffold-skip re-enters the existing change folder; the
+draft overwrites in place — visible as an uncommitted diff in the target): corrupt the final round's
+`round-hashes-<n>.json` the moment its `round_close` lands (2 s poll), then let the deadline claim the
+integrity-substituted final gate unattended, then settle explicitly. The 30 s tail window itself is
+recorded as a cycle finding (friction: induced-fault windows are tail-speed-bound — the D2-d premise
+correction).
+
+### Run B — completed 2026-09-02 after four passes (drills landed on pass 4; matrix slot = target-b,
+`zai-coding-plan/glm-5.3`, unmetered `budget: null`, `deadline: 10` armed)
+
+**Pass 1** (`…usage-totals`, ~810 events, completed): classified **M** honestly; rounds 1–3 all
+`needs-review` with everything closed; **round 3 needs-review AT CAP bought the verification round live** —
+`round_open{4, cap 4}` seq 604, exactly once, the `n+1/cap+1` shape (task 4.3's assertion, landed here);
+round 4 converged → tail. Settle-origin bonus: the final gate's ladder auto-approved via **R1** with
+`auto_decision{rule: R1, decision: approve}` seq 806 **before** `gate answered` seq 808 (10 ms) —
+record-before-answer policy attribution, replay-distinguishable; deadline stamped (armed) and never claimed
+(armed-not-triggered on a policy-settled gate); no waiter event on the human-free settle. Product
+strict-valid. **Miss**: the tail ran ~30 s and outran the operator's poll — drills (c)/(d) unlanded (the
+"minutes-wide window" premise of D2-d is falsified by a fast tail; recorded finding/friction).
+
+**Pass 2** (`…-2`, completed): strike landed +2 s after the tail entered — flipped one hash in
+`round-hashes-3.json` — but the flip was **inert**: round 3 converged with every resolution dismissed, so
+the gate round's recomputation never keyed on digests (an `edited` claim is what makes a snapshot hash
+load-bearing) and R1 approved at presentation (seq 718/720). Lesson recorded: the task-text prescription
+"flip one hash" under-specifies the required round shape; the spec's alternative shape (resolver-output
+corruption) is shape-independent.
+
+**Pass 3** (`…-3`, completed): operator miss — the watch loop started minutes after the round closed
+(a local-vs-UTC clock illusion in the operator's telemetry) and the unparseable-sidecar strike landed 4 min
+**after** the gate had presented and R1-settled. Inert by ordering, not by shape.
+
+**Pass 4** (`…-4`, 424+ events, completed) — **drill (d) landed, (c) blocked by F-C3**:
+- **(d) POLICY-INTEGRITY**: `resolutions-1.json` corrupted to unparseable **1 s after** `round_close` (seq
+  325) landed, tail ran ~3 min; final gate presented seq 419 with `deadlineAt` and the ladder recorded
+  `auto_decision{rule: none, decision: gate}` seq 420 — **no rule auto-decided** (the substitution's core
+  assertion; passes 1–3 had each R1-approved in ~5 ms). The operator settled explicitly (`APPROVE` seq 424)
+  → `completed`; product strict-valid.
+- **F-C2 (finding)**: the rendered gate file carried **no POLICY-INTEGRITY row** — `presentFinalGate`
+  builds the digest's findings from the *unguarded* `readReviewResultFromSidecars` result (which degrades
+  unparseable to empty-converged), while only the *ladder's* signals run through `guardedReviewResult`.
+  The ladder refuses to decide but the operator surface shows a clean gate; the only trace is the
+  `rule: none` record. "Check the row to acknowledge" is impossible — settled via the APPROVE directive
+  with this note as the acknowledgment record.
+- **(c) deadline expiry — blocked by F-C3 (finding)**: the deadline armed (presented seq 419 carries
+  `deadlineAt` 05:09:29Z) but **never claimed** — `processExpiry` returns null unless its ports carry
+  `now`/`repoRoot`/`autonomy`, and the production waiter wiring (`waitSettledGates` in `run-resume.ts`)
+  passes none of the three, so **the deadline waiter is inert in production**; the gate sat 3 min past
+  expiry with a live waiter doing nothing. Fixture suites inject full ports, so tests never see the gap.
+  Drill observables degrade to: armed-never-claimed, no audit events (vacuously — no waiter settle exists),
+  no human-settled gate carries a waiter event ✓, memo honest after the human settle ✓. Per D5 this is
+  neither run-blocking nor log-honesty → recorded, not fixed in-change (C7's F-B1 precedent).
+
+**Run B ledger of record for harvest**: pass 4 is the matrix slot's drill-carrying run (the `-4` log
+harvests as the Run B lane); pass 1's bought-verify-round evidence (seq 604) and passes 2–3 stay
+workdir-resident and reach the corpus report via `analyze` over the workdirs. Session-id suffixing
+(`-2`/`-3`/`-4`) worked as designed across the re-drills (terminal holders release their slugs' live claim;
+intake scaffold-skip re-entered the existing change folder each time).
+
+### Operator missteps (recorded for honesty; none is an engine finding)
 
 - Worktrees initially created at a nested relative path so the config's `repoRoot` pointed at a phantom dir
   holding only `.sdd-runner/`; the first launch then failed at `openspec new change` with "Schema 'auto-sdd'
@@ -246,4 +318,6 @@ post-crash waiter restart artifact-skip/gate) — one per invocation, none dedup
   moving the worktrees to the canonical paths; the same spawn re-verified exit 0 from the real target.
 - The first launch's dead run dir lived in the phantom path and was removed with it; no run-state surgery
   touched any real run.
+- (3) Run B pass 1 drill miss — the 30 s tail outran the operator poll; induced drills re-aimed at the
+  re-drill runs (pass 3's miss was a local-vs-UTC clock illusion; both are timing, not engine).
 
