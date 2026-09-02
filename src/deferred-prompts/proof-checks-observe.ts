@@ -191,7 +191,11 @@ const computeVerdict = (
     return 'inconclusive'
   }
   observations.push(`executed_at: ${new Date(executionTs).toISOString()}`)
-  const trace = findOwnTrace(deps.readRecentLlm(), request.chatUserId, state.startMs, executionTs)
+  // D7 correlation window: the run's own trace completes after fire_at (generation
+  // starts at/after the due tick), so a trace older than the fire time belongs to a
+  // different turn — e.g. the admin turn that invoked run_proof_check — and must
+  // not correlate the run.
+  const trace = findOwnTrace(deps.readRecentLlm(), request.chatUserId, state.fireAtMs ?? state.startMs, executionTs)
   if (trace === null) {
     observations.push('no own llm trace correlated the run')
     return 'inconclusive'

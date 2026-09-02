@@ -13,6 +13,8 @@ import { getCachedHistory } from '../cache.js'
 import type { DeferredDeliveryTarget } from '../chat/types.js'
 import { hoistSystemMessages } from '../llm-message-utils.js'
 import { buildChatModel } from '../llm-model-builder.js'
+import { emitLlmEnd, emitLlmStart } from '../llm-orchestrator-events.js'
+import { emitLlmError } from '../llm-orchestrator-logging.js'
 import { collectTurnMessages } from '../llm-orchestrator-messages.js'
 import { logger } from '../logger.js'
 import { createDisclosurePrepareStep } from '../tools/disclosure/prepare-step.js'
@@ -106,6 +108,55 @@ type ScopedGenerationArgs = Readonly<{
   scope: Parameters<typeof runWithProviderRequestScope>[0]
 }>
 
+/**
+ * Debug-trace emission parity with invokeModel (llm:start/end/error): the proof
+ * checks correlate the run's own trace from recentLlm, so the proactive execution
+ * must land one. chatUserId is the delivery target's context id — the prompt
+ * owner's native chat user id for DM targets (admin/DM storage contexts are
+ * user-keyed), which is what findOwnTrace attributes against.
+ */
+const generateWithTrace = async (
+  execCtx: DeferredExecutionContext,
+  config: LlmConfig,
+  prepared: FullGenerationInput,
+  deps: ProactiveLlmDeps,
+  scope: Parameters<typeof runWithProviderRequestScope>[0],
+  turnId: string,
+  baseOptions: Parameters<ProactiveLlmDeps['generateText']>[0],
+): Promise<Awaited<ReturnType<ProactiveLlmDeps['generateText']>>> => {
+  const start = Date.now()
+  emitLlmStart(prepared.storageContextId, config.mainModel, prepared.messages, prepared.tools, turnId)
+  try {
+    const result = await deps.generateText(
+      Object.assign({}, baseOptions, { toolsContext: buildToolsContextRecord(prepared.tools, scope) }),
+    )
+    emitLlmEnd(
+      prepared.storageContextId,
+      execCtx.deliveryTarget.contextId,
+      execCtx.deliveryTarget.contextType,
+      config.mainModel,
+      result,
+      start,
+      prepared.messages,
+      prepared.tools,
+      turnId,
+    )
+    return result
+  } catch (error) {
+    emitLlmError(
+      prepared.storageContextId,
+      execCtx.deliveryTarget.contextId,
+      execCtx.deliveryTarget.contextType,
+      config.mainModel,
+      start,
+      prepared.messages.length,
+      error,
+      turnId,
+    )
+    throw error
+  }
+}
+
 const runScopedGeneration = async (args: ScopedGenerationArgs): Promise<string> => {
   const { execCtx, config, configContextId, deps, model, scope } = args
   const { createdByUserId } = execCtx
@@ -134,9 +185,7 @@ const runScopedGeneration = async (args: ScopedGenerationArgs): Promise<string> 
     timeout: 1_200_000,
     prepareStep: createDisclosurePrepareStep(prepared.disclosure, prepared.storageContextId, turnId),
   }
-  const result = await deps.generateText(
-    Object.assign({}, baseOptions, { toolsContext: buildToolsContextRecord(tools, scope) }),
-  )
+  const result = await generateWithTrace(execCtx, config, prepared, deps, scope, turnId, baseOptions)
   const previousHistory = getCachedHistory(prepared.storageContextId)
   const assistantMessages = collectTurnMessages(result)
   persistProactiveResults(

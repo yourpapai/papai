@@ -15,6 +15,11 @@ import { NO_ANALYTICS_SCOPE } from '../../src/analytics/provider-request-scope.j
 import { updateByokLlmConfig } from '../../src/byok-llm/store.js'
 import { toScopedContextId, toScopedThreadContextId } from '../../src/chat/scoped-context.js'
 import { setConfig } from '../../src/config.testing.js'
+import {
+  subscribe as subscribeDebugBus,
+  type DebugEvent,
+  unsubscribe as unsubscribeDebugBus,
+} from '../../src/debug/event-bus.js'
 import { dispatchExecution } from '../../src/deferred-prompts/proactive-llm.js'
 import type { DeferredExecutionContext } from '../../src/deferred-prompts/proactive-llm.js'
 import type { ExecutionMetadata } from '../../src/deferred-prompts/types.js'
@@ -35,7 +40,8 @@ type GenerateTextResult = {
   toolCalls: unknown[]
   toolResults: unknown[]
   steps: unknown[] | undefined
-  finalStep: { response: { messages: ModelMessage[] } }
+  usage?: { inputTokens: number; outputTokens: number }
+  finalStep: { response: { id?: string; modelId?: string; messages: ModelMessage[] } }
 }
 type GenerateTextCall = {
   model: string
@@ -138,7 +144,7 @@ describe('dispatchExecution', () => {
       text: 'Mock response',
       toolCalls: [],
       toolResults: [],
-      steps: undefined,
+      steps: [],
       finalStep: { response: { messages: [] } },
     })
   }
@@ -154,7 +160,7 @@ describe('dispatchExecution', () => {
         text: 'Mock response',
         toolCalls: [],
         toolResults: [],
-        steps: undefined,
+        steps: [],
         finalStep: { response: { messages: [] } },
       })
     }
@@ -193,6 +199,82 @@ describe('dispatchExecution', () => {
       const toolNames = toolNamesOf(call.tools)
       expect(toolNames).toContain('search_tools')
       expect(toolNames).toContain('load_tool')
+    })
+  })
+
+  describe('llm trace emission', () => {
+    const metadata: ExecutionMetadata = {
+      delivery_brief: 'be brief',
+      context_snapshot: null,
+    }
+
+    const captureBus = (): { events: DebugEvent[]; stop: () => void } => {
+      const events: DebugEvent[] = []
+      const listener = (event: DebugEvent): void => {
+        events.push(event)
+      }
+      subscribeDebugBus(listener)
+      return { events, stop: (): void => unsubscribeDebugBus(listener) }
+    }
+
+    test('emits llm:start/llm:end attributed to the delivery target for trace correlation', async () => {
+      setupUserConfig()
+      const provider = createMockProvider()
+      generateTextImpl = (args: GenerateTextCall): Promise<GenerateTextResult> => {
+        generateTextCalls.push(args)
+        return Promise.resolve({
+          text: 'Proactive reply',
+          toolCalls: [],
+          toolResults: [],
+          steps: [],
+          usage: { inputTokens: 11, outputTokens: 7 },
+          finishReason: 'stop',
+          finalStep: { response: { id: 'resp-1', modelId: 'main-model', messages: [] } },
+        })
+      }
+      const bus = captureBus()
+      try {
+        await dispatchExecution(makeExecCtx(), 'scheduled', 'check overdue', metadata, () => provider)
+      } finally {
+        bus.stop()
+      }
+
+      const start = bus.events.find((event) => event.type === 'llm:start')
+      const end = bus.events.find((event) => event.type === 'llm:end')
+      expect(start).toBeDefined()
+      expect(end).toBeDefined()
+      expect(start?.scope).toEqual({ kind: 'user', userId: USER_ID })
+      expect(start?.data['model']).toBe('main-model')
+      expect(end?.scope).toEqual({ kind: 'user', userId: USER_ID })
+      expect(end?.data['chatUserId']).toBe(USER_ID)
+      expect(end?.data['contextType']).toBe('dm')
+      expect(end?.data['model']).toBe('main-model')
+      expect(end?.data['generatedText']).toBe('Proactive reply')
+      expect(end?.data['finishReason']).toBe('stop')
+      expect(end?.data['totalDuration']).toBeNumber()
+      expect(String(end?.turnId)).toContain('proactive:')
+    })
+
+    test('emits llm:error and rethrows when generation fails', async () => {
+      setupUserConfig()
+      const provider = createMockProvider()
+      generateTextImpl = (): Promise<GenerateTextResult> => Promise.reject(new Error('provider down'))
+      const bus = captureBus()
+      try {
+        await expect(
+          dispatchExecution(makeExecCtx(), 'scheduled', 'check overdue', metadata, () => provider),
+        ).rejects.toThrow('provider down')
+      } finally {
+        bus.stop()
+      }
+
+      const error = bus.events.find((event) => event.type === 'llm:error')
+      expect(error).toBeDefined()
+      expect(error?.scope).toEqual({ kind: 'user', userId: USER_ID })
+      expect(error?.data['chatUserId']).toBe(USER_ID)
+      expect(error?.data['contextType']).toBe('dm')
+      expect(error?.data['model']).toBe('main-model')
+      expect(error?.data['error']).toBe('provider down')
     })
   })
 
@@ -283,7 +365,7 @@ describe('dispatchExecution', () => {
           text: '',
           toolCalls: [],
           toolResults: [],
-          steps: undefined,
+          steps: [],
           finalStep: { response: { messages: [] } },
         })
       }
@@ -351,7 +433,7 @@ describe('dispatchExecution', () => {
           text: 'Created task',
           toolCalls: [],
           toolResults: [{ toolName: 'create_task', output: { id: 'task-1', title: 'Thread task', number: 17 } }],
-          steps: undefined,
+          steps: [],
           finalStep: { response: { messages: [] } },
         })
       }
@@ -396,7 +478,7 @@ describe('dispatchExecution', () => {
           text: 'Created task',
           toolCalls: [],
           toolResults: [{ toolName: 'create_task', output: { id: 'task-1', title: 'Scoped thread task', number: 21 } }],
-          steps: undefined,
+          steps: [],
           finalStep: { response: { messages: [] } },
         })
       }
@@ -461,21 +543,21 @@ describe('dispatchExecution', () => {
           text: 'Thread response',
           toolCalls: [],
           toolResults: [],
-          steps: undefined,
+          steps: [],
           finalStep: { response: { messages: [{ role: 'assistant', content: 'new response' }] } },
         }),
         Promise.resolve({
           text: JSON.stringify({ keep_indices: Array.from({ length: 50 }, (_, index) => index), summary: 'trimmed' }),
           toolCalls: [],
           toolResults: [],
-          steps: undefined,
+          steps: [],
           finalStep: { response: { messages: [] } },
         }),
         Promise.resolve({
           text: JSON.stringify({ profile: null, records: [], updates: [] }),
           toolCalls: [],
           toolResults: [],
-          steps: undefined,
+          steps: [],
           finalStep: { response: { messages: [] } },
         }),
       ]

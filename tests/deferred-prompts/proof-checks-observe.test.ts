@@ -337,17 +337,18 @@ describe('proof check async observation', () => {
   })
 
   test('timeout-path trace correlation anchors at the observed execution and ignores later unrelated turns', async () => {
-    const executedAtMs = CLOCK_BASE_MS + 500
+    const fireAtMs = CLOCK_BASE_MS
+    const executedAtMs = CLOCK_BASE_MS + 30_000
     const row = makeScheduledRow(executedAtMs)
-    const preStartTrace = makeTrace({ timestamp: CLOCK_BASE_MS - 1, generatedText: 'pre-start turn' })
-    const proofTrace = makeTrace({ timestamp: executedAtMs + 1_000, generatedText: 'proof reply' })
+    const preFireTrace = makeTrace({ timestamp: CLOCK_BASE_MS - 1, generatedText: 'pre-fire turn' })
+    const proofTrace = makeTrace({ timestamp: executedAtMs - 1_000, generatedText: 'proof reply' })
     const unrelatedTrace = makeTrace({ timestamp: executedAtMs + 20_000, generatedText: 'unrelated admin turn' })
     recordProofDelivery('run-1', 'proof reply', new Date(CLOCK_BASE_MS).toISOString())
     arm(
-      { checkId: 'bug1_delivery_matches_execution', variant: 'no_tools' },
+      { checkId: 'bug1_delivery_matches_execution', variant: 'no_tools', fireAtMs },
       {
         getScheduledPrompt: (): ScheduledPrompt | null => row,
-        readRecentLlm: () => [preStartTrace, proofTrace, unrelatedTrace],
+        readRecentLlm: () => [preFireTrace, proofTrace, unrelatedTrace],
       },
     )
 
@@ -360,6 +361,7 @@ describe('proof check async observation', () => {
   })
 
   test('event-path trace correlation picks the proof turn that completed before the fired event', async () => {
+    const fireAtMs = CLOCK_BASE_MS + 88_000
     const fireMs = CLOCK_BASE_MS + 90_000
     const earlierUnrelated = makeTrace({ timestamp: CLOCK_BASE_MS + 30_000, generatedText: 'earlier admin turn' })
     const foreignUserTrace = makeTrace({
@@ -370,7 +372,7 @@ describe('proof check async observation', () => {
     const proofTrace = makeTrace({ timestamp: fireMs - 1_000, generatedText: 'proof reply' })
     recordProofDelivery('run-1', 'proof reply', new Date(CLOCK_BASE_MS).toISOString())
     arm(
-      { checkId: 'bug1_delivery_matches_execution', variant: 'no_tools' },
+      { checkId: 'bug1_delivery_matches_execution', variant: 'no_tools', fireAtMs },
       { readRecentLlm: () => [earlierUnrelated, foreignUserTrace, proofTrace] },
     )
 
@@ -381,6 +383,28 @@ describe('proof check async observation', () => {
 
     expect(observed.records[0]?.verdict).toBe('pass')
     expect(observed.records[0]?.observations.join('\n')).toContain('generated_text: proof reply')
+  })
+
+  test('a same-user trace from before the fire time never correlates the run', async () => {
+    // Regression: the admin turn that invoked run_proof_check completes after startMs
+    // but before fire_at; it must not be mistaken for the run's own trace.
+    const row = makeScheduledRow(CLOCK_BASE_MS + 30_000)
+    const invokingTurnTrace = makeTrace({ timestamp: CLOCK_BASE_MS + 5_000, generatedText: 'admin chat reply' })
+    recordProofDelivery('run-1', 'PROOF CHECK run-1 marker', new Date(CLOCK_BASE_MS).toISOString())
+    arm(
+      { checkId: 'bug1_delivery_matches_execution', variant: 'no_tools', fireAtMs: CLOCK_BASE_MS + 20_000 },
+      {
+        getScheduledPrompt: (): ScheduledPrompt | null => row,
+        readRecentLlm: () => [invokingTurnTrace],
+      },
+    )
+
+    observed.clock.advance(2 * 60_000 + 1_000)
+    await waitFor(() => observed.records.length > 0)
+    await waitFor(() => observed.releaseCalls() > 0)
+
+    expect(observed.records[0]?.verdict).toBe('inconclusive')
+    expect(observed.records[0]?.observations.join('\n')).toContain('no own llm trace correlated the run')
   })
 
   test('an observation error records an inconclusive verdict and still tears down', async () => {
