@@ -59,8 +59,12 @@ checks against materializations, and the exit review.
 | 2026-08-24 | true | — | 2026-08-24T23:41 | 0 | 3 (invalid_value=3) | 0 | ok | — |
 | 2026-08-25 | true | — | 2026-08-25T23:41 | 0 | 13 (invalid_value=13) | 0 | ok | — |
 | 2026-08-26 | true | — | 2026-08-27T05:42 | 0 | 14 (invalid_value=14) | 0 | ok | — |
-| 2026-08-27 | true | — | 2026-08-28T06:42 | 0 | 39 (invalid_value=39) | 0 | ok | — |
-| 2026-08-28 | true | — | 2026-08-29T17:42 | 0 | 0 | 0 | ok | — |
+| 2026-08-27 | true | — | 2026-08-27T23:42 | 0 | 39 (invalid_value=39) | 0 | ok | — |
+| 2026-08-28 | true | — | 2026-08-28T23:42 | 0 | 0 | 0 | ok | — |
+| 2026-08-29 | true | — | 2026-08-29T23:42 | 0 | 21 (invalid_value=21) | 0 | ok | — |
+| 2026-08-30 | true | — | 2026-08-30T23:42 | 0 | 2 (invalid_value=2) | 0 | ok | — |
+| 2026-08-31 | true | — | 2026-08-31T23:42 | 0 | 8 (invalid_value=8) | 0 | ok | — |
+| 2026-09-01 | true | — | 2026-09-01T23:42 | 0 | 11 (invalid_value=11) | 0 | ok | — |
 
 Days 2026-08-17–19 stayed `delta` because the pre-fix writer was still in
 production until v6.14.0 (deployed 2026-08-20, contains the writer fix +
