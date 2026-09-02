@@ -260,10 +260,19 @@ describe('deadline expiry at an escalation gate inherits the standard path (C6 D
     return { runDir, start: () => awaitGateSettle(ports), clock, warnings }
   }
 
+  /**
+   * Release one tick and let the waiter's async work (fs reads across the
+   * settle/expiry chain) finish before the next release — a bare one-turn wait
+   * races the reads under parallel-worker load, leaving the tick queue empty
+   * while the waiter is mid-attempt.
+   */
   async function releaseTick(clock: { readonly release: () => void }): Promise<void> {
     clock.release()
     await new Promise((resolve) => {
-      setTimeout(resolve, 0)
+      setTimeout(resolve, 1)
+    })
+    await new Promise((resolve) => {
+      setTimeout(resolve, 1)
     })
   }
 
