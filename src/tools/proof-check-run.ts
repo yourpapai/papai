@@ -11,7 +11,12 @@ import { getCachedHistory } from '../cache.js'
 import { subscribe as subscribeDebugEvent, unsubscribe as unsubscribeDebugEvent } from '../debug/event-bus.js'
 import { recentLlm } from '../debug/llm-trace-collector.js'
 import { getAlertPrompt, listAlertPrompts } from '../deferred-prompts/alerts.js'
-import { runProofCheck, type ProofCheckDeps } from '../deferred-prompts/proof-checks.js'
+import {
+  PROOF_CHECKS,
+  runProofCheck,
+  type ProofCheckDeps,
+  type ProofCheckId,
+} from '../deferred-prompts/proof-checks.js'
 import { appendProofRecord, loadProofRecords } from '../deferred-prompts/proof-store.js'
 import { getScheduledPrompt, listScheduledPrompts } from '../deferred-prompts/scheduled.js'
 import { executeCancel, executeCreate, executeGet, executeUpdate } from '../deferred-prompts/tool-handlers.js'
@@ -53,13 +58,9 @@ const productionProofCheckDeps = (): ProofCheckDeps => {
   }
 }
 
-const CHECK_IDS = [
-  'bug1_delivery_matches_execution',
-  'bug2_context_time',
-  'bug3_fires_on_creation',
-  'bug4_create_response_mode',
-  'bug5_update_preserves_prompt',
-] as const
+const isProofCheckId = (value: string): value is ProofCheckId => Object.hasOwn(PROOF_CHECKS, value)
+
+const CHECK_IDS = Object.keys(PROOF_CHECKS).filter(isProofCheckId)
 
 const CHECK_DESCRIPTION =
   'Which proof check to run: bug1_delivery_matches_execution (async; compares the delivered message with the execution result), ' +
