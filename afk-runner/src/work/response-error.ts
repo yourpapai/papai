@@ -17,10 +17,21 @@ export function responseErrorPath(runDir: string, version: number): string {
 }
 
 export function writeResponseError(runDir: string, version: number, reason: string, digest: string): void {
-  writeFileSync(
-    responseErrorPath(runDir, version),
-    `<!-- gate-${version}.response-error.md -->\n\n# Gate ${version} response error — the gate is NOT settled\n\n${reason}\n\n<!-- failed-digest: ${digest} -->\n`,
-  )
+  writeFileSync(responseErrorPath(runDir, version), responseErrorBody(version, '', reason, digest))
+}
+
+/**
+ * The steer variant (D2): one artifact surface, heading marked `(steer)` —
+ * parse-inert by construction, same as the file path's. Written
+ * unconditionally (a steer often lands before any stable gate-file read),
+ * with the reason embedding the consumed directive.
+ */
+export function writeSteerResponseError(runDir: string, version: number, reason: string, digest: string): void {
+  writeFileSync(responseErrorPath(runDir, version), responseErrorBody(version, ' (steer)', reason, digest))
+}
+
+function responseErrorBody(version: number, headingMarker: string, reason: string, digest: string): string {
+  return `<!-- gate-${version}.response-error.md -->\n\n# Gate ${version} response error${headingMarker} — the gate is NOT settled\n\n${reason}\n\n<!-- failed-digest: ${digest} -->\n`
 }
 
 export function readFailedDigest(runDir: string, version: number): string | null {

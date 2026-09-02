@@ -12,8 +12,8 @@ See LICENSE in the project root for details.
 
 ## 2. Steer containment (D1 waiter branch + D2 feedback artifact)
 
-- [ ] 2.1 Red in `tests/afk-runner/work/gate-waiter.test.ts`: a well-formed steer item-veto with a foreign id becomes contained feedback — the waiter stays waiting, `gate-<v>.response-error.md` is written unconditionally with a `(steer)`-marked heading and the consumed directive embedded in the reason, and the steer file is consumed; then implement the steer branch's rejection handling with the unconditional artifact write. Verify: `bun test tests/afk-runner/work/gate-waiter.test.ts`
-- [ ] 2.2 Red in `tests/afk-runner/work/gate-waiter.test.ts`: the steer rejection's digest (sha256 of the steer directive line) is inert for the file-path digest guard — a resumed waiter seeds `failedDigest` from the artifact yet a subsequent stable hand-edit settles without being blocked. Verify: `bun test tests/afk-runner/work/gate-waiter.test.ts`
+- [x] 2.1 Red in `tests/afk-runner/work/gate-waiter.test.ts`: a well-formed steer item-veto with a foreign id becomes contained feedback — the waiter stays waiting, `gate-<v>.response-error.md` is written unconditionally with a `(steer)`-marked heading and the consumed directive embedded in the reason, and the steer file is consumed; then implement the steer branch's rejection handling with the unconditional artifact write. Verify: `bun test tests/afk-runner/work/gate-waiter.test.ts`
+- [x] 2.2 Red in `tests/afk-runner/work/gate-waiter.test.ts`: the steer rejection's digest (sha256 of the steer directive line) is inert for the file-path digest guard — a resumed waiter seeds `failedDigest` from the artifact yet a subsequent stable hand-edit settles without being blocked. Verify: `bun test tests/afk-runner/work/gate-waiter.test.ts`
 
 ## 3. Guarded render and settle-time expected (D3 + D4)
 

@@ -16,8 +16,9 @@ import { startRun } from '../../../afk-runner/src/run.js'
 import { holderPath } from '../../../afk-runner/src/stop-controller.js'
 import { renderGateAnswers } from '../../../afk-runner/src/work/gate-answers.js'
 import { presentGate } from '../../../afk-runner/src/work/gate-files.js'
-import { awaitGateSettle } from '../../../afk-runner/src/work/gate-waiter.js'
+import { awaitGateSettle, digestOf } from '../../../afk-runner/src/work/gate-waiter.js'
 import type { GateWaiterPorts, GateWaiterResult } from '../../../afk-runner/src/work/gate-waiter.js'
+import { readFailedDigest } from '../../../afk-runner/src/work/response-error.js'
 import { makeFakePipeline, TASK_TEXT } from '../fixtures/fake-pipeline.js'
 
 const NULL_DIGEST = { what: null, why: null, touches: null, hasTasks: false }
@@ -355,6 +356,45 @@ describe('gate waiter — settle containment (D3)', () => {
     expect(errorMd).toContain('sidecar')
     const probe = await Promise.race([waiter.then((r) => r), Promise.resolve('still-waiting' as const)])
     expect(probe).toBe('still-waiting')
+  })
+})
+
+describe('gate waiter — thrown steer settle stays contained (F-C1/D2)', () => {
+  it('a well-formed steer item-veto with a foreign id becomes feedback: artifact, stdout, consumed — the waiter survives', async () => {
+    const h = await makeAwaitingGate()
+    const waiter = h.start()
+    h.writeSteer('veto F99=drop the rollback promise\n')
+    await releaseTick(h.clock)
+    await releaseTick(h.clock)
+    const probe = await Promise.race([waiter.then((r) => r), Promise.resolve('still-waiting' as const)])
+    expect(probe).toBe('still-waiting')
+    // the steer file is consumed (append-only audit), never re-driven
+    expect(fs.existsSync(path.join(h.runDir, 'steer.consumed.1.md'))).toBe(true)
+    expect(fs.existsSync(path.join(h.runDir, 'steer.md'))).toBe(false)
+    // the artifact is written unconditionally, (steer)-marked, with the
+    // consumed directive embedded — the operator no longer has the file
+    const errorMd = fs.readFileSync(path.join(h.runDir, 'gate-1.response-error.md'), 'utf8')
+    expect(errorMd).toContain('(steer)')
+    expect(errorMd).toContain('veto F99=drop the rollback promise')
+    expect(errorMd).toContain('unknown finding F99')
+    expect(h.warnings.some((line) => line.includes('unknown finding F99'))).toBe(true)
+    expect(hasAnsweredGate(readEvents(h.logPath))).toBe(false)
+  })
+
+  it("the steer rejection's digest (the directive line's sha256) is inert for the file-path guard: a stable hand edit settles", async () => {
+    const h = await makeAwaitingGate()
+    const waiter = h.start()
+    h.writeSteer('veto F99=drop it\n')
+    for (let i = 0; i < 3; i += 1) await releaseTick(h.clock)
+    // what a resumed waiter would seed from the artifact: the steer line's
+    // digest — which no gate-file content digest can equal
+    expect(readFailedDigest(h.runDir, 1)).toBe(digestOf('veto F99=drop it'))
+    expect(readFailedDigest(h.runDir, 1)).not.toBe(digestOf(APPROVE_MD))
+    h.writeGateMd(APPROVE_MD)
+    for (let i = 0; i < 3; i += 1) await releaseTick(h.clock)
+    const result = await waiter
+    expect(result).toEqual({ kind: 'settled', outcome: 'approve' })
+    expect(fs.existsSync(path.join(h.runDir, 'gate-1.response-error.md'))).toBe(false)
   })
 })
 

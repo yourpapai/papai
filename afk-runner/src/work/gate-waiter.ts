@@ -19,9 +19,10 @@ import { APPROVE_DIRECTIVE_RE, VETO_DIRECTIVE_RE, VETO_REDIRECT_DIRECTIVE_RE } f
 import { settleGateWithAnswers } from './gate-settle.js'
 import { expectedContentFor, settleGateFile } from './gate-settle.js'
 import type { SettleInput, SettleOutcome } from './gate-settle.js'
-import { clearResponseError, readFailedDigest, writeResponseError } from './response-error.js'
+import { clearResponseError, readFailedDigest, writeResponseError, writeSteerResponseError } from './response-error.js'
 import { consumeSteerFile } from './steer.js'
 import { peekSteer, steerAnswers, translateSteer } from './waiter-steer.js'
+import type { SteerLanding } from './waiter-steer.js'
 export type { SteerLanding } from './waiter-steer.js'
 export { peekSteer, translateSteer } from './waiter-steer.js'
 
@@ -183,10 +184,48 @@ async function steerTick(
     return step(ports, state, attemptSettle)
   }
   const result = await attemptSettle(context, (input) => settleGateWithAnswers(input, steerAnswers(steer)))
-  if (result.kind === 'rejected') return feedbackAndKeepWaiting(ports, context, state, attemptSettle, result.reason)
+  if (result.kind === 'rejected')
+    return steerFeedbackAndKeepWaiting(ports, context, state, attemptSettle, steer, result.reason)
   clearResponseError(ports.runDir, context.version)
   state.failedDigest = null
   return result
+}
+
+/**
+ * The consumed directive's canonical line (D2): embedded in the steer
+ * rejection's reason — the operator no longer has the file to correlate
+ * against — and digested for the artifact's failed-digest guard.
+ */
+function steerLineOf(steer: SteerLanding): string {
+  if (steer.kind === 'veto') {
+    if (steer.id === undefined) return steer.redirect === undefined ? 'veto' : `veto ${steer.redirect}`
+    return steer.redirect === undefined ? `veto ${steer.id}=` : `veto ${steer.id}=${steer.redirect}`
+  }
+  if (steer.kind === 'unknown') return steer.line
+  return steer.kind
+}
+
+/**
+ * Record a steer rejection as contained feedback (D2): the artifact is
+ * written unconditionally — a steer often lands before any stable gate-file
+ * read — its heading marked (steer), its reason embedding the consumed
+ * directive, and its digest the sha256 of the directive line, which no
+ * gate-file content digest can equal — the resume-seeded file-path guard
+ * stays inert, so no hand edit is ever blocked by a steer rejection.
+ */
+function steerFeedbackAndKeepWaiting(
+  ports: GateWaiterPorts,
+  context: WaiterContext,
+  state: WaiterState,
+  attemptSettle: AttemptSettleFn,
+  steer: SteerLanding,
+  reason: string,
+): Promise<GateWaiterResult> {
+  const directive = steerLineOf(steer)
+  const marked = `steer "${directive}" rejected: ${reason}`
+  writeSteerResponseError(ports.runDir, context.version, marked, digestOf(directive))
+  ports.stdout?.(`gate ${context.version} settle rejected — see gate-${context.version}.response-error.md: ${marked}`)
+  return step(ports, state, attemptSettle)
 }
 
 /** Record a rejection as operator feedback (D3): sibling artifact + stdout line, then keep waiting. */
