@@ -26,10 +26,17 @@ export interface ProofDeliveryRecord {
 }
 
 const deliveryRecords = new Map<string, ProofDeliveryRecord>()
+// Runs finalizeProofRun has closed. A delivery can land after its run's observation window
+// (generation timeout far exceeds the window), and that late delivery must stay JSONL
+// evidence only — re-inserting it would put a map entry back that no later run ever evicts.
+// Entries leave when their late delivery arrives; the cap evicts the oldest otherwise, so
+// the set itself stays bounded.
+const finishedRunIds = new Set<string>()
+const FINISHED_RUN_IDS_CAP = 16
 
 export const recordProofDelivery = (runId: string, responseText: string, at: string): void => {
   const record: ProofDeliveryRecord = { runId, responseText, delivered: true, at }
-  deliveryRecords.set(runId, record)
+  if (!finishedRunIds.delete(runId)) deliveryRecords.set(runId, record)
   appendProofJsonLine(record).catch((error: unknown) => {
     log.warn(
       { runId, error: error instanceof Error ? error.message : String(error) },
@@ -40,6 +47,7 @@ export const recordProofDelivery = (runId: string, responseText: string, at: str
 
 export const resetProofDeliveryRecords = (): void => {
   deliveryRecords.clear()
+  finishedRunIds.clear()
 }
 
 export interface AsyncRunState {
@@ -230,6 +238,11 @@ const finalizeProofRun = async (
     makeRecord(state.runId, state.checkId, state.variant, state.startMs, deps.now(), verdict, observations),
   )
   deliveryRecords.delete(state.runId)
+  if (finishedRunIds.size >= FINISHED_RUN_IDS_CAP) {
+    const oldest: string | undefined = finishedRunIds.values().next().value
+    if (oldest !== undefined) finishedRunIds.delete(oldest)
+  }
+  finishedRunIds.add(state.runId)
   releaseLock()
 }
 

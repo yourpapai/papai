@@ -394,6 +394,38 @@ describe('proof check async observation', () => {
     expect(observed.records[0]?.observations.join('\n')).toContain('no delivery record for the run')
   })
 
+  test('a delivery landing after finalize keeps its JSONL evidence but never re-enters the delivery map', async () => {
+    arm()
+
+    observed.clock.advance(2 * 60_000 + 1_000)
+    await waitFor(() => observed.records.length > 0)
+    await waitFor(() => observed.releaseCalls() > 0)
+
+    recordProofDelivery('run-1', 'late proof reply', new Date(CLOCK_BASE_MS).toISOString())
+    const path = join(envDir, 'proof-checks.jsonl')
+    await waitFor(() => {
+      try {
+        return readFileSync(path, 'utf8').includes('"runId":"run-1"')
+      } catch {
+        return false
+      }
+    })
+
+    arm(
+      { checkId: 'bug1_delivery_matches_execution', variant: 'no_tools', fireAtMs: CLOCK_BASE_MS },
+      {
+        getScheduledPrompt: (): ScheduledPrompt | null => makeScheduledRow(CLOCK_BASE_MS + 30_000),
+        readRecentLlm: () => [makeTrace({ timestamp: CLOCK_BASE_MS + 29_000, generatedText: 'late proof reply' })],
+      },
+    )
+    observed.clock.advance(2 * 60_000 + 1_000)
+    await waitFor(() => observed.records.length > 0)
+    await waitFor(() => observed.releaseCalls() > 0)
+
+    expect(observed.records[0]?.verdict).toBe('inconclusive')
+    expect(observed.records[0]?.observations.join('\n')).toContain('no delivery record for the run')
+  })
+
   test('event-path trace correlation picks the proof turn that completed before the fired event', async () => {
     const fireAtMs = CLOCK_BASE_MS + 88_000
     const fireMs = CLOCK_BASE_MS + 90_000
