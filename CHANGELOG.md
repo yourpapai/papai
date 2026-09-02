@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Removed
+
+- **sdd-runner:** Delete the frozen `sdd-runner/` workspace (154 TS files) with its whole transitional `sdd-runner:*` alias family and workspaces entry; `pricing.ts` re-homes into `opencode-agent/` (its sole consumer); the jscpd parity ignores die with the workspace (re-tighten performed, nothing surfaced); `afk-runner` is the sole SDD runner — recovery is `git revert` of the deletion commit
+
 ## [6.14.1] - 2026-08-20
 
 ### Added

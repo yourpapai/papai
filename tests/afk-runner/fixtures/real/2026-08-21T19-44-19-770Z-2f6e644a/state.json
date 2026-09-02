@@ -1,0 +1,17 @@
+{
+  "runId": "2026-08-21T19-44-19-770Z-2f6e644a",
+  "repoRoot": "/Users/ki/Projects/yourpapai/papai/.worktrees/sdd-runner-decomposition",
+  "workDir": "/Users/ki/Projects/yourpapai/papai/.worktrees/sdd-runner-decomposition/.sdd-runner",
+  "changeName": "sdd-runner-decomposition",
+  "stage": "gate",
+  "depth": "M",
+  "round": 3,
+  "roundCap": 3,
+  "gate": null,
+  "status": "completed",
+  "createdAt": "2026-08-21T19:44:19.770Z",
+  "updatedAt": "2026-08-23T17:05:48.312Z",
+  "autoExtendsUsed": 0,
+  "gateDeadlineAt": null,
+  "gateDeadlineReArmed": false
+}

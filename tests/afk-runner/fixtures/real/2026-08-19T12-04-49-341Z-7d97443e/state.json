@@ -1,0 +1,20 @@
+{
+  "runId": "2026-08-19T12-04-49-341Z-7d97443e",
+  "repoRoot": "/Users/ki/Projects/yourpapai/papai/.worktrees/knowledge-base-plugin-2nd",
+  "workDir": "/Users/ki/Projects/yourpapai/papai/.worktrees/knowledge-base-plugin-2nd/.sdd-runner",
+  "changeName": "kiss-help",
+  "stage": "gate",
+  "depth": "L",
+  "round": 10,
+  "roundCap": 10,
+  "gate": {
+    "mode": "final",
+    "version": 8
+  },
+  "status": "running",
+  "createdAt": "2026-08-19T12:04:49.341Z",
+  "updatedAt": "2026-08-20T07:09:43.096Z",
+  "autoExtendsUsed": 0,
+  "gateDeadlineAt": null,
+  "gateDeadlineReArmed": false
+}

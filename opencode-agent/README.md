@@ -1917,9 +1917,9 @@ output cap and the capability flags from the row. An unresolved fact is
 answer.
 
 Reading the catalogue is best-effort and bounded: the run fetches
-`https://models.dev/api.json` once on the boot path through the same cached,
-timeout-bounded reader `sdd-runner` uses, after the guardrail door so a payload
-the pipeline is about to drop never pays for it. An unreachable host warns and
+`https://models.dev/api.json` once on the boot path through the workspace's own
+cached, timeout-bounded reader (`src/pricing.ts`), after the guardrail door so a
+payload the pipeline is about to drop never pays for it. An unreachable host warns and
 falls to the next rung; it never fails a run. The `debug` line names the model,
 the resolved context window and **which rung answered**, so "why did this run
 never compact" is a log read rather than a rerun.

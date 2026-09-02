@@ -1,0 +1,273 @@
+// SPDX-License-Identifier: BUSL-1.1
+// Copyright (c) 2026 Dmitriy Lazarev
+// Use of this software is governed by the Business Source License 1.1.
+// See LICENSE in the project root for details.
+
+import { z } from 'zod'
+
+export {
+  ToolUseEvent,
+  StepFinishEvent,
+  SpawnedEvent,
+  RetryingEvent,
+  KilledEvent,
+  AgentDoneEvent,
+} from './agent-noise-schemas.js'
+import {
+  ToolUseEvent,
+  StepFinishEvent,
+  SpawnedEvent,
+  RetryingEvent,
+  KilledEvent,
+  AgentDoneEvent,
+} from './agent-noise-schemas.js'
+
+export const StageIdSchema = z.enum(['intake', 'draft', 'review', 'decompose', 'atomicity', 'gate'])
+export type StageId = z.infer<typeof StageIdSchema>
+
+export const STAGE_ORDER: readonly StageId[] = ['intake', 'draft', 'review', 'decompose', 'atomicity', 'gate']
+
+/** Declared failure kinds (C6 D1 taxonomy): exhaustion, structural precondition, agent-transport infra. */
+export const FailureKindSchema = z.enum(['exhausted', 'precondition', 'infra'])
+export type FailureKind = z.infer<typeof FailureKindSchema>
+
+export const DepthProfileSchema = z.enum(['S', 'M', 'L'])
+export type DepthProfile = z.infer<typeof DepthProfileSchema>
+
+export { AgentUsageSchema, type AgentUsage } from './agent-noise-schemas.js'
+
+export const FindingClassSchema = z.enum(['BLOCKER', 'MATERIAL', 'NITPICK'])
+export type FindingClass = z.infer<typeof FindingClassSchema>
+
+export const FindingCountsSchema = z.object({
+  blocker: z.number().int().nonnegative(),
+  material: z.number().int().nonnegative(),
+  nitpick: z.number().int().nonnegative(),
+})
+export type FindingCounts = z.infer<typeof FindingCountsSchema>
+
+const StageEnterEvent = z.object({
+  altitude: z.literal('L2'),
+  type: z.literal('stage_enter'),
+  stage: StageIdSchema,
+})
+
+const StageExitEvent = z.object({
+  altitude: z.literal('L2'),
+  type: z.literal('stage_exit'),
+  stage: StageIdSchema,
+})
+
+const StageFailedEvent = z.object({
+  altitude: z.literal('L2'),
+  type: z.literal('stage_failed'),
+  stage: StageIdSchema,
+  kind: FailureKindSchema,
+  reason: z.string().min(1),
+  resumeHint: z.string().min(1).optional(),
+})
+
+const RoundOpenEvent = z.object({
+  altitude: z.literal('L2'),
+  type: z.literal('round_open'),
+  round: z.number().int().positive(),
+  cap: z.number().int().positive(),
+})
+
+const RoundCloseEvent = z.object({
+  altitude: z.literal('L2'),
+  type: z.literal('round_close'),
+  round: z.number().int().positive(),
+  cap: z.number().int().positive(),
+})
+
+const FindingEvent = z.object({
+  altitude: z.literal('L2'),
+  type: z.literal('finding'),
+  action: z.enum(['filed', 'classified', 'resolved', 'dismissed']),
+  id: z.string().min(1),
+  round: z.number().int().positive(),
+  class: FindingClassSchema.optional(),
+  detail: z.string().optional(),
+  /** Concern fingerprint (loop-memory D5, additive): joins this event to its cross-round concern. */
+  fingerprint: z.string().min(1).optional(),
+})
+
+const AssumptionEvent = z.object({
+  altitude: z.literal('L2'),
+  type: z.literal('assumption'),
+  action: z.enum(['logged', 'confirmed', 'vetoed', 'applied']),
+  id: z.string().min(1),
+  detail: z.string().optional(),
+})
+
+const ConvergenceEvent = z.object({
+  altitude: z.literal('L2'),
+  type: z.literal('convergence'),
+  round: z.number().int().positive(),
+  verdict: z.enum(['converged', 'needs-review', 'open']),
+  /** Every finding the round recorded — the trajectory's number. */
+  counts: FindingCountsSchema,
+  /**
+   * Only what a human must settle — the gate's number. Optional so a log
+   * written before the split parses unchanged; replay reads its absence as
+   * equal to `counts`, reproducing the pre-split verdicts exactly.
+   */
+  open: FindingCountsSchema.optional(),
+  /**
+   * Thrashing concern cluster ids (loop-memory D5, additive): present only on
+   * the convergence that ended the loop as a concern-history cap-hit. Absent
+   * lines fold as `[]`.
+   */
+  concerns: z.array(z.string().min(1)).optional(),
+})
+
+const ArtifactEvent = z.object({
+  altitude: z.literal('L2'),
+  type: z.literal('artifact'),
+  action: z.literal('materialized'),
+  path: z.string().min(1),
+})
+
+const DepthEvent = z.object({
+  altitude: z.literal('L2'),
+  type: z.literal('depth'),
+  profile: DepthProfileSchema,
+  rationale: z.string().min(1),
+  source: z.enum(['override', 'estimator', 'prescreen']),
+  disagreement: z.boolean().optional(),
+})
+
+export const GateOutcomeSchema = z.enum(['approve', 'veto', 'extend', 'abort'])
+export type GateOutcome = z.infer<typeof GateOutcomeSchema>
+
+const GateEvent = z.object({
+  altitude: z.literal('L2'),
+  type: z.literal('gate'),
+  action: z.enum(['presented', 'answered', 'rearmed']),
+  mode: z.enum(['early', 'final', 'plan', 'escalation']),
+  version: z.number().int().positive(),
+  /** Explicit settle outcome (C4); historical answered events carry none. */
+  outcome: GateOutcomeSchema.optional(),
+  /** Absolute deadline stamp (C4) — present only when a deadline is configured. */
+  deadlineAt: z.string().min(1).optional(),
+})
+
+const PlanEvent = z.object({
+  altitude: z.literal('L2'),
+  type: z.literal('plan'),
+  childCount: z.number().int().positive(),
+  digest: z.string().min(1),
+})
+
+const ChildSpawnedEvent = z.object({
+  altitude: z.literal('L2'),
+  type: z.literal('child_spawned'),
+  child: z.string().min(1),
+})
+
+const ChildDoneEvent = z.object({
+  altitude: z.literal('L2'),
+  type: z.literal('child_done'),
+  child: z.string().min(1),
+  outcome: z.enum(['done', 'failed']),
+})
+
+const HumanEditsEvent = z.object({
+  altitude: z.literal('L2'),
+  type: z.literal('human_edits'),
+  action: z.literal('detected'),
+  files: z.array(z.string().min(1)).min(1),
+})
+
+const ResumeEvent = z.object({
+  altitude: z.literal('L2'),
+  type: z.literal('resume'),
+  path: z.enum(['artifact-skip', 'session-continuation', 'stage-rebuild']),
+  stage: StageIdSchema,
+  session: z.string().min(1).optional(),
+})
+
+/** Operator abort (C6 D7): the stop verb's event-sourced give-up for runs with no live owner. */
+const RunAbortEvent = z.object({
+  altitude: z.literal('L2'),
+  type: z.literal('run_abort'),
+  reason: z.literal('operator'),
+})
+
+export const AutoDecisionRuleSchema = z.enum(['R1', 'R2', 'R3', 'R4', 'R5', 'none'])
+export type AutoDecisionRule = z.infer<typeof AutoDecisionRuleSchema>
+
+export const AutoDecisionKindSchema = z.enum(['preview', 'approve', 'extend', 'accept-items', 'gate', 'pending'])
+export type AutoDecisionKind = z.infer<typeof AutoDecisionKindSchema>
+
+const AutoDecisionEvent = z.object({
+  altitude: z.literal('L2'),
+  type: z.literal('auto_decision'),
+  rule: AutoDecisionRuleSchema,
+  decision: AutoDecisionKindSchema,
+  evidenceDigest: z.string(),
+  gateVersion: z.number().int().positive(),
+})
+
+const EVENT_VARIANTS = [
+  ToolUseEvent,
+  StepFinishEvent,
+  SpawnedEvent,
+  RetryingEvent,
+  KilledEvent,
+  AgentDoneEvent,
+  StageEnterEvent,
+  StageExitEvent,
+  StageFailedEvent,
+  RoundOpenEvent,
+  RoundCloseEvent,
+  FindingEvent,
+  AssumptionEvent,
+  ConvergenceEvent,
+  ArtifactEvent,
+  DepthEvent,
+  GateEvent,
+  PlanEvent,
+  ChildSpawnedEvent,
+  ChildDoneEvent,
+  HumanEditsEvent,
+  ResumeEvent,
+  RunAbortEvent,
+  AutoDecisionEvent,
+] as const
+
+export const EventInputSchema = z.discriminatedUnion('type', [...EVENT_VARIANTS])
+export type EventInput = z.input<typeof EventInputSchema>
+
+const StampShape = { seq: z.number().int().positive(), ts: z.string().min(1) }
+
+export const SddEventSchema = z.discriminatedUnion('type', [
+  ToolUseEvent.extend(StampShape),
+  StepFinishEvent.extend(StampShape),
+  SpawnedEvent.extend(StampShape),
+  RetryingEvent.extend(StampShape),
+  KilledEvent.extend(StampShape),
+  AgentDoneEvent.extend(StampShape),
+  StageEnterEvent.extend(StampShape),
+  StageExitEvent.extend(StampShape),
+  StageFailedEvent.extend(StampShape),
+  RoundOpenEvent.extend(StampShape),
+  RoundCloseEvent.extend(StampShape),
+  FindingEvent.extend(StampShape),
+  AssumptionEvent.extend(StampShape),
+  ConvergenceEvent.extend(StampShape),
+  ArtifactEvent.extend(StampShape),
+  DepthEvent.extend(StampShape),
+  GateEvent.extend(StampShape),
+  PlanEvent.extend(StampShape),
+  ChildSpawnedEvent.extend(StampShape),
+  ChildDoneEvent.extend(StampShape),
+  HumanEditsEvent.extend(StampShape),
+  ResumeEvent.extend(StampShape),
+  RunAbortEvent.extend(StampShape),
+  AutoDecisionEvent.extend(StampShape),
+])
+export type SddEvent = z.infer<typeof SddEventSchema>
+
+export type DoneEvent = Extract<SddEvent, { type: 'done' }>

@@ -3,13 +3,11 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { loadDb as loadModelsDb, resolveCost } from '../../sdd-runner/src/pricing.js'
-import type { ModelsDevDb, ResolvedCost } from '../../sdd-runner/src/pricing.js'
-import { costOfUsage } from '../../sdd-runner/src/usage-aggregate.js'
-import type { UsageBuckets } from '../../sdd-runner/src/usage-aggregate.js'
 import type { Logger } from './logger.js'
 import { modelRef } from './openai-config.js'
 import type { OpenAiSettings } from './openai-config.js'
+import { costOfUsage, loadDb as loadModelsDb, resolveCost } from './pricing.js'
+import type { ModelsDevDb, ResolvedCost, UsageBuckets } from './pricing.js'
 import { errorMessage } from './types.js'
 
 /**
@@ -27,10 +25,10 @@ import { errorMessage } from './types.js'
  * guardrail that silently stops bounding it. This module may answer `null`; the
  * budget may not.
  *
- * The arithmetic itself is `sdd-runner`'s, imported rather than copied — the
- * edge `model-metadata.ts` already opened, for the reason it records there: one
- * direction, a function wide, both workspaces developer tooling outside papai's
- * runtime.
+ * The arithmetic itself is this workspace's `pricing.ts` (`costOfUsage`, homed
+ * with the rates) — the edge `model-metadata.ts` already opened, for the reason
+ * it records there: one direction, a function wide, both workspaces developer
+ * tooling outside papai's runtime.
  */
 
 /**

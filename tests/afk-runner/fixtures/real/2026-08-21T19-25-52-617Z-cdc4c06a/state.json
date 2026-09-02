@@ -1,0 +1,17 @@
+{
+  "runId": "2026-08-21T19-25-52-617Z-cdc4c06a",
+  "repoRoot": "/Users/ki/Projects/yourpapai/papai/.worktrees/tests-consolidation",
+  "workDir": "/Users/ki/Projects/yourpapai/papai/.worktrees/tests-consolidation/.sdd-runner",
+  "changeName": "tests-consolidation",
+  "stage": "review",
+  "depth": "M",
+  "round": 3,
+  "roundCap": 3,
+  "gate": null,
+  "status": "aborted",
+  "createdAt": "2026-08-21T19:25:52.617Z",
+  "updatedAt": "2026-08-24T11:05:47.925Z",
+  "autoExtendsUsed": 0,
+  "gateDeadlineAt": null,
+  "gateDeadlineReArmed": false
+}

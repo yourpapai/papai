@@ -1,0 +1,20 @@
+{
+  "runId": "count-killed-turns-in-the-coding-agent-workspace-usage-totals-4",
+  "repoRoot": "/Users/ki/Projects/yourpapai/papai/.worktrees/v2-live-proof-target-b",
+  "workDir": "/Users/ki/Projects/yourpapai/papai/.worktrees/v2-live-proof-target-b/.sdd-runner",
+  "changeName": "count-killed-turns-in-the-coding-agent-workspace-usage-totals",
+  "stage": "gate",
+  "depth": "M",
+  "round": 1,
+  "roundCap": 3,
+  "gate": null,
+  "status": "completed",
+  "metered": false,
+  "createdAt": "2026-09-02T04:13:58.410Z",
+  "updatedAt": "2026-09-02T05:12:29.648Z",
+  "autoExtendsUsed": 0,
+  "gateDeadlineAt": "2026-09-02T05:09:29.855Z",
+  "gateDeadlineReArmed": false,
+  "plan": null,
+  "children": null
+}

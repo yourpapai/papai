@@ -14,32 +14,20 @@ export function isTestFile(filePath) {
 }
 
 /**
- * Check if a file is a gateable implementation file.
- *
- * Gateable means PRODUCT CODE: the application source tree, the client app, and the plugins that
- * ship with them. Everything else in the repo is internal infrastructure or tooling —
- * `scripts/`, `opencode-agent/`, `mutation-improve/`, `review-loop/`, `sdd-runner/` — and is
- * deliberately not gated, per file, by either the mutation gate or the Write/Edit hook checks.
- * Those workspaces keep their own suites under `tests/`; what they do not get is a per-file
- * mutation floor, because measuring them spent 84% of the gate's budget on code no user runs.
- * See openspec/changes/narrow-mutation-gate-scope.
- *
- * Gateability is a policy question and lives only here. It is NOT the same question as how a
- * source maps to its test file: `suggestTestPath`, `findTestFile` and `resolveImplPath` below
- * still map the non-gateable workspaces, because `bun run test:affected` and the mutation score
- * fingerprint depend on those mappings. Narrowing this predicate must not narrow those.
- *
+ * Check if a file is a gateable implementation file (src/)
  * @param {string} filePath - File path to check
  * @param {string} projectRoot - Project root directory
  * @returns {boolean} True if this is a gateable implementation file
  */
 export function isGateableImplFile(filePath, projectRoot) {
-  // Must be under a product root, match IMPL_PATTERN, and NOT match TEST_PATTERN
+  // Must be under src/, client/, plugins/, review-loop/src/, or afk-runner/src/, match IMPL_PATTERN, and NOT match TEST_PATTERN
   const rel = path.relative(projectRoot, path.resolve(projectRoot, filePath))
   const isSrc = rel.startsWith('src/') || rel.startsWith('src\\')
   const isClient = rel.startsWith('client/') || rel.startsWith('client\\')
   const isPlugins = rel.startsWith('plugins/') || rel.startsWith('plugins\\')
-  if (!isSrc && !isClient && !isPlugins) return false
+  const isReviewLoop = rel.startsWith('review-loop/src/') || rel.startsWith('review-loop\\src\\')
+  const isAfkRunner = rel.startsWith('afk-runner/src/') || rel.startsWith('afk-runner\\src\\')
+  if (!isSrc && !isClient && !isPlugins && !isReviewLoop && !isAfkRunner) return false
   if (!IMPL_PATTERN.test(rel)) return false
   if (TEST_PATTERN.test(rel)) return false
   return true
@@ -70,12 +58,12 @@ export function suggestTestPath(implRelPath) {
     const base = withoutPrefix.slice(0, -ext.length)
     return path.join('tests', 'review-loop', `${base}.test${ext}`)
   }
-  // sdd-runner/src/foo.ts → tests/sdd-runner/foo.test.ts
-  if (implRelPath.startsWith('sdd-runner/src/') || implRelPath.startsWith('sdd-runner\\src\\')) {
-    const withoutPrefix = implRelPath.replace(/^sdd-runner[/\\]src[/\\]/u, '')
+  // afk-runner/src/foo.ts → tests/afk-runner/foo.test.ts
+  if (implRelPath.startsWith('afk-runner/src/') || implRelPath.startsWith('afk-runner\\src\\')) {
+    const withoutPrefix = implRelPath.replace(/^afk-runner[/\\]src[/\\]/u, '')
     const ext = path.extname(withoutPrefix)
     const base = withoutPrefix.slice(0, -ext.length)
-    return path.join('tests', 'sdd-runner', `${base}.test${ext}`)
+    return path.join('tests', 'afk-runner', `${base}.test${ext}`)
   }
   // src/foo/bar.ts → tests/foo/bar.test.ts (strip src/ prefix)
   const withoutSrc = implRelPath.replace(/^src[/\\]/u, '')
@@ -127,14 +115,14 @@ export function findTestFile(implAbsPath, projectRoot) {
     }
   }
 
-  // sdd-runner/src/foo.ts → tests/sdd-runner/foo.test.ts
-  if (rel.startsWith('sdd-runner/src/') || rel.startsWith('sdd-runner\\src\\')) {
-    const withoutPrefix = rel.replace(/^sdd-runner[/\\]src[/\\]/u, '')
+  // afk-runner/src/foo.ts → tests/afk-runner/foo.test.ts
+  if (rel.startsWith('afk-runner/src/') || rel.startsWith('afk-runner\\src\\')) {
+    const withoutPrefix = rel.replace(/^afk-runner[/\\]src[/\\]/u, '')
     const ext = path.extname(withoutPrefix)
     const base = withoutPrefix.slice(0, -ext.length)
 
     for (const suffix of ['.test', '.spec']) {
-      const candidate = path.join(projectRoot, 'tests', 'sdd-runner', `${base}${suffix}${ext}`)
+      const candidate = path.join(projectRoot, 'tests', 'afk-runner', `${base}${suffix}${ext}`)
       if (fs.existsSync(candidate)) return candidate
     }
   }
@@ -192,10 +180,10 @@ export function resolveImplPath(testRelPath) {
       const withoutReviewLoop = dir.replace(/^review-loop[/\\]?/u, '')
       return path.join('review-loop', 'src', withoutReviewLoop, `${base}${ext}`)
     }
-    // tests/sdd-runner/foo.test.ts → sdd-runner/src/foo.ts
-    if (dir === 'sdd-runner' || dir.startsWith('sdd-runner/') || dir.startsWith('sdd-runner\\')) {
-      const withoutSddRunner = dir.replace(/^sdd-runner[/\\]?/u, '')
-      return path.join('sdd-runner', 'src', withoutSddRunner, `${base}${ext}`)
+    // tests/afk-runner/foo.test.ts → afk-runner/src/foo.ts
+    if (dir === 'afk-runner' || dir.startsWith('afk-runner/') || dir.startsWith('afk-runner\\')) {
+      const withoutAfkRunner = dir.replace(/^afk-runner[/\\]?/u, '')
+      return path.join('afk-runner', 'src', withoutAfkRunner, `${base}${ext}`)
     }
     // tests/foo/bar.test.ts → src/foo/bar.ts (prepend src/)
     return path.join('src', dir, `${base}${ext}`)

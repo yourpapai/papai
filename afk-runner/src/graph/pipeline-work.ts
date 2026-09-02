@@ -1,0 +1,297 @@
+// SPDX-License-Identifier: BUSL-1.1
+// Copyright (c) 2026 Dmitriy Lazarev
+// Use of this software is governed by the Business Source License 1.1.
+// See LICENSE in the project root for details.
+
+import fs from 'node:fs'
+import path from 'node:path'
+
+import type { SpawnFn } from '../../../review-loop/src/agent-runner.js'
+import type { AgentLayerDeps } from '../agent-layer.js'
+import type { ExecGitFn, RunnerConfig } from '../config.js'
+import type { StateModule, StopSeam, WorkFor, WorkIO } from '../drive/loop.js'
+import type { DepthProfile, EventInput } from '../events.js'
+import type { KernelContext } from '../kernel/machine.js'
+import type { OpenSpecDriver } from '../openspec-driver.js'
+import { runAtomicity } from '../work/atomicity.js'
+import { runDecompose, runsAtomicity } from '../work/decompose.js'
+import { runDraft } from '../work/draft.js'
+import { parseGateResponse } from '../work/gate-model.js'
+import { expectedContentFor } from '../work/gate-settle.js'
+import { runIntake } from '../work/intake.js'
+import { presentFinalGate } from '../work/present-final.js'
+import { reviewOutcomeOf, runReviewWork } from '../work/review.js'
+import { runVetoUpdater, updateAssumptionsFromVetoes } from '../work/veto-updater.js'
+
+export interface PipelineWorkDeps {
+  readonly spawn: SpawnFn
+  readonly execGit: ExecGitFn
+  readonly driver: OpenSpecDriver
+  readonly config: RunnerConfig
+  readonly conventions?: string
+  readonly stdout?: (line: string) => void
+  /** Calm-stop seam consulted by the review loop between rounds. */
+  readonly stop?: { readonly stopRequested: () => boolean }
+}
+
+export interface PipelineRunInput {
+  readonly taskText: string
+  readonly changeName: string
+  readonly depthOverride?: DepthProfile
+}
+
+/**
+ * The pipeline's state modules: work declarations co-located with the
+ * outcome→successor data (design D3). The drive loop consumes only this
+ * registry — adding C5's tail states means adding modules here, not loop
+ * edits. Tail states (decompose/atomicity) declare no work and the loop
+ * parks awaiting-tail instead of entering them; `gate.awaiting` (C4) is the
+ * positional park of a presented gate — no work, parks gate-pending until a
+ * settle producer answers through the seam.
+ */
+/**
+ * A settled veto re-enters draft: the gate is answered with outcome veto (design D8). */
+function isVetoRevision(context: KernelContext): boolean {
+  return context.gate !== null && context.gate.answered && context.gateOutcome === 'veto'
+}
+
+/** The decompose outcome as a pure reader: work owed until done, then depth picks the successor (C5 D1). */
+export function decomposeOutcomeOf(context: KernelContext): 'incomplete' | 'converged' | 'presented' {
+  if (context.stages['decompose'] !== 'done') return 'incomplete'
+  return runsAtomicity(context.depth ?? 'S') ? 'converged' : 'presented'
+}
+
+/** The atomicity outcome: work owed until done, then the presentation has parked the run (C5 D1). */
+export function atomicityOutcomeOf(context: KernelContext): 'incomplete' | 'presented' {
+  return context.stages['atomicity'] === 'done' ? 'presented' : 'incomplete'
+}
+
+/** The decompose stage work: the legacy decomposer copy, then (depth S) the final-gate presentation as its last act. */
+async function runDecomposeStage(deps: PipelineWorkDeps, input: PipelineRunInput, io: WorkIO): Promise<void> {
+  await runDecompose(
+    {
+      driver: deps.driver,
+      agent: agentOf(deps, io),
+      runDir: io.runDir,
+      sidecarDir: path.join(io.runDir, 'sidecars'),
+      cwd: deps.config.repoRoot,
+    },
+    { changeName: input.changeName },
+  )
+  if (!runsAtomicity(io.context.depth ?? 'S')) {
+    await presentFinalGate({ config: deps.config, repoRoot: deps.config.repoRoot, changeName: input.changeName }, io)
+  }
+}
+
+/** The atomicity stage work: the legacy atomicity copy, then the final-gate presentation as its last act. */
+async function runAtomicityStage(deps: PipelineWorkDeps, input: PipelineRunInput, io: WorkIO): Promise<void> {
+  await runAtomicity(
+    {
+      driver: deps.driver,
+      agent: agentOf(deps, io),
+      runDir: io.runDir,
+      sidecarDir: path.join(io.runDir, 'sidecars'),
+      cwd: deps.config.repoRoot,
+    },
+    { changeName: input.changeName, depth: io.context.depth ?? 'S' },
+  )
+  await presentFinalGate({ config: deps.config, repoRoot: deps.config.repoRoot, changeName: input.changeName }, io)
+}
+
+function agentOf(deps: PipelineWorkDeps, io: WorkIO): AgentLayerDeps {
+  return {
+    spawn: deps.spawn,
+    config: deps.config,
+    execGit: deps.execGit,
+    emit: (event: EventInput): void => {
+      io.append(event)
+    },
+  }
+}
+
+/**
+ * The veto-updater revision round (C4 D8, D6): read the vetoes from the
+ * settled gate file — per-item and whole-gate alike — fold the item vetoes
+ * back into the resolver sidecar, and run one resolver pass that applies
+ * the redirects to the existing artifacts. The no-op path requires an
+ * empty item-veto list AND no gate-level veto: a settled outcome of veto
+ * must never skip revision silently.
+ */
+async function runVetoRevision(deps: PipelineWorkDeps, input: PipelineRunInput, io: WorkIO): Promise<void> {
+  const runDir = io.runDir
+  const sidecarDir = path.join(runDir, 'sidecars')
+  const version = io.context.gate?.version ?? 1
+  const round = io.context.round?.current ?? 1
+  const gateMode = io.context.gate?.mode === 'early' ? 'early' : 'final'
+  const md = await fs.promises.readFile(path.join(runDir, `gate-${version}.md`), 'utf8')
+  const expected = await expectedContentFor(sidecarDir, round, gateMode)
+  const response = parseGateResponse(md, expected)
+  if (response.vetoes.length === 0 && response.gateVetoRedirect === null) return
+  await updateAssumptionsFromVetoes(sidecarDir, round, response.vetoes)
+  await runVetoUpdater(
+    {
+      driver: deps.driver,
+      agent: {
+        spawn: deps.spawn,
+        config: deps.config,
+        execGit: deps.execGit,
+        emit: (event) => {
+          io.append(event)
+        },
+      },
+      runDir,
+      sidecarDir,
+      cwd: deps.config.repoRoot,
+    },
+    {
+      changeName: input.changeName,
+      round,
+      vetoes: response.vetoes,
+      ...(response.gateVetoRedirect === null ? {} : { gateRedirect: response.gateVetoRedirect }),
+    },
+  )
+}
+
+const START_MODULE: StateModule = { work: null, outcomeOf: () => 'boot', successors: { boot: { enter: 'intake' } } }
+const GATE_AWAITING_MODULE: StateModule = {
+  work: null,
+  outcomeOf: () => 'awaiting',
+  successors: { awaiting: { park: 'gate-pending' } },
+}
+
+function sidecarDirOf(io: WorkIO): string {
+  return path.join(io.runDir, 'sidecars')
+}
+
+function agentSeamsOf(deps: PipelineWorkDeps, io: WorkIO): AgentLayerDeps {
+  return {
+    spawn: deps.spawn,
+    config: deps.config,
+    execGit: deps.execGit,
+    emit: (event: EventInput): void => {
+      io.append(event)
+    },
+  }
+}
+
+function intakeModule(deps: PipelineWorkDeps, input: PipelineRunInput): StateModule {
+  return {
+    work: {
+      kind: 'intake',
+      run: (io) =>
+        runIntake(
+          {
+            driver: deps.driver,
+            agent: agentSeamsOf(deps, io),
+            emit: (event: EventInput): void => {
+              io.append(event)
+            },
+            sidecarDir: sidecarDirOf(io),
+            runDir: io.runDir,
+            cwd: deps.config.repoRoot,
+            stdout: (line) => deps.stdout?.(`intake: ${line}`),
+          },
+          { changeName: input.changeName, taskText: input.taskText, depthOverride: input.depthOverride },
+        ).then(() => undefined),
+    },
+    outcomeOf: (context) => (context.depth === null ? 'incomplete' : 'done'),
+    successors: { done: { enter: 'draft' } },
+  }
+}
+
+function draftModule(deps: PipelineWorkDeps, input: PipelineRunInput): StateModule {
+  return {
+    work: {
+      kind: 'draft',
+      run: (io) =>
+        isVetoRevision(io.context)
+          ? runVetoRevision(deps, input, io)
+          : runDraft(
+              {
+                driver: deps.driver,
+                agent: agentSeamsOf(deps, io),
+                runDir: io.runDir,
+                sidecarDir: sidecarDirOf(io),
+                cwd: deps.config.repoRoot,
+              },
+              { changeName: input.changeName, taskText: input.taskText, depth: io.context.depth ?? 'S' },
+            ),
+    },
+    outcomeOf: (context) => (context.stages['draft'] === 'done' ? 'done' : 'incomplete'),
+    successors: { done: { enter: 'review' } },
+  }
+}
+
+function reviewModule(deps: PipelineWorkDeps, input: PipelineRunInput): StateModule {
+  return {
+    work: {
+      kind: 'review',
+      run: (io) =>
+        runReviewWork(
+          {
+            agent: { spawn: deps.spawn, config: deps.config, execGit: deps.execGit },
+            repoRoot: deps.config.repoRoot,
+            changeName: input.changeName,
+            taskText: input.taskText,
+            conventions: deps.conventions ?? '',
+            ...(deps.stop === undefined ? {} : { stop: deps.stop }),
+            ...(deps.stdout === undefined ? {} : { onSteerWarning: (line: string) => deps.stdout?.(`steer: ${line}`) }),
+          },
+          io,
+        ).then(() => undefined),
+    },
+    outcomeOf: reviewOutcomeOf,
+    successors: {
+      converged: { enter: 'decompose' },
+      'cap-hit': { park: 'gate-pending' },
+      // The round still owes work — an extended round opened by a gate
+      // settle, a crashed mid-round, a fresh entry: review re-runs itself.
+      incomplete: { enter: 'review' },
+    },
+  }
+}
+
+function decomposeModule(deps: PipelineWorkDeps, input: PipelineRunInput): StateModule {
+  return {
+    work: { kind: 'decompose', run: (io) => runDecomposeStage(deps, input, io) },
+    outcomeOf: decomposeOutcomeOf,
+    successors: {
+      incomplete: { enter: 'decompose' },
+      converged: { enter: 'atomicity' },
+      presented: { park: 'gate-pending' },
+    },
+  }
+}
+
+function atomicityModule(deps: PipelineWorkDeps, input: PipelineRunInput): StateModule {
+  return {
+    work: { kind: 'atomicity', run: (io) => runAtomicityStage(deps, input, io) },
+    outcomeOf: atomicityOutcomeOf,
+    successors: {
+      incomplete: { enter: 'atomicity' },
+      presented: { park: 'gate-pending' },
+    },
+  }
+}
+
+export function createPipelineWorkFor(deps: PipelineWorkDeps, input: PipelineRunInput): WorkFor {
+  return (state): StateModule | null => {
+    if (state === 'start') return START_MODULE
+    if (state === 'intake') return intakeModule(deps, input)
+    if (state === 'draft') return draftModule(deps, input)
+    if (state === 'review') return reviewModule(deps, input)
+    if (state === 'decompose') return decomposeModule(deps, input)
+    if (state === 'atomicity') return atomicityModule(deps, input)
+    if (state === 'gate.awaiting') return GATE_AWAITING_MODULE
+    return null
+  }
+}
+
+/** The RunDeps-shaped seam adapter: wires the run seams (+optional stop) into the work registry. */
+export function workForOf(
+  deps: Omit<PipelineWorkDeps, 'stop'> & { readonly stop?: StopSeam },
+  input: { readonly taskText: string; readonly changeName: string; readonly depthOverride?: DepthProfile },
+): WorkFor {
+  const { stop, ...rest } = deps
+  return createPipelineWorkFor({ ...rest, ...(stop === undefined ? {} : { stop }) }, input)
+}

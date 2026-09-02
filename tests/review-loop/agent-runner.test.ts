@@ -1112,6 +1112,119 @@ describe('runAgent backend integration', () => {
   })
 })
 
+describe('runAgent stall-retry continuation (escalation-retry-session-continuation D4)', () => {
+  const OPENCODE_SESSION_LINE = JSON.stringify({ sessionID: 'ses-1' })
+  const STALL = {
+    exitCode: 1,
+    stdout: '',
+    stderr: 'Process stalled: no output for 600000ms',
+    timedOut: true,
+    stalled: true,
+  }
+
+  test('a stall retry re-spawns continuing the captured session id (--session on opencode)', async () => {
+    const dir = makeTempDir('agent-stall-continue-')
+    const outputPath = path.join(dir, 'issues.json')
+    const mock = scriptedSpawn([
+      (onLine: (line: string) => void): MockSpawnResult => {
+        onLine(OPENCODE_SESSION_LINE)
+        return { ...STALL }
+      },
+      (): MockSpawnResult => {
+        writeScratch(dir, outputPath, { issues: [] })
+        return { exitCode: 0, stdout: '', stderr: '' }
+      },
+    ])
+
+    const result = await runAgent({
+      spawn: mock.spawn,
+      model: 'm',
+      cwd: dir,
+      prompt: 'p',
+      outputPath,
+      outputSchema: ReviewerIssuesSchema,
+      label: 'reviewer',
+      logPath: path.join(dir, 'log.txt'),
+      extraArgs: [],
+    })
+
+    expect(result.value).toEqual({ issues: [] })
+    expect(mock.calls).toHaveLength(2)
+    expect(mock.calls[0]!.args.includes('--session')).toBe(false)
+    const sessionIndex = mock.calls[1]!.args.indexOf('--session')
+    expect(sessionIndex).toBeGreaterThan(-1)
+    expect(mock.calls[1]!.args[sessionIndex + 1]).toBe('ses-1')
+  })
+
+  test('with no captured id the retry argv is byte-identical to the first attempt', async () => {
+    const dir = makeTempDir('agent-stall-fresh-')
+    const outputPath = path.join(dir, 'issues.json')
+    const mock = scriptedSpawn([
+      (): MockSpawnResult => ({ ...STALL }),
+      (): MockSpawnResult => {
+        writeScratch(dir, outputPath, { issues: [] })
+        return { exitCode: 0, stdout: '', stderr: '' }
+      },
+    ])
+
+    const result = await runAgent({
+      spawn: mock.spawn,
+      model: 'm',
+      cwd: dir,
+      prompt: 'p',
+      outputPath,
+      outputSchema: ReviewerIssuesSchema,
+      label: 'reviewer',
+      logPath: path.join(dir, 'log.txt'),
+      extraArgs: [],
+    })
+
+    expect(result.value).toEqual({ issues: [] })
+    expect(mock.calls[1]!.args).toEqual(mock.calls[0]!.args)
+  })
+
+  test('the claude route maps the captured id to --resume', async () => {
+    const dir = makeTempDir('agent-stall-resume-')
+    const outputPath = path.join(dir, 'issues.json')
+    const mock = scriptedSpawn([
+      (onLine: (line: string) => void): MockSpawnResult => {
+        onLine(CLAUDE_RESULT_LINE)
+        return { ...STALL }
+      },
+      (onLine: (line: string) => void): MockSpawnResult => {
+        onLine(CLAUDE_RESULT_LINE)
+        writeScratch(dir, outputPath, { issues: [] })
+        return { exitCode: 0, stdout: '', stderr: '' }
+      },
+    ])
+
+    const result = await runAgent({
+      spawn: mock.spawn,
+      model: 'm',
+      cwd: dir,
+      prompt: 'p',
+      outputPath,
+      outputSchema: ReviewerIssuesSchema,
+      label: 'reviewer',
+      logPath: path.join(dir, 'log.txt'),
+      extraArgs: [],
+      backend: 'claude',
+      claude: claudeContext(dir),
+      createClaudeSpawnDir: (context) =>
+        Promise.resolve({
+          configDir: path.join(context.configDirRoot, 'spawn-1'),
+          mcpConfigPath: null,
+        }),
+    })
+
+    expect(result.value).toEqual({ issues: [] })
+    expect(mock.calls[0]!.args.includes('--resume')).toBe(false)
+    const resumeIndex = mock.calls[1]!.args.indexOf('--resume')
+    expect(resumeIndex).toBeGreaterThan(-1)
+    expect(mock.calls[1]!.args[resumeIndex + 1]).toBe('sess-1')
+  })
+})
+
 describe('createLineHandler log draining', () => {
   test('dispose resolves only after every queued log write has hit disk', async () => {
     // Regression: onLine used to fire `void appendFile(...)` and forget it. The floating write

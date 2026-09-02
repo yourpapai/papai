@@ -1,0 +1,1411 @@
+{
+  "generatedAt": "2026-09-02T05:22:59.575Z",
+  "workdirs": [
+    "/Users/ki/Projects/yourpapai/papai/.worktrees/v2-live-proof-target-a/.sdd-runner",
+    "/Users/ki/Projects/yourpapai/papai/.worktrees/v2-live-proof-target-b/.sdd-runner",
+    "/Users/ki/Projects/yourpapai/papai/.worktrees/v2-live-proof-target-c/.sdd-runner"
+  ],
+  "runs": [
+    {
+      "workDir": "/Users/ki/Projects/yourpapai/papai/.worktrees/v2-live-proof-target-a/.sdd-runner",
+      "runId": "event-driven-suggestion-payloads-for-the-task-tracker-tools",
+      "changeName": "event-driven-suggestion-payloads-for-the-task-tracker-tools",
+      "status": "failed",
+      "eraContaminated": false,
+      "trajectory": {
+        "status": "unknown",
+        "reason": "no convergence records"
+      },
+      "gates": {
+        "status": "known",
+        "value": {
+          "answered": [
+            {
+              "version": 1,
+              "mode": "escalation",
+              "latencyMs": 5286868,
+              "settledBy": "human",
+              "rule": null
+            }
+          ],
+          "neverAnswered": [],
+          "extends": [],
+          "autoDecisionsByRule": {
+            "none": 1
+          },
+          "waiterPendingRecords": 0,
+          "waiterRearms": 0
+        }
+      },
+      "retries": {
+        "status": "known",
+        "value": {
+          "estimator": {
+            "stall": 2,
+            "validation": 0
+          }
+        }
+      },
+      "stageFailures": {
+        "status": "known",
+        "value": {
+          "intake": {
+            "exhausted": 2,
+            "precondition": 0,
+            "infra": 0
+          }
+        }
+      },
+      "duplicateIdRate": {
+        "status": "unknown",
+        "reason": "no resolutions sidecars"
+      },
+      "lensOverlapRate": {
+        "status": "unknown",
+        "reason": "no skeptic findings sidecars"
+      },
+      "classChurn": {
+        "status": "unknown",
+        "reason": "no finding id spans multiple rounds"
+      },
+      "resolverActionMix": {
+        "status": "unknown",
+        "reason": "no resolutions sidecars"
+      },
+      "concernPersistence": {
+        "status": "unknown",
+        "reason": "no findings sidecars"
+      },
+      "r2Eligibility": {
+        "status": "unknown",
+        "reason": "no cap-hit convergence pairs"
+      },
+      "consistency": {
+        "answeredWithoutPresented": [],
+        "completedAfterUnsupersededAbort": false,
+        "bakResidue": false,
+        "gateFilesWithoutAnsweredEvent": [],
+        "memoDivergingFields": [],
+        "eraContaminated": false
+      },
+      "usage": {
+        "byRole": {},
+        "byRound": {},
+        "costKnown": true,
+        "unpricedEvents": 0
+      }
+    },
+    {
+      "workDir": "/Users/ki/Projects/yourpapai/papai/.worktrees/v2-live-proof-target-a/.sdd-runner",
+      "runId": "event-driven-suggestion-payloads-for-the-task-tracker-tools-2",
+      "changeName": "event-driven-suggestion-payloads-for-the-task-tracker-tools",
+      "status": "completed",
+      "eraContaminated": false,
+      "trajectory": {
+        "status": "known",
+        "value": [
+          {
+            "round": 1,
+            "counts": {
+              "blocker": 0,
+              "material": 4,
+              "nitpick": 2
+            },
+            "open": {
+              "blocker": 0,
+              "material": 0,
+              "nitpick": 2
+            },
+            "concerns": [],
+            "resolved": 4,
+            "dismissed": 2,
+            "verdict": "needs-review"
+          },
+          {
+            "round": 2,
+            "counts": {
+              "blocker": 0,
+              "material": 2,
+              "nitpick": 2
+            },
+            "open": {
+              "blocker": 0,
+              "material": 0,
+              "nitpick": 0
+            },
+            "concerns": [],
+            "resolved": 4,
+            "dismissed": 0,
+            "verdict": "needs-review"
+          },
+          {
+            "round": 3,
+            "counts": {
+              "blocker": 0,
+              "material": 0,
+              "nitpick": 2
+            },
+            "open": {
+              "blocker": 0,
+              "material": 0,
+              "nitpick": 0
+            },
+            "concerns": [],
+            "resolved": 2,
+            "dismissed": 0,
+            "verdict": "converged"
+          }
+        ]
+      },
+      "gates": {
+        "status": "known",
+        "value": {
+          "answered": [
+            {
+              "version": 1,
+              "mode": "final",
+              "latencyMs": 420150,
+              "settledBy": "human",
+              "rule": null
+            },
+            {
+              "version": 2,
+              "mode": "final",
+              "latencyMs": 178086,
+              "settledBy": "human",
+              "rule": null
+            }
+          ],
+          "neverAnswered": [],
+          "extends": [],
+          "autoDecisionsByRule": {
+            "R4": 2
+          },
+          "waiterPendingRecords": 0,
+          "waiterRearms": 0
+        }
+      },
+      "retries": {
+        "status": "known",
+        "value": {}
+      },
+      "stageFailures": {
+        "status": "known",
+        "value": {}
+      },
+      "duplicateIdRate": {
+        "status": "known",
+        "value": 0
+      },
+      "lensOverlapRate": {
+        "status": "unknown",
+        "reason": "no skeptic findings sidecars"
+      },
+      "classChurn": {
+        "status": "known",
+        "value": 1
+      },
+      "resolverActionMix": {
+        "status": "known",
+        "value": {
+          "edited": 10,
+          "dismissed": 2
+        }
+      },
+      "concernPersistence": {
+        "status": "known",
+        "value": 0
+      },
+      "r2Eligibility": {
+        "status": "unknown",
+        "reason": "no cap-hit convergence pairs"
+      },
+      "consistency": {
+        "answeredWithoutPresented": [],
+        "completedAfterUnsupersededAbort": false,
+        "bakResidue": false,
+        "gateFilesWithoutAnsweredEvent": [],
+        "memoDivergingFields": [],
+        "eraContaminated": false
+      },
+      "usage": {
+        "byRole": {
+          "estimator": {
+            "inputTokens": 59019,
+            "outputTokens": 1881,
+            "reasoningTokens": 4239,
+            "cachedReadTokens": 563840,
+            "cachedWriteTokens": 0,
+            "costUsd": 0,
+            "wallMs": 160472
+          },
+          "drafter": {
+            "inputTokens": 204560,
+            "outputTokens": 10982,
+            "reasoningTokens": 29371,
+            "cachedReadTokens": 2923520,
+            "cachedWriteTokens": 0,
+            "costUsd": 0,
+            "wallMs": 1069696
+          },
+          "reviewer": {
+            "inputTokens": 204560,
+            "outputTokens": 8648,
+            "reasoningTokens": 47288,
+            "cachedReadTokens": 1913408,
+            "cachedWriteTokens": 0,
+            "costUsd": 0,
+            "wallMs": 1051562
+          },
+          "resolver": {
+            "inputTokens": 263038,
+            "outputTokens": 13628,
+            "reasoningTokens": 62896,
+            "cachedReadTokens": 3143168,
+            "cachedWriteTokens": 0,
+            "costUsd": 0,
+            "wallMs": 1584411
+          },
+          "decomposer": {
+            "inputTokens": 81004,
+            "outputTokens": 5389,
+            "reasoningTokens": 5708,
+            "cachedReadTokens": 724096,
+            "cachedWriteTokens": 0,
+            "costUsd": 0,
+            "wallMs": 238758
+          },
+          "atomicity": {
+            "inputTokens": 48903,
+            "outputTokens": 3976,
+            "reasoningTokens": 17626,
+            "cachedReadTokens": 614144,
+            "cachedWriteTokens": 0,
+            "costUsd": 0,
+            "wallMs": 551385
+          }
+        },
+        "byRound": {
+          "0": {
+            "inputTokens": 263579,
+            "outputTokens": 12863,
+            "reasoningTokens": 33610,
+            "cachedReadTokens": 3487360,
+            "cachedWriteTokens": 0,
+            "costUsd": 0,
+            "wallMs": 1230168
+          },
+          "1": {
+            "inputTokens": 100159,
+            "outputTokens": 5386,
+            "reasoningTokens": 16237,
+            "cachedReadTokens": 697472,
+            "cachedWriteTokens": 0,
+            "costUsd": 0,
+            "wallMs": 404555
+          },
+          "2": {
+            "inputTokens": 155359,
+            "outputTokens": 8158,
+            "reasoningTokens": 43115,
+            "cachedReadTokens": 1810432,
+            "cachedWriteTokens": 0,
+            "costUsd": 0,
+            "wallMs": 1076871
+          },
+          "3": {
+            "inputTokens": 341987,
+            "outputTokens": 18097,
+            "reasoningTokens": 74166,
+            "cachedReadTokens": 3886912,
+            "cachedWriteTokens": 0,
+            "costUsd": 0,
+            "wallMs": 1944690
+          }
+        },
+        "costKnown": false,
+        "unpricedEvents": 15
+      }
+    },
+    {
+      "workDir": "/Users/ki/Projects/yourpapai/papai/.worktrees/v2-live-proof-target-b/.sdd-runner",
+      "runId": "count-killed-turns-in-the-coding-agent-workspace-usage-totals",
+      "changeName": "count-killed-turns-in-the-coding-agent-workspace-usage-totals",
+      "status": "completed",
+      "eraContaminated": false,
+      "trajectory": {
+        "status": "known",
+        "value": [
+          {
+            "round": 1,
+            "counts": {
+              "blocker": 1,
+              "material": 2,
+              "nitpick": 5
+            },
+            "open": {
+              "blocker": 0,
+              "material": 0,
+              "nitpick": 0
+            },
+            "concerns": [],
+            "resolved": 8,
+            "dismissed": 0,
+            "verdict": "needs-review"
+          },
+          {
+            "round": 2,
+            "counts": {
+              "blocker": 0,
+              "material": 1,
+              "nitpick": 2
+            },
+            "open": {
+              "blocker": 0,
+              "material": 0,
+              "nitpick": 0
+            },
+            "concerns": [],
+            "resolved": 3,
+            "dismissed": 0,
+            "verdict": "needs-review"
+          },
+          {
+            "round": 3,
+            "counts": {
+              "blocker": 0,
+              "material": 1,
+              "nitpick": 1
+            },
+            "open": {
+              "blocker": 0,
+              "material": 0,
+              "nitpick": 0
+            },
+            "concerns": [],
+            "resolved": 2,
+            "dismissed": 0,
+            "verdict": "needs-review"
+          },
+          {
+            "round": 4,
+            "counts": {
+              "blocker": 0,
+              "material": 2,
+              "nitpick": 0
+            },
+            "open": {
+              "blocker": 0,
+              "material": 0,
+              "nitpick": 0
+            },
+            "concerns": [],
+            "resolved": 2,
+            "dismissed": 0,
+            "verdict": "needs-review"
+          }
+        ]
+      },
+      "gates": {
+        "status": "known",
+        "value": {
+          "answered": [
+            {
+              "version": 1,
+              "mode": "final",
+              "latencyMs": 10,
+              "settledBy": "policy",
+              "rule": "R1"
+            }
+          ],
+          "neverAnswered": [],
+          "extends": [],
+          "autoDecisionsByRule": {
+            "R1": 1
+          },
+          "waiterPendingRecords": 0,
+          "waiterRearms": 0
+        }
+      },
+      "retries": {
+        "status": "known",
+        "value": {}
+      },
+      "stageFailures": {
+        "status": "known",
+        "value": {}
+      },
+      "duplicateIdRate": {
+        "status": "known",
+        "value": 0
+      },
+      "lensOverlapRate": {
+        "status": "unknown",
+        "reason": "no skeptic findings sidecars"
+      },
+      "classChurn": {
+        "status": "known",
+        "value": 1
+      },
+      "resolverActionMix": {
+        "status": "known",
+        "value": {
+          "edited": 15
+        }
+      },
+      "concernPersistence": {
+        "status": "known",
+        "value": 0
+      },
+      "r2Eligibility": {
+        "status": "unknown",
+        "reason": "no cap-hit convergence pairs"
+      },
+      "consistency": {
+        "answeredWithoutPresented": [],
+        "completedAfterUnsupersededAbort": false,
+        "bakResidue": false,
+        "gateFilesWithoutAnsweredEvent": [],
+        "memoDivergingFields": [],
+        "eraContaminated": false
+      },
+      "usage": {
+        "byRole": {
+          "estimator": {
+            "inputTokens": 16134,
+            "outputTokens": 650,
+            "reasoningTokens": 615,
+            "cachedReadTokens": 197504,
+            "cachedWriteTokens": 0,
+            "costUsd": 0,
+            "wallMs": 71685
+          },
+          "drafter": {
+            "inputTokens": 351171,
+            "outputTokens": 10332,
+            "reasoningTokens": 33895,
+            "cachedReadTokens": 3719872,
+            "cachedWriteTokens": 0,
+            "costUsd": 0,
+            "wallMs": 1328543
+          },
+          "reviewer": {
+            "inputTokens": 498998,
+            "outputTokens": 17380,
+            "reasoningTokens": 110984,
+            "cachedReadTokens": 6581888,
+            "cachedWriteTokens": 0,
+            "costUsd": 0,
+            "wallMs": 2016516
+          },
+          "resolver": {
+            "inputTokens": 347097,
+            "outputTokens": 17715,
+            "reasoningTokens": 44489,
+            "cachedReadTokens": 7126080,
+            "cachedWriteTokens": 0,
+            "costUsd": 0,
+            "wallMs": 1056933
+          },
+          "decomposer": {
+            "inputTokens": 38591,
+            "outputTokens": 2938,
+            "reasoningTokens": 2035,
+            "cachedReadTokens": 222208,
+            "cachedWriteTokens": 0,
+            "costUsd": 0,
+            "wallMs": 106534
+          },
+          "atomicity": {
+            "inputTokens": 54069,
+            "outputTokens": 2759,
+            "reasoningTokens": 9090,
+            "cachedReadTokens": 239296,
+            "cachedWriteTokens": 0,
+            "costUsd": 0,
+            "wallMs": 172376
+          }
+        },
+        "byRound": {
+          "0": {
+            "inputTokens": 367305,
+            "outputTokens": 10982,
+            "reasoningTokens": 34510,
+            "cachedReadTokens": 3917376,
+            "cachedWriteTokens": 0,
+            "costUsd": 0,
+            "wallMs": 1400228
+          },
+          "1": {
+            "inputTokens": 273842,
+            "outputTokens": 13667,
+            "reasoningTokens": 47476,
+            "cachedReadTokens": 5092736,
+            "cachedWriteTokens": 0,
+            "costUsd": 0,
+            "wallMs": 993004
+          },
+          "2": {
+            "inputTokens": 203385,
+            "outputTokens": 6646,
+            "reasoningTokens": 38554,
+            "cachedReadTokens": 2866048,
+            "cachedWriteTokens": 0,
+            "costUsd": 0,
+            "wallMs": 754930
+          },
+          "3": {
+            "inputTokens": 106233,
+            "outputTokens": 5205,
+            "reasoningTokens": 23330,
+            "cachedReadTokens": 2100736,
+            "cachedWriteTokens": 0,
+            "costUsd": 0,
+            "wallMs": 469341
+          },
+          "4": {
+            "inputTokens": 355295,
+            "outputTokens": 15274,
+            "reasoningTokens": 57238,
+            "cachedReadTokens": 4109952,
+            "cachedWriteTokens": 0,
+            "costUsd": 0,
+            "wallMs": 1135084
+          }
+        },
+        "costKnown": false,
+        "unpricedEvents": 14
+      }
+    },
+    {
+      "workDir": "/Users/ki/Projects/yourpapai/papai/.worktrees/v2-live-proof-target-b/.sdd-runner",
+      "runId": "count-killed-turns-in-the-coding-agent-workspace-usage-totals-2",
+      "changeName": "count-killed-turns-in-the-coding-agent-workspace-usage-totals",
+      "status": "completed",
+      "eraContaminated": false,
+      "trajectory": {
+        "status": "known",
+        "value": [
+          {
+            "round": 1,
+            "counts": {
+              "blocker": 1,
+              "material": 1,
+              "nitpick": 1
+            },
+            "open": {
+              "blocker": 0,
+              "material": 0,
+              "nitpick": 0
+            },
+            "concerns": [],
+            "resolved": 3,
+            "dismissed": 0,
+            "verdict": "needs-review"
+          },
+          {
+            "round": 2,
+            "counts": {
+              "blocker": 0,
+              "material": 2,
+              "nitpick": 1
+            },
+            "open": {
+              "blocker": 0,
+              "material": 0,
+              "nitpick": 0
+            },
+            "concerns": [],
+            "resolved": 3,
+            "dismissed": 0,
+            "verdict": "needs-review"
+          },
+          {
+            "round": 3,
+            "counts": {
+              "blocker": 0,
+              "material": 0,
+              "nitpick": 1
+            },
+            "open": {
+              "blocker": 0,
+              "material": 0,
+              "nitpick": 0
+            },
+            "concerns": [],
+            "resolved": 1,
+            "dismissed": 0,
+            "verdict": "converged"
+          }
+        ]
+      },
+      "gates": {
+        "status": "known",
+        "value": {
+          "answered": [
+            {
+              "version": 1,
+              "mode": "final",
+              "latencyMs": 8,
+              "settledBy": "policy",
+              "rule": "R1"
+            }
+          ],
+          "neverAnswered": [],
+          "extends": [],
+          "autoDecisionsByRule": {
+            "R1": 1
+          },
+          "waiterPendingRecords": 0,
+          "waiterRearms": 0
+        }
+      },
+      "retries": {
+        "status": "known",
+        "value": {}
+      },
+      "stageFailures": {
+        "status": "known",
+        "value": {}
+      },
+      "duplicateIdRate": {
+        "status": "known",
+        "value": 0
+      },
+      "lensOverlapRate": {
+        "status": "unknown",
+        "reason": "no skeptic findings sidecars"
+      },
+      "classChurn": {
+        "status": "known",
+        "value": 0.3333333333333333
+      },
+      "resolverActionMix": {
+        "status": "known",
+        "value": {
+          "edited": 7
+        }
+      },
+      "concernPersistence": {
+        "status": "known",
+        "value": 0
+      },
+      "r2Eligibility": {
+        "status": "unknown",
+        "reason": "no cap-hit convergence pairs"
+      },
+      "consistency": {
+        "answeredWithoutPresented": [],
+        "completedAfterUnsupersededAbort": false,
+        "bakResidue": false,
+        "gateFilesWithoutAnsweredEvent": [],
+        "memoDivergingFields": [],
+        "eraContaminated": false
+      },
+      "usage": {
+        "byRole": {
+          "estimator": {
+            "inputTokens": 72999,
+            "outputTokens": 1075,
+            "reasoningTokens": 1972,
+            "cachedReadTokens": 586816,
+            "cachedWriteTokens": 0,
+            "costUsd": 0,
+            "wallMs": 91731
+          },
+          "drafter": {
+            "inputTokens": 261876,
+            "outputTokens": 11785,
+            "reasoningTokens": 14974,
+            "cachedReadTokens": 2966016,
+            "cachedWriteTokens": 0,
+            "costUsd": 0,
+            "wallMs": 541685
+          },
+          "reviewer": {
+            "inputTokens": 553599,
+            "outputTokens": 13199,
+            "reasoningTokens": 99688,
+            "cachedReadTokens": 8013888,
+            "cachedWriteTokens": 0,
+            "costUsd": 0,
+            "wallMs": 2011248
+          },
+          "resolver": {
+            "inputTokens": 256249,
+            "outputTokens": 11546,
+            "reasoningTokens": 36053,
+            "cachedReadTokens": 4119936,
+            "cachedWriteTokens": 0,
+            "costUsd": 0,
+            "wallMs": 794539
+          },
+          "decomposer": {
+            "inputTokens": 34327,
+            "outputTokens": 3464,
+            "reasoningTokens": 4615,
+            "cachedReadTokens": 486976,
+            "cachedWriteTokens": 0,
+            "costUsd": 0,
+            "wallMs": 124630
+          },
+          "atomicity": {
+            "inputTokens": 40579,
+            "outputTokens": 3536,
+            "reasoningTokens": 18291,
+            "cachedReadTokens": 472704,
+            "cachedWriteTokens": 0,
+            "costUsd": 0,
+            "wallMs": 301885
+          }
+        },
+        "byRound": {
+          "0": {
+            "inputTokens": 334875,
+            "outputTokens": 12860,
+            "reasoningTokens": 16946,
+            "cachedReadTokens": 3552832,
+            "cachedWriteTokens": 0,
+            "costUsd": 0,
+            "wallMs": 633416
+          },
+          "1": {
+            "inputTokens": 371384,
+            "outputTokens": 9764,
+            "reasoningTokens": 42017,
+            "cachedReadTokens": 4860480,
+            "cachedWriteTokens": 0,
+            "costUsd": 0,
+            "wallMs": 887414
+          },
+          "2": {
+            "inputTokens": 180082,
+            "outputTokens": 9033,
+            "reasoningTokens": 48097,
+            "cachedReadTokens": 4061504,
+            "cachedWriteTokens": 0,
+            "costUsd": 0,
+            "wallMs": 901567
+          },
+          "3": {
+            "inputTokens": 333288,
+            "outputTokens": 12948,
+            "reasoningTokens": 68533,
+            "cachedReadTokens": 4171520,
+            "cachedWriteTokens": 0,
+            "costUsd": 0,
+            "wallMs": 1443321
+          }
+        },
+        "costKnown": false,
+        "unpricedEvents": 12
+      }
+    },
+    {
+      "workDir": "/Users/ki/Projects/yourpapai/papai/.worktrees/v2-live-proof-target-b/.sdd-runner",
+      "runId": "count-killed-turns-in-the-coding-agent-workspace-usage-totals-3",
+      "changeName": "count-killed-turns-in-the-coding-agent-workspace-usage-totals",
+      "status": "completed",
+      "eraContaminated": false,
+      "trajectory": {
+        "status": "known",
+        "value": [
+          {
+            "round": 1,
+            "counts": {
+              "blocker": 0,
+              "material": 0,
+              "nitpick": 1
+            },
+            "open": {
+              "blocker": 0,
+              "material": 0,
+              "nitpick": 0
+            },
+            "concerns": [],
+            "resolved": 1,
+            "dismissed": 0,
+            "verdict": "converged"
+          }
+        ]
+      },
+      "gates": {
+        "status": "known",
+        "value": {
+          "answered": [
+            {
+              "version": 1,
+              "mode": "final",
+              "latencyMs": 6,
+              "settledBy": "policy",
+              "rule": "R1"
+            }
+          ],
+          "neverAnswered": [],
+          "extends": [],
+          "autoDecisionsByRule": {
+            "R1": 1
+          },
+          "waiterPendingRecords": 0,
+          "waiterRearms": 0
+        }
+      },
+      "retries": {
+        "status": "known",
+        "value": {}
+      },
+      "stageFailures": {
+        "status": "known",
+        "value": {}
+      },
+      "duplicateIdRate": {
+        "status": "unknown",
+        "reason": "no resolutions sidecars"
+      },
+      "lensOverlapRate": {
+        "status": "unknown",
+        "reason": "no skeptic findings sidecars"
+      },
+      "classChurn": {
+        "status": "unknown",
+        "reason": "no finding id spans multiple rounds"
+      },
+      "resolverActionMix": {
+        "status": "unknown",
+        "reason": "no resolutions sidecars"
+      },
+      "concernPersistence": {
+        "status": "known",
+        "value": 0
+      },
+      "r2Eligibility": {
+        "status": "unknown",
+        "reason": "no cap-hit convergence pairs"
+      },
+      "consistency": {
+        "answeredWithoutPresented": [],
+        "completedAfterUnsupersededAbort": false,
+        "bakResidue": false,
+        "gateFilesWithoutAnsweredEvent": [],
+        "memoDivergingFields": [],
+        "eraContaminated": false
+      },
+      "usage": {
+        "byRole": {
+          "estimator": {
+            "inputTokens": 45206,
+            "outputTokens": 1464,
+            "reasoningTokens": 3129,
+            "cachedReadTokens": 573184,
+            "cachedWriteTokens": 0,
+            "costUsd": 0,
+            "wallMs": 86684
+          },
+          "drafter": {
+            "inputTokens": 224511,
+            "outputTokens": 15451,
+            "reasoningTokens": 13315,
+            "cachedReadTokens": 4520896,
+            "cachedWriteTokens": 0,
+            "costUsd": 0,
+            "wallMs": 543403
+          },
+          "reviewer": {
+            "inputTokens": 131647,
+            "outputTokens": 4172,
+            "reasoningTokens": 24794,
+            "cachedReadTokens": 2838272,
+            "cachedWriteTokens": 0,
+            "costUsd": 0,
+            "wallMs": 398850
+          },
+          "resolver": {
+            "inputTokens": 79032,
+            "outputTokens": 1615,
+            "reasoningTokens": 10031,
+            "cachedReadTokens": 509888,
+            "cachedWriteTokens": 0,
+            "costUsd": 0,
+            "wallMs": 165339
+          },
+          "decomposer": {
+            "inputTokens": 19626,
+            "outputTokens": 1185,
+            "reasoningTokens": 2708,
+            "cachedReadTokens": 358784,
+            "cachedWriteTokens": 0,
+            "costUsd": 0,
+            "wallMs": 74080
+          },
+          "atomicity": {
+            "inputTokens": 28517,
+            "outputTokens": 1386,
+            "reasoningTokens": 12533,
+            "cachedReadTokens": 332608,
+            "cachedWriteTokens": 0,
+            "costUsd": 0,
+            "wallMs": 206347
+          }
+        },
+        "byRound": {
+          "0": {
+            "inputTokens": 269717,
+            "outputTokens": 16915,
+            "reasoningTokens": 16444,
+            "cachedReadTokens": 5094080,
+            "cachedWriteTokens": 0,
+            "costUsd": 0,
+            "wallMs": 630087
+          },
+          "1": {
+            "inputTokens": 258822,
+            "outputTokens": 8358,
+            "reasoningTokens": 50066,
+            "cachedReadTokens": 4039552,
+            "cachedWriteTokens": 0,
+            "costUsd": 0,
+            "wallMs": 844616
+          }
+        },
+        "costKnown": false,
+        "unpricedEvents": 8
+      }
+    },
+    {
+      "workDir": "/Users/ki/Projects/yourpapai/papai/.worktrees/v2-live-proof-target-b/.sdd-runner",
+      "runId": "count-killed-turns-in-the-coding-agent-workspace-usage-totals-4",
+      "changeName": "count-killed-turns-in-the-coding-agent-workspace-usage-totals",
+      "status": "completed",
+      "eraContaminated": false,
+      "trajectory": {
+        "status": "known",
+        "value": [
+          {
+            "round": 1,
+            "counts": {
+              "blocker": 0,
+              "material": 0,
+              "nitpick": 1
+            },
+            "open": {
+              "blocker": 0,
+              "material": 0,
+              "nitpick": 0
+            },
+            "concerns": [],
+            "resolved": 1,
+            "dismissed": 0,
+            "verdict": "converged"
+          }
+        ]
+      },
+      "gates": {
+        "status": "known",
+        "value": {
+          "answered": [
+            {
+              "version": 1,
+              "mode": "final",
+              "latencyMs": 779787,
+              "settledBy": "human",
+              "rule": null
+            }
+          ],
+          "neverAnswered": [],
+          "extends": [],
+          "autoDecisionsByRule": {
+            "none": 1
+          },
+          "waiterPendingRecords": 0,
+          "waiterRearms": 0
+        }
+      },
+      "retries": {
+        "status": "known",
+        "value": {}
+      },
+      "stageFailures": {
+        "status": "known",
+        "value": {}
+      },
+      "duplicateIdRate": {
+        "status": "unknown",
+        "reason": "no resolutions sidecars"
+      },
+      "lensOverlapRate": {
+        "status": "unknown",
+        "reason": "no skeptic findings sidecars"
+      },
+      "classChurn": {
+        "status": "unknown",
+        "reason": "no finding id spans multiple rounds"
+      },
+      "resolverActionMix": {
+        "status": "unknown",
+        "reason": "no resolutions sidecars"
+      },
+      "concernPersistence": {
+        "status": "known",
+        "value": 0
+      },
+      "r2Eligibility": {
+        "status": "unknown",
+        "reason": "no cap-hit convergence pairs"
+      },
+      "consistency": {
+        "answeredWithoutPresented": [],
+        "completedAfterUnsupersededAbort": false,
+        "bakResidue": false,
+        "gateFilesWithoutAnsweredEvent": [],
+        "memoDivergingFields": [],
+        "eraContaminated": false
+      },
+      "usage": {
+        "byRole": {
+          "estimator": {
+            "inputTokens": 82362,
+            "outputTokens": 1614,
+            "reasoningTokens": 3347,
+            "cachedReadTokens": 581248,
+            "cachedWriteTokens": 0,
+            "costUsd": 0,
+            "wallMs": 124317
+          },
+          "drafter": {
+            "inputTokens": 280292,
+            "outputTokens": 12276,
+            "reasoningTokens": 16009,
+            "cachedReadTokens": 2824384,
+            "cachedWriteTokens": 0,
+            "costUsd": 0,
+            "wallMs": 520742
+          },
+          "reviewer": {
+            "inputTokens": 169724,
+            "outputTokens": 3113,
+            "reasoningTokens": 30543,
+            "cachedReadTokens": 2653888,
+            "cachedWriteTokens": 0,
+            "costUsd": 0,
+            "wallMs": 919526
+          },
+          "resolver": {
+            "inputTokens": 37647,
+            "outputTokens": 1720,
+            "reasoningTokens": 10809,
+            "cachedReadTokens": 644992,
+            "cachedWriteTokens": 0,
+            "costUsd": 0,
+            "wallMs": 202277
+          },
+          "decomposer": {
+            "inputTokens": 20749,
+            "outputTokens": 3392,
+            "reasoningTokens": 2647,
+            "cachedReadTokens": 356608,
+            "cachedWriteTokens": 0,
+            "costUsd": 0,
+            "wallMs": 98812
+          },
+          "atomicity": {
+            "inputTokens": 110956,
+            "outputTokens": 4726,
+            "reasoningTokens": 20095,
+            "cachedReadTokens": 1255744,
+            "cachedWriteTokens": 0,
+            "costUsd": 0,
+            "wallMs": 335870
+          }
+        },
+        "byRound": {
+          "0": {
+            "inputTokens": 362654,
+            "outputTokens": 13890,
+            "reasoningTokens": 19356,
+            "cachedReadTokens": 3405632,
+            "cachedWriteTokens": 0,
+            "costUsd": 0,
+            "wallMs": 645059
+          },
+          "1": {
+            "inputTokens": 339076,
+            "outputTokens": 12951,
+            "reasoningTokens": 64094,
+            "cachedReadTokens": 4911232,
+            "cachedWriteTokens": 0,
+            "costUsd": 0,
+            "wallMs": 1556485
+          }
+        },
+        "costKnown": false,
+        "unpricedEvents": 8
+      }
+    },
+    {
+      "workDir": "/Users/ki/Projects/yourpapai/papai/.worktrees/v2-live-proof-target-c/.sdd-runner",
+      "runId": "actualize-the-coding-sessions-architecture-page",
+      "changeName": "actualize-the-coding-sessions-architecture-page",
+      "status": "completed",
+      "eraContaminated": false,
+      "trajectory": {
+        "status": "known",
+        "value": [
+          {
+            "round": 1,
+            "counts": {
+              "blocker": 0,
+              "material": 2,
+              "nitpick": 2
+            },
+            "open": {
+              "blocker": 0,
+              "material": 0,
+              "nitpick": 0
+            },
+            "concerns": [],
+            "resolved": 4,
+            "dismissed": 0,
+            "verdict": "needs-review"
+          },
+          {
+            "round": 2,
+            "counts": {
+              "blocker": 0,
+              "material": 0,
+              "nitpick": 2
+            },
+            "open": {
+              "blocker": 0,
+              "material": 0,
+              "nitpick": 1
+            },
+            "concerns": [],
+            "resolved": 1,
+            "dismissed": 1,
+            "verdict": "converged"
+          }
+        ]
+      },
+      "gates": {
+        "status": "known",
+        "value": {
+          "answered": [
+            {
+              "version": 1,
+              "mode": "escalation",
+              "latencyMs": 48065,
+              "settledBy": "human",
+              "rule": null
+            },
+            {
+              "version": 2,
+              "mode": "final",
+              "latencyMs": 13122312,
+              "settledBy": "human",
+              "rule": null
+            }
+          ],
+          "neverAnswered": [],
+          "extends": [],
+          "autoDecisionsByRule": {
+            "none": 2
+          },
+          "waiterPendingRecords": 0,
+          "waiterRearms": 0
+        }
+      },
+      "retries": {
+        "status": "known",
+        "value": {
+          "drafter": {
+            "stall": 2,
+            "validation": 1
+          },
+          "reviewer": {
+            "stall": 2,
+            "validation": 1
+          }
+        }
+      },
+      "stageFailures": {
+        "status": "known",
+        "value": {
+          "draft": {
+            "exhausted": 2,
+            "precondition": 0,
+            "infra": 0
+          },
+          "review": {
+            "exhausted": 1,
+            "precondition": 0,
+            "infra": 0
+          }
+        }
+      },
+      "duplicateIdRate": {
+        "status": "known",
+        "value": 0
+      },
+      "lensOverlapRate": {
+        "status": "unknown",
+        "reason": "no skeptic findings sidecars"
+      },
+      "classChurn": {
+        "status": "known",
+        "value": 1
+      },
+      "resolverActionMix": {
+        "status": "known",
+        "value": {
+          "edited": 5,
+          "dismissed": 1
+        }
+      },
+      "concernPersistence": {
+        "status": "known",
+        "value": 0
+      },
+      "r2Eligibility": {
+        "status": "unknown",
+        "reason": "no cap-hit convergence pairs"
+      },
+      "consistency": {
+        "answeredWithoutPresented": [],
+        "completedAfterUnsupersededAbort": false,
+        "bakResidue": false,
+        "gateFilesWithoutAnsweredEvent": [],
+        "memoDivergingFields": [],
+        "eraContaminated": false
+      },
+      "usage": {
+        "byRole": {
+          "estimator": {
+            "inputTokens": 54638,
+            "outputTokens": 2458,
+            "reasoningTokens": 0,
+            "cachedReadTokens": 250880,
+            "cachedWriteTokens": 0,
+            "costUsd": 0.00847555,
+            "wallMs": 93241
+          },
+          "drafter": {
+            "inputTokens": 413144,
+            "outputTokens": 33178,
+            "reasoningTokens": 0,
+            "cachedReadTokens": 3385280,
+            "cachedWriteTokens": 0,
+            "costUsd": 0.09005950000000001,
+            "wallMs": 1501549
+          },
+          "reviewer": {
+            "inputTokens": 464286,
+            "outputTokens": 62907,
+            "reasoningTokens": 0,
+            "cachedReadTokens": 1821312,
+            "cachedWriteTokens": 0,
+            "costUsd": 0.07786788,
+            "wallMs": 1924284
+          },
+          "resolver": {
+            "inputTokens": 276911,
+            "outputTokens": 28924,
+            "reasoningTokens": 0,
+            "cachedReadTokens": 1008896,
+            "cachedWriteTokens": 0,
+            "costUsd": 0.043132765,
+            "wallMs": 485326
+          },
+          "decomposer": {
+            "inputTokens": 53871,
+            "outputTokens": 11247,
+            "reasoningTokens": 0,
+            "cachedReadTokens": 445440,
+            "cachedWriteTokens": 0,
+            "costUsd": 0.013533675000000002,
+            "wallMs": 177742
+          }
+        },
+        "byRound": {
+          "0": {
+            "inputTokens": 467782,
+            "outputTokens": 35636,
+            "reasoningTokens": 0,
+            "cachedReadTokens": 3636160,
+            "cachedWriteTokens": 0,
+            "costUsd": 0.09853505000000001,
+            "wallMs": 1594790
+          },
+          "1": {
+            "inputTokens": 590654,
+            "outputTokens": 43727,
+            "reasoningTokens": 0,
+            "cachedReadTokens": 1751040,
+            "cachedWriteTokens": 0,
+            "costUsd": 0.0814964,
+            "wallMs": 1782355
+          },
+          "2": {
+            "inputTokens": 204414,
+            "outputTokens": 59351,
+            "reasoningTokens": 0,
+            "cachedReadTokens": 1524608,
+            "cachedWriteTokens": 0,
+            "costUsd": 0.05303792,
+            "wallMs": 804997
+          }
+        },
+        "costKnown": true,
+        "unpricedEvents": 0
+      }
+    }
+  ],
+  "groundTruth": [
+    {
+      "changeName": "event-driven-suggestion-payloads-for-the-task-tracker-tools",
+      "repoRoot": "/Users/ki/Projects/yourpapai/papai/.worktrees/v2-live-proof-target-a",
+      "exists": true,
+      "tasksDone": 0,
+      "tasksTotal": 12,
+      "commits": 0,
+      "onMainBranch": false,
+      "strandedComplete": false,
+      "mergedUnimplemented": false
+    },
+    {
+      "changeName": "count-killed-turns-in-the-coding-agent-workspace-usage-totals",
+      "repoRoot": "/Users/ki/Projects/yourpapai/papai/.worktrees/v2-live-proof-target-b",
+      "exists": true,
+      "tasksDone": 0,
+      "tasksTotal": 28,
+      "commits": 0,
+      "onMainBranch": false,
+      "strandedComplete": false,
+      "mergedUnimplemented": false
+    },
+    {
+      "changeName": "actualize-the-coding-sessions-architecture-page",
+      "repoRoot": "/Users/ki/Projects/yourpapai/papai/.worktrees/v2-live-proof-target-c",
+      "exists": true,
+      "tasksDone": 0,
+      "tasksTotal": 15,
+      "commits": 0,
+      "onMainBranch": false,
+      "strandedComplete": false,
+      "mergedUnimplemented": false
+    }
+  ],
+  "aggregates": {
+    "runsAggregated": 7,
+    "eraContaminated": [],
+    "autoDecisionsByRule": {
+      "none": 4,
+      "R4": 2,
+      "R1": 3
+    },
+    "duplicateResolutionEntries": 0,
+    "r2Eligibility": null,
+    "gatesNeverAnswered": 0,
+    "strandedComplete": [],
+    "mergedUnimplemented": []
+  }
+}

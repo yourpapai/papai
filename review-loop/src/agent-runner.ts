@@ -122,6 +122,7 @@ function attemptRun<T>(
   spawnDir: ClaudeSpawnDir | null,
   onLine?: LineSink,
   systemPrompt?: string,
+  continueSessionId?: string,
 ): Promise<SpawnResult> {
   const claude: ClaudeSpawnContext | undefined =
     options.claude === undefined || spawnDir === null
@@ -144,6 +145,7 @@ function attemptRun<T>(
     label: options.label,
     claude,
     systemPrompt,
+    continueSessionId,
   })
   return options.spawn(
     command.command,
@@ -183,6 +185,7 @@ async function runAttempt<T>(
   options: RunAgentOptions<T>,
   handler: LineHandler,
   systemPrompt?: string,
+  continueSessionId?: string,
 ): Promise<Attempt<T>> {
   await mkdir(path.resolve(options.cwd, '.review-loop'), { recursive: true })
   // Re-arm session capture: a stall retry is a fresh opencode session, and its
@@ -198,7 +201,7 @@ async function runAttempt<T>(
     options.claude === undefined
       ? null
       : await (options.createClaudeSpawnDir ?? defaultCreateClaudeSpawnDir)(options.claude)
-  const result = await attemptRun(options, spawnDir, handler.onLine, systemPrompt)
+  const result = await attemptRun(options, spawnDir, handler.onLine, systemPrompt, continueSessionId)
   if (result.exitCode !== 0) return spawnFailure(options, handler, result)
   if (options.backend === 'claude') {
     // Result-outcome gate (D6): an exit-0 turn whose result line is missing or
@@ -279,7 +282,12 @@ export async function runAgent<T>(options: RunAgentOptions<T>): Promise<AgentRun
     if (first.timedOut && !first.stalled) throw new AgentRunError(first.error.message, buildUsage())
     if (options.noRetry === true) throw new AgentRunError(first.error.message, buildUsage())
     options.onRetry?.()
-    const second = await runAttempt(options, handler, systemPrompt)
+    // The stall retry continues the captured session when one exists
+    // (escalation-retry-session-continuation D4): the id sits on the line
+    // handler's ctx — only this layer can reach it — and the command builder
+    // maps it per backend. No captured id degrades to today's fresh re-spawn.
+    const continueSessionId = handler.ctx.sessionId ?? undefined
+    const second = await runAttempt(options, handler, systemPrompt, continueSessionId)
     if (second.ok) return finalize(second.value)
     throw new AgentRunError(second.error.message, buildUsage())
   } finally {

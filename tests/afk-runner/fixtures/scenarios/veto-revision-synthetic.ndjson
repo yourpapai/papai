@@ -1,0 +1,15 @@
+{"altitude":"L2","type":"stage_enter","stage":"intake","seq":1,"ts":"2026-01-01T00:00:00.000Z"}
+{"altitude":"L2","type":"depth","profile":"S","rationale":"one module","source":"estimator","seq":2,"ts":"2026-01-01T00:00:00.000Z"}
+{"altitude":"L2","type":"stage_exit","stage":"intake","seq":3,"ts":"2026-01-01T00:00:00.000Z"}
+{"altitude":"L2","type":"stage_enter","stage":"draft","seq":4,"ts":"2026-01-01T00:00:00.000Z"}
+{"altitude":"L2","type":"stage_exit","stage":"draft","seq":5,"ts":"2026-01-01T00:00:00.000Z"}
+{"altitude":"L2","type":"stage_enter","stage":"review","seq":6,"ts":"2026-01-01T00:00:00.000Z"}
+{"altitude":"L2","type":"round_open","round":1,"cap":1,"seq":7,"ts":"2026-01-01T00:00:00.000Z"}
+{"altitude":"L2","type":"finding","action":"classified","id":"F1","round":1,"class":"MATERIAL","seq":8,"ts":"2026-01-01T00:00:00.000Z"}
+{"altitude":"L2","type":"convergence","round":1,"verdict":"open","counts":{"blocker":0,"material":1,"nitpick":0},"seq":9,"ts":"2026-01-01T00:00:00.000Z"}
+{"altitude":"L2","type":"round_close","round":1,"cap":1,"seq":10,"ts":"2026-01-01T00:00:00.000Z"}
+{"altitude":"L2","type":"stage_exit","stage":"review","seq":11,"ts":"2026-01-01T00:00:00.000Z"}
+{"altitude":"L2","type":"gate","action":"presented","mode":"early","version":1,"seq":12,"ts":"2026-01-01T00:00:00.000Z"}
+{"altitude":"L2","type":"auto_decision","rule":"none","decision":"gate","evidenceDigest":"d0a4c8e91f21b7aa","gateVersion":1,"seq":13,"ts":"2026-01-01T00:00:00.000Z"}
+{"altitude":"L2","type":"gate","action":"answered","mode":"final","version":1,"outcome":"veto","seq":14,"ts":"2026-01-01T00:00:01.000Z"}
+{"altitude":"L2","type":"stage_enter","stage":"draft","seq":15,"ts":"2026-01-01T00:00:01.000Z"}

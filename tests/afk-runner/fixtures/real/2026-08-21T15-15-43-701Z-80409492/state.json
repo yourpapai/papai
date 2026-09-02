@@ -1,0 +1,19 @@
+{
+  "runId": "2026-08-21T15-15-43-701Z-80409492",
+  "repoRoot": "/Users/ki/Projects/yourpapai/papai/.worktrees",
+  "workDir": "/Users/ki/Projects/yourpapai/papai/.worktrees/.sdd-runner",
+  "changeName": "translate-announcement",
+  "stage": "intake",
+  "depth": null,
+  "round": 0,
+  "roundCap": 1,
+  "gate": null,
+  "status": "running",
+  "createdAt": "2026-08-21T15:15:43.701Z",
+  "updatedAt": "2026-08-21T15:15:43.701Z",
+  "autoExtendsUsed": 0,
+  "gateDeadlineAt": null,
+  "gateDeadlineReArmed": false,
+  "runDir": "/Users/ki/Projects/yourpapai/papai/.worktrees/.sdd-runner/runs/2026-08-21T15-15-43-701Z-80409492",
+  "statePath": "/Users/ki/Projects/yourpapai/papai/.worktrees/.sdd-runner/runs/2026-08-21T15-15-43-701Z-80409492/state.json"
+}

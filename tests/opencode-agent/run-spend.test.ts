@@ -7,10 +7,9 @@ import { describe, expect, test } from 'bun:test'
 
 import type { Logger } from '../../opencode-agent/src/logger.js'
 import type { OpenAiSettings } from '../../opencode-agent/src/openai-config.js'
+import { costOfUsage, ModelsDevDbSchema } from '../../opencode-agent/src/pricing.js'
+import type { ModelsDevDb } from '../../opencode-agent/src/pricing.js'
 import { resolveRunCost } from '../../opencode-agent/src/run-spend.js'
-import { ModelsDevDbSchema } from '../../sdd-runner/src/pricing.js'
-import type { ModelsDevDb } from '../../sdd-runner/src/pricing.js'
-import { costOfUsage } from '../../sdd-runner/src/usage-aggregate.js'
 
 /**
  * The ladder decides what a run cost, and the whole point of it is that

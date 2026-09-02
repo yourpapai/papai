@@ -3,11 +3,11 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { loadDb as loadModelsDb, lookupModel } from '../../sdd-runner/src/pricing.js'
-import type { ModelsDevDb } from '../../sdd-runner/src/pricing.js'
 import type { Logger } from './logger.js'
 import { modelRef, NO_MODEL_OVERRIDES } from './openai-config.js'
 import type { ModelFacts, OpenAiSettings } from './openai-config.js'
+import { loadDb as loadModelsDb, lookupModel } from './pricing.js'
+import type { ModelsDevDb } from './pricing.js'
 import { errorMessage } from './types.js'
 
 /**
@@ -21,10 +21,9 @@ import { errorMessage } from './types.js'
  * model models.dev carries; this module is the tail, where the id is a
  * self-hosted alias or a fine-tune that no catalogue has ever heard of.
  *
- * The reader is `sdd-runner/src/pricing.ts` — already a models.dev client with a
- * disk cache, a bounded fetch and two recorded incident fixes — rather than a
- * second copy of all that. The import crosses a workspace boundary in one
- * direction and one function wide; both workspaces are developer tooling outside
+ * The reader is `pricing.ts` — a models.dev client with a disk cache, a bounded
+ * fetch and two recorded incident fixes — rather than a second copy of all
+ * that. The import stays inside this workspace: developer tooling outside
  * papai's runtime.
  */
 

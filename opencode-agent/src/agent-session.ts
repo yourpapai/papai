@@ -3,7 +3,7 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import type { UsageBuckets } from '../../sdd-runner/src/usage-aggregate.js'
+import type { UsageBuckets } from './pricing.js'
 import type { RateLimitStanding } from './rate-limit-windows.js'
 import type { CostSource } from './run-spend.js'
 

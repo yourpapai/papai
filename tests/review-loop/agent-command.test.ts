@@ -233,6 +233,72 @@ describe('buildAgentCommand (claude argv branch)', () => {
   })
 })
 
+describe('buildAgentCommand (continuation id mapping — escalation-retry-session-continuation D4)', () => {
+  test('opencode: a continuation id rides --session <id> after --dir and before the prompt', () => {
+    const command = buildAgentCommand({
+      model: 'm',
+      cwd: CWD,
+      prompt: 'p',
+      extraArgs: [],
+      label: 'reviewer',
+      continueSessionId: 'ses-1',
+    })
+    expect(command.args).toEqual([
+      'run',
+      '--auto',
+      '--format',
+      'json',
+      '--model',
+      'm',
+      '--dir',
+      CWD,
+      '--session',
+      'ses-1',
+      'p',
+    ])
+  })
+
+  test('opencode: absent id adds no flag — argv byte-identical to today', () => {
+    const command = buildAgentCommand({
+      model: 'm',
+      cwd: CWD,
+      prompt: 'p',
+      extraArgs: [],
+      label: 'reviewer',
+    })
+    expect(command.args.includes('--session')).toBe(false)
+  })
+
+  test('claude: a continuation id rides --resume <id>', () => {
+    const command = buildAgentCommand({
+      backend: 'claude',
+      model: 'm',
+      cwd: CWD,
+      prompt: 'p',
+      extraArgs: [],
+      label: 'reviewer',
+      claude: claudeContext(),
+      continueSessionId: 'sess-9',
+    })
+    const index = command.args.indexOf('--resume')
+    expect(index).toBeGreaterThan(-1)
+    expect(command.args[index + 1]).toBe('sess-9')
+  })
+
+  test('claude: absent id adds no flag', () => {
+    const command = buildAgentCommand({
+      backend: 'claude',
+      model: 'm',
+      cwd: CWD,
+      prompt: 'p',
+      extraArgs: [],
+      label: 'reviewer',
+      claude: claudeContext(),
+    })
+    expect(command.args.includes('--resume')).toBe(false)
+  })
+})
+
 /**
  * The effort tier on the loop's role subprocesses (design D4, D6).
  *

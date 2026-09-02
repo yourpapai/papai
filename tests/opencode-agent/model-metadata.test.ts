@@ -9,8 +9,8 @@ import type { Logger } from '../../opencode-agent/src/logger.js'
 import { resolveModelFacts } from '../../opencode-agent/src/model-metadata.js'
 import { NO_MODEL_OVERRIDES } from '../../opencode-agent/src/openai-config.js'
 import type { ModelOverrides, OpenAiSettings } from '../../opencode-agent/src/openai-config.js'
-import { ModelsDevDbSchema } from '../../sdd-runner/src/pricing.js'
-import type { ModelsDevDb } from '../../sdd-runner/src/pricing.js'
+import { ModelsDevDbSchema } from '../../opencode-agent/src/pricing.js'
+import type { ModelsDevDb } from '../../opencode-agent/src/pricing.js'
 
 const DB: ModelsDevDb = ModelsDevDbSchema.parse({
   anthropic: {

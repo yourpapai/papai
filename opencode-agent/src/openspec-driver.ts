@@ -16,7 +16,7 @@ import type { CommandRunner, CommandResult } from './shell.js'
  * The same division of labour the archived `sdd-runner` established: TypeScript
  * owns the CLI protocol (argv vectors, JSON decoding, exit-code handling), the
  * model composes artifact content only. Re-implemented here rather than imported
- * because `sdd-runner` is a peer workspace this agent never depended on, and the
+ * because `sdd-runner` was a peer workspace this agent never depended on, and the
  * compliance idiom is a pattern to adopt, not a module to couple to.
  *
  * Every command runs through the injected {@link CommandRunner}, which spawns

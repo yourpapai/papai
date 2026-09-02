@@ -1,7 +1,0 @@
-{
-  "repoRoot": ".",
-  "workDir": ".sdd-runner",
-  "model": "synthetic/hf:zai-org/GLM-5.3-Flash",
-  "budget": 10,
-  "deadline": 90
-}

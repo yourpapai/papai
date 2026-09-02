@@ -1,0 +1,25 @@
+{"altitude":"L2","type":"stage_enter","stage":"intake","seq":1,"ts":"2026-01-06T00:00:00.000Z"}
+{"altitude":"L2","type":"depth","profile":"S","rationale":"one module","source":"estimator","seq":2,"ts":"2026-01-06T00:00:00.000Z"}
+{"altitude":"L2","type":"stage_exit","stage":"intake","seq":3,"ts":"2026-01-06T00:00:00.000Z"}
+{"altitude":"L2","type":"stage_enter","stage":"draft","seq":4,"ts":"2026-01-06T00:00:00.000Z"}
+{"altitude":"L2","type":"stage_exit","stage":"draft","seq":5,"ts":"2026-01-06T00:00:00.000Z"}
+{"altitude":"L2","type":"stage_enter","stage":"review","seq":6,"ts":"2026-01-06T00:00:00.000Z"}
+{"altitude":"L2","type":"round_open","round":1,"cap":1,"seq":7,"ts":"2026-01-06T00:00:00.000Z"}
+{"altitude":"L2","type":"stage_failed","stage":"review","kind":"exhausted","reason":"review round 1 failed after 2 attempts: schema invalid","resumeHint":"resume the run","seq":8,"ts":"2026-01-06T00:00:01.000Z"}
+{"altitude":"L2","type":"stage_failed","stage":"review","kind":"exhausted","reason":"review round 1 failed after 2 attempts: schema invalid","resumeHint":"resume the run","seq":9,"ts":"2026-01-06T00:00:02.000Z"}
+{"altitude":"L2","type":"gate","action":"presented","mode":"escalation","version":1,"seq":10,"ts":"2026-01-06T00:00:02.000Z"}
+{"altitude":"L2","type":"auto_decision","rule":"none","decision":"gate","evidenceDigest":"5e9f1c04b7a2d3e8","gateVersion":1,"seq":11,"ts":"2026-01-06T00:00:02.000Z"}
+{"altitude":"L2","type":"gate","action":"answered","mode":"escalation","version":1,"outcome":"approve","seq":12,"ts":"2026-01-06T00:05:00.000Z"}
+{"altitude":"L2","type":"stage_exit","stage":"review","seq":13,"ts":"2026-01-06T00:05:00.000Z"}
+{"altitude":"L2","type":"stage_enter","stage":"review","seq":14,"ts":"2026-01-06T00:05:00.000Z"}
+{"altitude":"L2","type":"round_open","round":1,"cap":1,"seq":15,"ts":"2026-01-06T00:05:01.000Z"}
+{"altitude":"L2","type":"convergence","round":1,"verdict":"converged","counts":{"blocker":0,"material":0,"nitpick":0},"seq":16,"ts":"2026-01-06T00:05:01.000Z"}
+{"altitude":"L2","type":"round_close","round":1,"cap":1,"seq":17,"ts":"2026-01-06T00:05:01.000Z"}
+{"altitude":"L2","type":"stage_exit","stage":"review","seq":18,"ts":"2026-01-06T00:05:01.000Z"}
+{"altitude":"L2","type":"stage_enter","stage":"decompose","seq":19,"ts":"2026-01-06T00:05:01.000Z"}
+{"altitude":"L2","type":"stage_enter","stage":"gate","seq":20,"ts":"2026-01-06T00:05:02.000Z"}
+{"altitude":"L2","type":"gate","action":"presented","mode":"final","version":2,"seq":21,"ts":"2026-01-06T00:05:02.000Z"}
+{"altitude":"L2","type":"auto_decision","rule":"none","decision":"gate","evidenceDigest":"d0a4c8e91f21b7aa","gateVersion":2,"seq":22,"ts":"2026-01-06T00:05:02.000Z"}
+{"altitude":"L2","type":"stage_exit","stage":"gate","seq":23,"ts":"2026-01-06T00:05:02.000Z"}
+{"altitude":"L2","type":"gate","action":"answered","mode":"final","version":2,"outcome":"approve","seq":24,"ts":"2026-01-06T00:10:00.000Z"}
+{"altitude":"L2","type":"stage_exit","stage":"decompose","seq":25,"ts":"2026-01-06T00:10:00.000Z"}
