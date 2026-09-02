@@ -88,7 +88,16 @@ Gate rows carry the reviewer's verbatim gap, not the finding id: `readRoundGaps`
 
 ### Log fidelity on re-entry and resumption (log-fidelity change, D1–D8 in `openspec/changes/log-fidelity/design.md`)
 
-Event taxonomy drives emission: **state-shaped** events mean transitions and get fold-derived owedness; **fact-shaped** events are timestamped points where idempotency is meaningless. `round_open{round, cap}` is owed iff it changes the folded round state — `roundOpenOwed` compares the round and effective cap against the work-entry fold's round snapshot (`reviewResumeEntry` derives it; it rides `ReviewEntry.foldRound` to `runRound`). Same-round re-entries — resume of an interrupted round, extend re-entry after a settle mover opened the next round, the under-budget escalation retry — re-run the work without re-opening the round; recursion into round n+1 always clears the comparison; a cap amendment on an open round still emits (defensive). Work-shaped events (findings, convergence, `round_close`) are never suppressed — the work genuinely re-happened. Frozen historical logs keep their doubles: `round_open` stays last-write-wins in both folds and duplicate tolerance remains load-bearing for replay. Every `resume` invocation appends exactly one `resume{path, stage, session?}` event in `resumeRun`, immediately after `resumeInputs` (owed recovery complete) and before the parked/drivable branch — so parked-gate and terminal resumes emit too, one per invocation, never deduplicated. `resumeEventOf` classifies from the post-recovery fold + session ledger: `gate.awaiting` and terminals (including runs the resume's own recovery completed through a gate settle) report `artifact-skip, gate`; review splits by round state — never started → `artifact-skip, review`, unrecorded round → `session-continuation` with the ledger's in-flight session id, else a fresh re-run; every other work stage reports `stage-rebuild, <stage>` (a `start` fold boots from intake). The kernel fold counts `resume` as tolerated; the legacy fold replays it as a strict no-op (pinned over the `same-round-resume-honest-synthetic` scenario). **F-A4, recorded not fixed**: same-process escalation retries consume `killed` ledger sessions as continuations (`agent-layer.ts` settles failures as `killed`; `latestInFlight` counts `spawned|killed`) — possibly deliberate (a continued session keeps its cached context), unproven, left for the C8 live cycle to exercise.
+Event taxonomy drives emission: **state-shaped** events mean transitions and get fold-derived owedness; **fact-shaped** events are timestamped points where idempotency is meaningless. `round_open{round, cap}` is owed iff it changes the folded round state — `roundOpenOwed` compares the round and effective cap against the work-entry fold's round snapshot (`reviewResumeEntry` derives it; it rides `ReviewEntry.foldRound` to `runRound`). Same-round re-entries — resume of an interrupted round, extend re-entry after a settle mover opened the next round, the under-budget escalation retry — re-run the work without re-opening the round; recursion into round n+1 always clears the comparison; a cap amendment on an open round still emits (defensive). Work-shaped events (findings, convergence, `round_close`) are never suppressed — the work genuinely re-happened. Frozen historical logs keep their doubles: `round_open` stays last-write-wins in both folds and duplicate tolerance remains load-bearing for replay. Every `resume` invocation appends exactly one `resume{path, stage, session?}` event in `resumeRun`, immediately after `resumeInputs` (owed recovery complete) and before the parked/drivable branch — so parked-gate and terminal resumes emit too, one per invocation, never deduplicated. `resumeEventOf` classifies from the post-recovery fold + session ledger: `gate.awaiting` and terminals (including runs the resume's own recovery completed through a gate settle) report `artifact-skip, gate`; review splits by round state — never started → `artifact-skip, review`, unrecorded round → `session-continuation` with the ledger's in-flight session id, else a fresh re-run; every other work stage reports `stage-rebuild, <stage>` (a `start` fold boots from intake). The kernel fold counts `resume` as tolerated; the legacy fold replays it as a strict no-op (pinned over the `same-round-resume-honest-synthetic` scenario). **F-A4 — answered live at C8, decision pending with the operator**: the recorded hypothesis (same-process
+escalation retries consume `killed` ledger sessions as continuations) is **disproven in the continuation
+direction** — the C8 scratch drill killed the drafter child four times and every post-kill spawn (watchdog
+retry, under-budget re-run, escalation-approve retry) minted a **fresh** opencode session id, the retry
+prompt is the plain base prompt (`buildContinuationPrompt` rides only the cross-process resume seam, where
+continuation demonstrably works), and the rebuild was softened only by endpoint prefix caching (first-step
+cacheRead 16.4K/18.8K vs 64 on a fresh spawn). Evidence + accept recommendation in
+`openspec/changes/v2-live-proof/reflection.md` (§F-A4); the accept-or-fix call is the operator's — a pending
+decision is recorded there, with `escalation-retry-session-continuation` the named follow-up should they
+choose fix.
 
 ### Append boundary and refusal semantics (D5)
 
@@ -113,7 +122,7 @@ The agent write guard in `agent-layer.ts` answers "did the agent write only wher
 
 Neither port-as-is nor simplify-and-restore: V1's graph is the current pipeline's shape re-expressed as a graph (parity needs historical logs), so every graph-shape feature (self-loop, parked substate, cross-cutting recovery, back-edges, finals) arrives day one; afk-spike states then land as content on the proven engine. The afk spike (`reports/afk/`, gitignored reference material) is ported by **reimplementation** — importing from a non-repo path would break every other checkout. Deliberate deltas: context stays thin (artifacts live in the change folder), escalation never silent death (budget exhaustion gates), `meta` kept as data. The full afk-state → landing-change table is in `openspec/changes/afk-runner/design.md`.
 
-## C3–C7 delivery plan and the U-ledger
+## C3–C8 delivery plan and the U-ledger
 
 Each follow-on is its own explored OpenSpec change:
 
@@ -124,30 +133,40 @@ Each follow-on is its own explored OpenSpec change:
 | C5 | tail-on-graph — decompose/atomicity/finals/report; parity complete | **delivered** — tail work modules, final-gate presentation as tail work, outcome-ordered settles, S completion + self-loops (incl. the inherited intake gap), owed-presentation resume, finals vocabulary + terminal memo, report + CLI, memo-parity oracle over the surviving originals; decisions D1–D9 in `openspec/changes/tail-on-graph/design.md` |
 | C6 | agent-failed-recovery — retry budget, escalation gate, kill -9 resume drill | **delivered** — typed failure taxonomy at three seams, `stage_failed` bookkeeping with a per-stage budget and immediate under-budget re-run, the escalation gate as mode `escalation` on the C4 stack (R5 rung, steer answerability, inherited deadlines), the `stop` verb (`run_abort` mixin, calm-stop marker producer, slug release), honest memos on every park with the `failed` status, torn-tail tolerance + prefix property + resume-equivalence + W5–W7 recovery, five synthetic failure fixtures; decisions D1–D11 in `openspec/changes/agent-failed-recovery/design.md` |
 | C7 | v1-live-proof — live conformance runs, incident drills, harvest, reflection + re-score | **delivered** — three live runs (S-shaped calibration, M proof with kill/veto incidents, declared-failure scratch), the live corpus lane (`tests/afk-runner/fixtures/live/`), the reflection artifact (`openspec/changes/v1-live-proof/reflection.md`), the living U-table below; three crash-shaped engine fixes landed under the escape clause (dead-pid claim steal, `AgentRunError` → `exhausted`, idempotent intake resume) |
+| C8 | v2-live-proof — second live cycle over the post-mirror-wave engine | **delivered** — seven runs across the three-slot matrix (scratch C priced-metered with the child-kill escalation-approve producing F-A4's evidence + spend calibration; Run A metered with holder-kill asserting the classified `resume` and no double `round_open` live, directive-grammar veto with zero-signal probe, cost-unknown R4 live; Run B unmetered with the bought verification round `round_open(n+1, cap+1)` live and the sidecar-corruption `POLICY-INTEGRITY` substitution with no rule auto-deciding), both C8 lanes harvested under the extended per-lane oracle, `analyze` as the re-score instrument (`corpus-report.json`), the era-flag expectation corrected by measurement, four findings (F-A4 answered, F-C1/C2/C3 — operator-surface robustness follow-up), the n=2 ledger re-score with exactly one `next` (U3); evidence and adjudication in `openspec/changes/v2-live-proof/{notes,reflection}.md` |
 | — | gate-settle-robustness — U9's R1 step, ahead of retirement: the settle seam total over operator input | **delivered** — incident-B holes closed: gate-level decision directives (`APPROVE` / `VETO[: <redirect>]`, zero-signal rejection), pre-flighted render⇄parse roundtrips, contained settle failures as sibling-artifact feedback with a digest guard, attempt-scoped pid-carried settle claims (permanent `expiry-claim` retired), mid-presentation crash resume (owed stage exits + the waiter's already-answered guard), whole-gate veto redirects as first-class veto-updater input, and the gate-level steer grammar with consume-with-warning hygiene; decisions D1–D7 in `openspec/changes/gate-settle-robustness/design.md` |
 | — | log-fidelity — U9's R2 step, ahead of retirement: the event log honest on re-entry and resumption | **delivered** — the F-A1/F-A2 holes from C7's live proof closed: the `round_open` owedness invariant (emission only on folded-state change — same-round resume, extend re-entry, escalation retry no longer double-open; work-shaped events never suppressed; frozen-log duplicate tolerance preserved), the `resume` event producer (one classified event per invocation, post-recovery pre-branch, sdd-runner's path taxonomy re-keyed to fold position), the honest synthetic scenario sibling, and the F-A4 observation recorded; decisions D1–D8 in `openspec/changes/log-fidelity/design.md` |
 | — | sdd-runner-cutover — U9's R4 step: the operator entry surface flips to afk-runner | **delivered** — `sdd-runner:start` repoints to `bun afk-runner/src/cli.ts` (the one-line revert), the `/sdd:auto` wrappers invoke `bun run afk-runner:start -- start`, the start verb parks and exits at a gate with a pointer line (gate file path + `resume <runId>`; the foreground waiter rides `resume` only), and the bare-arg miss error names the replacement verbs; decisions D1–D5 in `openspec/changes/sdd-runner-cutover/design.md` |
 | — | afk-runner-metered-budget — mirror of master's metered wave: unmetered budget semantics, waiter audit events | **delivered** — `budget` accepts `null` and the optional `metered` flag (derived `budget !== null`) unplugs the subscription deadlock (R4's cost-unknown branch is metered-only; the exceedance branch predicates on numeric-ceiling presence; the escalation rung keeps unknown-cost suppression), the deadline waiter emits the standard `auto_decision` per claimed outcome (settle names the rule, re-arm/stay-pending record `none`/`pending`, lost claims silent) with `pending` added to the decision kind, and the waiter's expiry ladder shares the prelude's `evaluateLadder` so the metered treatment reaches it with no waiter-side code; decisions D1–D5 in `openspec/changes/afk-runner-metered-budget/design.md` |
 
-## Living follow-ups ledger (U1–U9, re-scored after C7)
+## Living follow-ups ledger (U1–U9, re-scored after C8)
 
-The ledger lives here now — the afk-runner change's design.md is history. Re-scored from the C7 live
-evidence (n=1, verdicts provisional; full evidence and falsifiable triggers in
+The ledger lives here now — the afk-runner change's design.md is history. Re-scored after C8 from two live
+cycles (n=2, verdicts provisional; full evidence, measurements, and falsifiable triggers in
+`openspec/changes/v2-live-proof/reflection.md`; the C7 re-score rationale in
 `openspec/changes/v1-live-proof/reflection.md`):
 
 | #  | Follow-up                                   | Verdict |
 |----|---------------------------------------------|---------|
 | U1 | team/mission spawner                        | hold    |
 | U2 | child-actor execution                       | park    |
-| U3 | execution-half states                       | hold    |
-| U4 | documenting + reflection states             | rise    |
+| U3 | execution-half states                       | **next** |
+| U4 | documenting + reflection states             | hold (measured ~1.5 h/cycle at n=2 — under the trigger) |
 | U5 | vision intake / L4 portfolio                | park    |
 | U6 | `conflict_detected`                         | park    |
 | U7 | snapshot memo for the fold                  | fall    |
-| U8 | TUI re-host as pure fold render             | hold    |
+| U8 | TUI re-host as pure fold render             | hold (measured discovery < 20% of attended wall) |
 | U9 | sdd-runner retirement; cross-run accounting | **delivered** — retirement (R5 `sdd-runner-retirement`) + report half |
 
-The ledger was re-scored after C7 from live-run evidence; the historical U1–U9 seed table stays in
+Exactly one `next`: **U3** — two live cycles prove the think-half end-to-end (7 runs at C8, honest memos at
+every park, the mirror wave's behaviors live or honestly recorded), and all four C8 findings (F-A4's
+answer, F-C1/C2/C3) live in operator surfaces and artifact quality, not engine state — the frontier moved
+past think-half state. The immediate change ahead of U3 is the **operator-surface robustness follow-up**
+(F-C1 steer-settle throws, F-C2 the unrendered integrity blocker, F-C3 the unwired deadline-expiry ports —
+the corpus report and the reflection carry the red evidence), plus the C9 scope seed: the not-arisen
+shapes (numeric-ceiling refusal needs a priced run, third-strike thrash, `C<n>` cross-artifact finding).
+
+The ledger was re-scored after C8 from live-run evidence; the historical U1–U9 seed table stays in
 `openspec/changes/afk-runner/design.md` as the pre-C7 record. U9 is **delivered**: the retirement
 half landed as R5 (`openspec/changes/sdd-runner-retirement/` — the workspace, alias family and
 spec surfaces deleted, the jscpd re-tighten performed), and the cross-run accounting **report half
