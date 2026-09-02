@@ -146,12 +146,26 @@ describe('proof check prompt helpers', () => {
     }
   })
 
-  test('window defaults to two poll intervals, doubles for the alert variant, and clamps wait_seconds', () => {
+  test('window defaults to two poll intervals, doubles for the alert variant, and floors wait_seconds at the lane default', () => {
     expect(resolveWindowMs(makeRequest(), false)).toBe(2 * 60_000)
     expect(resolveWindowMs(makeRequest(), true)).toBe(2 * 5 * MINUTE_MS)
-    expect(resolveWindowMs(makeRequest({ wait_seconds: 30 }), false)).toBe(30_000)
+    expect(resolveWindowMs(makeRequest({ wait_seconds: 30 }), false)).toBe(2 * 60_000)
+    expect(resolveWindowMs(makeRequest({ wait_seconds: 30 }), true)).toBe(2 * 5 * MINUTE_MS)
     expect(resolveWindowMs(makeRequest({ wait_seconds: 20 * MINUTE_MS }), false)).toBe(15 * MINUTE_MS)
-    expect(resolveWindowMs(makeRequest({ wait_seconds: 0 }), false)).toBe(1_000)
+    expect(resolveWindowMs(makeRequest({ wait_seconds: 0 }), false)).toBe(2 * 60_000)
+  })
+
+  test('derived fire_at lands inside the effective window for every start offset and wait_seconds', () => {
+    for (const waitSeconds of [1, 30, 60, 120, 300, 900]) {
+      const windowMs = resolveWindowMs(makeRequest({ wait_seconds: waitSeconds }), false)
+      const leadMs = fireAtLeadFor('bug2_context_time', windowMs)
+      for (let offsetMs = 0; offsetMs < MINUTE_MS; offsetMs += 1_000) {
+        const startMs = CLOCK_BASE_MS + offsetMs
+        const fireAtMs = fireAtMsFor(startMs, leadMs)
+        expect(fireAtMs).toBeGreaterThan(startMs)
+        expect(fireAtMs).toBeLessThan(startMs + windowMs)
+      }
+    }
   })
 
   test('resolveTimezone and resolveLocale fall back to UTC and en without a stored config', () => {

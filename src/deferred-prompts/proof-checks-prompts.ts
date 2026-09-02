@@ -55,9 +55,12 @@ export const fireAtLeadFor = (checkId: ProofCheckId, windowMs?: number): number 
 }
 
 export const resolveWindowMs = (request: ProofCheckRequest, isAlertVariant: boolean): number => {
+  // Floor wait_seconds at the lane default so the derived fire_at (minute-aligned,
+  // up to ~60s after start) always lands inside the window (design D6).
+  const minWindowMs = isAlertVariant ? 2 * ALERT_POLL_MS : 2 * SCHEDULED_POLL_MS
   const waitSeconds = request.wait_seconds
-  if (waitSeconds !== undefined) return Math.max(MIN_WINDOW_MS, Math.min(waitSeconds * 1000, WINDOW_CAP_MS))
-  return isAlertVariant ? 2 * ALERT_POLL_MS : 2 * SCHEDULED_POLL_MS
+  if (waitSeconds !== undefined) return Math.max(minWindowMs, Math.min(waitSeconds * 1000, WINDOW_CAP_MS))
+  return minWindowMs
 }
 
 export const resolveTimezone = (storageContextId: string): string => {

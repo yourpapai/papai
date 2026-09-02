@@ -92,7 +92,7 @@ const proofCheckInputSchema = z
       .max(900)
       .optional()
       .describe(
-        'Observation window in seconds for async checks; defaults to two poll intervals of the lane, hard cap 900 (15 minutes).',
+        'Observation window in seconds for async checks; floored at the lane default of two poll intervals, hard cap 900 (15 minutes).',
       ),
     cleanup: z
       .boolean()

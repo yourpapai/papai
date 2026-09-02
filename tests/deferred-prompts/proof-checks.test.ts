@@ -665,7 +665,7 @@ describe('proof checks runner', () => {
     await drainToTimeout()
 
     await expectStarted(makeRequest({ wait_seconds: 30 }))
-    expect(harness.timers.delays[1]).toBe(30_000)
+    expect(harness.timers.delays[1]).toBe(2 * SCHEDULED_POLL_MS)
     await drainToTimeout()
 
     await expectStarted(makeRequest({ wait_seconds: WINDOW_CAP_MS / 1000 + 600 }))
@@ -679,7 +679,7 @@ describe('proof checks runner', () => {
     expect(harness.timers.delays).toHaveLength(4)
   })
 
-  test('fire_at derivation targets half the effective window, bug3 pins the lead, and stays inside a shrunk window', async () => {
+  test('fire_at derivation targets half the effective window, bug3 pins the lead, and stays inside a wait_seconds window', async () => {
     harness.timers.nowMs = CLOCK_BASE_MS
     await expectStarted(makeRequest())
     await waitFor(() => harness.world.createCalls.length > 0)
@@ -699,7 +699,8 @@ describe('proof checks runner', () => {
     await waitFor(() => harness.world.createCalls.length > 2)
     const shrunkStartMs = CLOCK_BASE_MS + 7_000
     const shrunkFireAt = reconstructedFireAtMs(2)
-    const shrunkWindowClose = CLOCK_BASE_MS + 7_000 + 60_000
+    // wait_seconds: 60 floors up to the scheduled-lane default window (2 poll intervals)
+    const shrunkWindowClose = shrunkStartMs + 2 * SCHEDULED_POLL_MS
     expect(shrunkFireAt).toBe(CLOCK_BASE_MS + MINUTE_MS)
     expect(shrunkFireAt).toBeGreaterThan(shrunkStartMs)
     expect(shrunkFireAt).toBeLessThanOrEqual(shrunkWindowClose)
