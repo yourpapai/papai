@@ -1,0 +1,20 @@
+{
+  "runId": "event-driven-suggestion-payloads-for-the-task-tracker-tools-2",
+  "repoRoot": "/Users/ki/Projects/yourpapai/papai/.worktrees/v2-live-proof-target-a",
+  "workDir": "/Users/ki/Projects/yourpapai/papai/.worktrees/v2-live-proof-target-a/.sdd-runner",
+  "changeName": "event-driven-suggestion-payloads-for-the-task-tracker-tools",
+  "stage": "gate",
+  "depth": "M",
+  "round": 3,
+  "roundCap": 3,
+  "gate": null,
+  "status": "completed",
+  "metered": true,
+  "createdAt": "2026-09-01T11:45:57.129Z",
+  "updatedAt": "2026-09-01T13:20:59.247Z",
+  "autoExtendsUsed": 0,
+  "gateDeadlineAt": null,
+  "gateDeadlineReArmed": false,
+  "plan": null,
+  "children": null
+}

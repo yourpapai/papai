@@ -321,3 +321,7 @@ intake scaffold-skip re-entered the existing change folder each time).
 - (3) Run B pass 1 drill miss — the 30 s tail outran the operator poll; induced drills re-aimed at the
   re-drill runs (pass 3's miss was a local-vs-UTC clock illusion; both are timing, not engine).
 
+
+### Harvest record (task 5.2)
+
+Both C8 lanes copied and the extended oracle green (9/9): `event-driven-suggestion-payloads-live` (Run A, 793 events) and `killed-turn-usage-undercount-live` (Run B pass 4, 424 events); lane README updated. Secret scan: the only sk-/key-shaped strings in Run A's log are filename fragments (`task-` substrings of `suggest-next-task-ranking.ts` etc.); Run B clean. Pass 1-3 logs and the scratch stay workdir-resident (analyze reads them there).

@@ -39,8 +39,8 @@ are in design.md (D1–D10).
 
 ## 5. Harvest (red-first)
 
-- [ ] 5.1 Before copying, write the extended lane oracle red-first: per harvested run — fold(log) ≡ persisted memo fields, every line validates against the event schemas, and `analyze` reads the lane with the correct era flag (C7's lane development-era, C8's era-current). Watch it fail against the not-yet-populated lanes. Verify: `bun test tests/afk-runner/fixtures/live/` fails for the missing lanes (red), then
-- [ ] 5.2 Review both productive runs' logs for anything non-repo-local (prompts/task text fine; tokens/keys must be absent by design), copy `events.ndjson` + `state.json` per run into live-marked lanes, and bring the oracle green; update the lane README (runs, dates, drills carried). Verify: `bun test tests/afk-runner/fixtures/live/` green including the extended oracle and the inventory lane list
+- [x] 5.1 Before copying, write the extended lane oracle red-first: per harvested run — fold(log) ≡ persisted memo fields, every line validates against the event schemas, and `analyze` reads the lane with the correct era flag (C7's lane development-era, C8's era-current). Watch it fail against the not-yet-populated lanes. Verify: `bun test tests/afk-runner/fixtures/live/` fails for the missing lanes (red), then
+- [x] 5.2 Review both productive runs' logs for anything non-repo-local (prompts/task text fine; tokens/keys must be absent by design), copy `events.ndjson` + `state.json` per run into live-marked lanes, and bring the oracle green; update the lane README (runs, dates, drills carried). Verify: `bun test tests/afk-runner/fixtures/live/` green including the extended oracle and the inventory lane list
 
 ## 6. Corpus report (the re-score instrument)
 

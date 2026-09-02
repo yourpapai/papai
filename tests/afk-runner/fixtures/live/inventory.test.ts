@@ -9,6 +9,9 @@ import path from 'node:path'
 
 import { aggregate } from '../../../../afk-runner/src/accounting.js'
 import type { RunAccountingInput } from '../../../../afk-runner/src/accounting.js'
+import { buildCorpusReport } from '../../../../afk-runner/src/analyze-corpus.js'
+import type { AnalyzeFs } from '../../../../afk-runner/src/analyze-io.js'
+import { loadCorpus, nodeAnalyzeFs } from '../../../../afk-runner/src/analyze-io.js'
 import { SddEventSchema } from '../../../../afk-runner/src/event-schemas.js'
 import { readEvents } from '../../../../afk-runner/src/events.js'
 import type { SddEvent } from '../../../../afk-runner/src/events.js'
@@ -32,6 +35,32 @@ type LiveEvent = ReturnType<typeof readEvents>[number]
 const logPath = path.join(LIVE_ROOT, 'mutation-floor-hardening-live', 'events.ndjson')
 const memoPath = path.join(LIVE_ROOT, 'mutation-floor-hardening-live', 'state.json')
 
+/**
+ * Read the lane dirs as a corpus the analyzer can discover: the lanes sit
+ * directly under `live/`, while `loadCorpus` expects a `<workdir>/runs/<id>`
+ * layout — the adapter re-maps the path prefix (a pure read view; the frozen
+ * lane layout is never reshaped for the tool) and lets `readdir` list
+ * directories only, so README.md and this test file are not pseudo-runs.
+ */
+function laneCorpusFs(): AnalyzeFs {
+  const real = nodeAnalyzeFs()
+  const runsRoot = `${LIVE_ROOT}/runs`
+  const map = (p: string): string => (p.startsWith(runsRoot) ? path.join(LIVE_ROOT, path.relative(runsRoot, p)) : p)
+  return {
+    readFile: (p) => real.readFile(map(p)),
+    stat: (p) => real.stat(map(p)),
+    readdir: async (p) => {
+      const mapped = map(p)
+      const entries = await real.readdir(mapped)
+      const dirs: string[] = []
+      for (const entry of entries) {
+        if ((await real.stat(path.join(mapped, entry))).isDirectory()) dirs.push(entry)
+      }
+      return dirs
+    },
+  }
+}
+
 function roundOpens(events: readonly LiveEvent[], round: number): SddEvent[] {
   return events.filter((event) => event.type === 'round_open' && event.round === round)
 }
@@ -51,7 +80,79 @@ function memoField<T>(value: T | undefined, fallback: T): T {
 
 describe('live corpus lane marking', () => {
   it('holds exactly the recorded live lanes', () => {
-    expect(liveLanes()).toEqual(['mutation-floor-hardening-live'])
+    expect(liveLanes()).toEqual([
+      'event-driven-suggestion-payloads-live',
+      'killed-turn-usage-undercount-live',
+      'mutation-floor-hardening-live',
+    ])
+  })
+})
+
+/**
+ * The C8 harvest oracle (v2-live-proof tasks 5.1/5.2): every live lane — C7's
+ * and both C8 runs — folds to the memo it persisted and validates line-by-line
+ * against the event schemas, agent noise included. Red until the C8 lanes are
+ * harvested (task 5.2 copies events.ndjson + state.json per productive run).
+ */
+describe('every live lane folds to its own memo and validates line-by-line', () => {
+  for (const lane of [
+    'event-driven-suggestion-payloads-live',
+    'killed-turn-usage-undercount-live',
+    'mutation-floor-hardening-live',
+  ]) {
+    it(`${lane}: schema-valid lines and fold ≡ memo`, () => {
+      const laneLog = path.join(LIVE_ROOT, lane, 'events.ndjson')
+      const raw = readFileSync(laneLog, 'utf8')
+        .split('\n')
+        .filter((line) => line.length > 0)
+      expect(raw.length).toBeGreaterThan(0)
+      for (const line of raw) {
+        expect(() => SddEventSchema.parse(JSON.parse(line))).not.toThrow()
+      }
+      const events = readEvents(laneLog)
+      const { snapshot } = foldEvents(pipelineMachine, events)
+      const derived = memoFieldsOf(events, snapshot.context, 'final', 'completed')
+      const persisted = PersistedRunStateSchema.parse(
+        JSON.parse(readFileSync(path.join(LIVE_ROOT, lane, 'state.json'), 'utf8')),
+      )
+      expect(derived.stage).toBe(persisted.stage)
+      expect(derived.depth).toBe(persisted.depth)
+      expect(derived.round).toBe(persisted.round)
+      expect(derived.roundCap).toBe(memoField(persisted.roundCap, derived.roundCap))
+      expect(derived.gate).toBe(persisted.gate)
+      expect(derived.status).toBe(persisted.status)
+      expect(derived.autoExtendsUsed).toBe(memoField(persisted.autoExtendsUsed, 0))
+      expect(derived.gateDeadlineAt).toBe(memoField(persisted.gateDeadlineAt, null))
+      expect(derived.gateDeadlineReArmed).toBe(memoField(persisted.gateDeadlineReArmed, false))
+      expect(derived.plan).toBe(memoField(persisted.plan, null))
+      expect(derived.children).toBe(memoField(persisted.children, null))
+      expect(derived.createdAt).toBe(persisted.createdAt)
+      expect(derived.updatedAt).toBe(persisted.updatedAt)
+    })
+  }
+})
+
+/**
+ * Era reading (v2-live-proof task 5.1, design D8 — corrected by measurement):
+ * the era-contamination flag keys on consistency signatures
+ * (answered-without-presented, completed-after-unsuperseded-abort), not on
+ * event-grammar dates. C7's lane is afk-authored with a clean
+ * presented/answered pairing, so it reads era-current alongside C8's — a
+ * pre-wave grammar alone (no open sets, no fingerprints) contaminates nothing.
+ * The development-era exclusion the flag implements is demonstrated over the
+ * legacy corpus in the analyzer's own suite; here the assertion is that every
+ * live lane is signature-clean and aggregates include them all.
+ */
+describe('the analyzer reads the grown lanes era-correctly', () => {
+  it('every lane is era-current and included in the aggregates', async () => {
+    const bundles = await loadCorpus(laneCorpusFs(), [LIVE_ROOT])
+    const report = buildCorpusReport(bundles, [], { now: new Date('2026-09-01T00:00:00.000Z') })
+    const byId = new Map(report.runs.map((run) => [run.runId, run]))
+    for (const lane of liveLanes()) {
+      expect(byId.get(lane)?.eraContaminated).toBe(false)
+    }
+    expect(report.aggregates.eraContaminated).toEqual([])
+    expect(report.aggregates.runsAggregated).toBe(liveLanes().length)
   })
 })
 
