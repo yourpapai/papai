@@ -108,6 +108,15 @@ At every presentation the autonomy ladder SHALL be evaluated and an auto-decisio
 - **WHEN** spend is unknown or projected past the cost ceiling at presentation
 - **THEN** the ladder decides gate-to-human and the run parks awaiting a human answer
 
+### Requirement: Integrity-substituted gates render the substituted blocker
+
+When the counts-integrity cross-check substitutes an open `POLICY-INTEGRITY` BLOCKER into the ladder's review result, the rendered gate file SHALL carry that blocker as a visible row (blocker section, the failure reason, and the acknowledgment path) — the same guarded result the ladder decides on SHALL feed the operator surface, so a human settling an integrity-substituted gate can see and acknowledge exactly what the rules could not decide.
+
+#### Scenario: Substituted blocker renders for the operator
+
+- **WHEN** a closed round's sidecar is corrupted before the gate that reads it presents and the cross-check substitutes the `POLICY-INTEGRITY` BLOCKER
+- **THEN** the rendered gate file carries the blocker row naming the integrity failure, no rule auto-decides, and the operator's explicit settle acknowledges the rendered failure
+
 ### Requirement: Deadline expiry is thin and config-gated
 
 Only when a deadline is configured SHALL a presentation stamp its absolute expiry into the presented event; without configuration no deadline is recorded. On expiry the waiter SHALL claim the gate exclusively, re-run the ladder permitting only conservative outcomes (approve, extend), re-arm at most once, and never auto-abort.
