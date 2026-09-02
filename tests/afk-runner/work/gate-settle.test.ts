@@ -46,6 +46,7 @@ interface Harness {
   readonly appended: EventInput[]
   readonly settleWith: (answers: GateAnswers) => ReturnType<typeof settleGateWithAnswers>
   readonly settleFile: () => ReturnType<typeof settleGateFile>
+  readonly settleFileWith: (expected: ExpectedGateContent) => ReturnType<typeof settleGateFile>
   readonly log: () => SddEvent[]
 }
 
@@ -101,6 +102,7 @@ async function makePresentedGate(): Promise<Harness> {
     appended,
     settleWith: (answers) => settleGateWithAnswers(input, answers),
     settleFile: () => settleGateFile(input),
+    settleFileWith: (expected) => settleGateFile({ ...input, expected }),
     log: () => stamp(appended),
   }
 }
@@ -115,7 +117,7 @@ const APPROVE: GateAnswers = {
 describe('settle seam — answers render, parse back, verify, append', () => {
   it('approve answers append answered(outcome=approve) plus the stage_enter(decompose) mover', async () => {
     const h = await makePresentedGate()
-    const result = await h.settleWith(APPROVE)
+    const result = settledOf(await h.settleWith(APPROVE))
     expect(result.outcome).toBe('approve')
     const events = h.log()
     expect(events.at(-2)).toMatchObject({ type: 'gate', action: 'answered', outcome: 'approve' })
@@ -127,7 +129,7 @@ describe('settle seam — answers render, parse back, verify, append', () => {
 
   it('extend answers append answered(outcome=extend) plus the round_open(n+1, cap+1) mover', async () => {
     const h = await makePresentedGate()
-    const result = await h.settleWith({ items: [], blockerAnswers: [], acks: [], decision: 'extend' })
+    const result = settledOf(await h.settleWith({ items: [], blockerAnswers: [], acks: [], decision: 'extend' }))
     expect(result.outcome).toBe('extend')
     const events = h.log()
     expect(events.at(-2)).toMatchObject({ type: 'gate', action: 'answered', outcome: 'extend', mode: 'early' })
@@ -139,12 +141,14 @@ describe('settle seam — answers render, parse back, verify, append', () => {
 
   it('veto answers append answered(outcome=veto) plus the stage_enter(draft) mover', async () => {
     const h = await makePresentedGate()
-    const result = await h.settleWith({
-      items: [{ kind: 'assumption', id: 'A1', text: 'guests stay read-only', accepted: false, redirect: 'dm-only' }],
-      blockerAnswers: [],
-      acks: [],
-      decision: 'veto',
-    })
+    const result = settledOf(
+      await h.settleWith({
+        items: [{ kind: 'assumption', id: 'A1', text: 'guests stay read-only', accepted: false, redirect: 'dm-only' }],
+        blockerAnswers: [],
+        acks: [],
+        decision: 'veto',
+      }),
+    )
     expect(result.outcome).toBe('veto')
     expect(result.vetoes).toEqual([{ id: 'A1', redirect: 'dm-only' }])
     const events = h.log()
@@ -155,7 +159,7 @@ describe('settle seam — answers render, parse back, verify, append', () => {
 
   it('abort answers append answered(outcome=abort) with no mover and reach the aborted final', async () => {
     const h = await makePresentedGate()
-    const result = await h.settleWith({ items: [], blockerAnswers: [], acks: [], decision: 'abort' })
+    const result = settledOf(await h.settleWith({ items: [], blockerAnswers: [], acks: [], decision: 'abort' }))
     expect(result.outcome).toBe('abort')
     const events = h.log()
     expect(events.at(-1)).toMatchObject({ type: 'gate', action: 'answered', outcome: 'abort', mode: 'final' })
@@ -197,10 +201,29 @@ describe('settle seam — answers render, parse back, verify, append', () => {
     expect(h.appended.length).toBe(before)
   })
 
+  it('an answers settle whose preflight parse-back fails returns the contained rejection — no write, no events (D1)', async () => {
+    const h = await makePresentedGate()
+    const before = h.appended.length
+    // The F-C1 shape: a well-formed item veto addressing an id the expected
+    // content does not declare — the render parses back as a throw today.
+    const result = await h.settleWith({
+      items: [{ kind: 'finding', id: 'F99', text: 'F99', accepted: false, redirect: 'drop the rollback promise' }],
+      blockerAnswers: [],
+      acks: [],
+      decision: 'veto',
+    })
+    expect(result).toMatchObject({ kind: 'rejected' })
+    expect(rejectionOf(result).reason).toMatch(/unknown finding F99/u)
+    // the D2 preflight invariant: nothing is written and nothing is appended
+    expect(h.appended.length).toBe(before)
+    const md = fs.readFileSync(path.join(h.runDir, 'gate-1.md'), 'utf8')
+    expect(md).not.toContain('## Gate response')
+  })
+
   it('an artifact edit during awaiting is detected at settle (integrity emits human_edits)', async () => {
     const h = await makePresentedGate()
     fs.writeFileSync(path.join(h.changeDir, 'proposal.md'), 'hand edited')
-    const result = await h.settleWith(APPROVE)
+    const result = settledOf(await h.settleWith(APPROVE))
     expect(result.outcome).toBe('approve')
     expect(h.log().some((event) => event.type === 'human_edits')).toBe(true)
   })

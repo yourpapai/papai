@@ -197,6 +197,11 @@ async function settleExpiryDecision(
       ? renderAutoApproveAnswers(decision, assumptions)
       : { items: [], blockerAnswers: [], acks: [], decision: 'extend' },
   )
+  // Machine producers rethrow rejections (D1): a settle that cannot land must
+  // stay loud instead of silently no-opping the expiry.
+  if ('kind' in result) {
+    throw new Error(`expiry settle rejected after the ladder decided: ${result.reason}`)
+  }
   ports.emit({
     altitude: 'L2',
     type: 'auto_decision',

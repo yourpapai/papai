@@ -58,6 +58,21 @@ interface Harness {
   readonly log: () => SddEvent[]
 }
 
+/** Narrow an answers settle to its settled shape — throws (failing the test) on a rejection. */
+function settledOf(result: Awaited<ReturnType<typeof settleGateWithAnswers>>): {
+  readonly outcome: string
+  readonly answeredMode: string
+} {
+  if ('kind' in result) throw new Error(`expected a settled result, got rejection: ${result.reason}`)
+  return result
+}
+
+/** Narrow an answers settle to its rejected shape — throws (failing the test) on a settle. */
+function rejectionOf(result: Awaited<ReturnType<typeof settleGateWithAnswers>>): { readonly reason: string } {
+  if (!('kind' in result)) throw new Error('expected a rejection, got a settled result')
+  return result
+}
+
 /** A parked ESCALATION gate (C6 D4): review failed twice, the presented event moved into the compound. */
 function makeParkedEscalationGate(failedStage: StageId = 'review'): Harness {
   const runDir = fs.mkdtempSync(path.join(os.tmpdir(), 'afk-settle-esc-'))
@@ -92,12 +107,14 @@ function makeParkedEscalationGate(failedStage: StageId = 'review'): Harness {
 describe('settle seam at escalation gates (C6 D4)', () => {
   it('approve appends the answered event then the exit+enter mover — fresh bracket, ledger cleared', async () => {
     const h = makeParkedEscalationGate()
-    const result = await h.settleWith({
-      items: [],
-      blockerAnswers: [],
-      acks: [{ id: 'T1', text: 'I reviewed the failure ledger' }],
-      decision: 'approve',
-    })
+    const result = settledOf(
+      await h.settleWith({
+        items: [],
+        blockerAnswers: [],
+        acks: [{ id: 'T1', text: 'I reviewed the failure ledger' }],
+        decision: 'approve',
+      }),
+    )
     expect(result.outcome).toBe('approve')
     expect(result.answeredMode).toBe('escalation')
     const events = h.log()
@@ -114,7 +131,7 @@ describe('settle seam at escalation gates (C6 D4)', () => {
 
   it('extend clears the ledger via the failed stage exit, then re-enters it', async () => {
     const h = makeParkedEscalationGate()
-    const result = await h.settleWith({ items: [], blockerAnswers: [], acks: [], decision: 'extend' })
+    const result = settledOf(await h.settleWith({ items: [], blockerAnswers: [], acks: [], decision: 'extend' }))
     expect(result.outcome).toBe('extend')
     const events = h.log()
     expect(events.at(-3)).toMatchObject({ type: 'gate', action: 'answered', outcome: 'extend', mode: 'escalation' })
@@ -128,7 +145,7 @@ describe('settle seam at escalation gates (C6 D4)', () => {
 
   it('abort appends the answered event alone and reaches the aborted final', async () => {
     const h = makeParkedEscalationGate()
-    const result = await h.settleWith({ items: [], blockerAnswers: [], acks: [], decision: 'abort' })
+    const result = settledOf(await h.settleWith({ items: [], blockerAnswers: [], acks: [], decision: 'abort' }))
     expect(result.outcome).toBe('abort')
     expect(h.appended).toHaveLength(1)
     expect(h.log().at(-1)).toMatchObject({ type: 'gate', action: 'answered', outcome: 'abort', mode: 'escalation' })
@@ -137,27 +154,27 @@ describe('settle seam at escalation gates (C6 D4)', () => {
     expect(folded.status).toBe('done')
   })
 
-  it('veto is not offered: a veto-shaped response is rejected at parse', async () => {
+  it('veto is not offered: a veto-shaped response is rejected at parse (D1 rejection data, no throw)', async () => {
     const h = makeParkedEscalationGate()
-    const settle = h.settleWith({
+    const settle = await h.settleWith({
       items: [{ kind: 'assumption', id: 'A1', text: 'x', accepted: false }],
       blockerAnswers: [],
       acks: [{ id: 'T1', text: 'ack' }],
       decision: 'veto',
     })
-    await expect(settle).rejects.toThrow(/unknown assumption A1/u)
+    expect(rejectionOf(settle).reason).toMatch(/unknown assumption A1/u)
     expect(h.appended).toHaveLength(0)
   })
 
   it('an unchecked required ack rejects — approve must be deliberate', async () => {
     const h = makeParkedEscalationGate()
-    const settle = h.settleWith({
+    const settle = await h.settleWith({
       items: [],
       blockerAnswers: [],
       acks: [],
       decision: 'approve',
     })
-    await expect(settle).rejects.toThrow(/required ack T1/u)
+    expect(rejectionOf(settle).reason).toMatch(/required ack T1/u)
   })
 })
 

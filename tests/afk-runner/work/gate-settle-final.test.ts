@@ -22,6 +22,12 @@ interface FinalHarness {
   readonly log: () => SddEvent[]
 }
 
+/** Narrow an answers settle to its settled shape — throws (failing the test) on a rejection. */
+function settledOf(result: Awaited<ReturnType<typeof settleGateWithAnswers>>): { outcome: string } {
+  if ('kind' in result) throw new Error(`expected a settled result, got rejection: ${result.reason}`)
+  return result
+}
+
 /**
  * A parked FINAL gate (C5 tail shape): the walk entered the gate compound
  * through the tail's presentation and the bracket closed from awaiting.
@@ -84,12 +90,14 @@ function makeParkedFinalGate(): FinalHarness {
 describe('settle seam at final gates — outcome-ordered settlement (C5 D3)', () => {
   it('approve appends the gate stage exit before the answered event and completes on the answer', async () => {
     const h = makeParkedFinalGate()
-    const result = await h.settleWith({
-      items: [{ kind: 'assumption', id: 'A1', text: 'guests stay read-only', accepted: true }],
-      blockerAnswers: [],
-      acks: [],
-      decision: 'approve',
-    })
+    const result = settledOf(
+      await h.settleWith({
+        items: [{ kind: 'assumption', id: 'A1', text: 'guests stay read-only', accepted: true }],
+        blockerAnswers: [],
+        acks: [],
+        decision: 'approve',
+      }),
+    )
     expect(result.outcome).toBe('approve')
     const events = h.log()
     expect(events.at(-2)).toMatchObject({ type: 'stage_exit', stage: 'gate' })
@@ -102,7 +110,7 @@ describe('settle seam at final gates — outcome-ordered settlement (C5 D3)', ()
 
   it('extend appends answered first (no completion), then the exit, then the round_open mover', async () => {
     const h = makeParkedFinalGate()
-    const result = await h.settleWith({ items: [], blockerAnswers: [], acks: [], decision: 'extend' })
+    const result = settledOf(await h.settleWith({ items: [], blockerAnswers: [], acks: [], decision: 'extend' }))
     expect(result.outcome).toBe('extend')
     const events = h.log()
     expect(events.at(-3)).toMatchObject({ type: 'gate', action: 'answered', outcome: 'extend', mode: 'final' })
@@ -116,12 +124,14 @@ describe('settle seam at final gates — outcome-ordered settlement (C5 D3)', ()
 
   it('veto appends answered, exit, then the stage_enter(draft) mover — completed is never reached', async () => {
     const h = makeParkedFinalGate()
-    const result = await h.settleWith({
-      items: [{ kind: 'assumption', id: 'A1', text: 'guests stay read-only', accepted: false, redirect: 'dm-only' }],
-      blockerAnswers: [],
-      acks: [],
-      decision: 'veto',
-    })
+    const result = settledOf(
+      await h.settleWith({
+        items: [{ kind: 'assumption', id: 'A1', text: 'guests stay read-only', accepted: false, redirect: 'dm-only' }],
+        blockerAnswers: [],
+        acks: [],
+        decision: 'veto',
+      }),
+    )
     expect(result.outcome).toBe('veto')
     const events = h.log()
     expect(events.at(-3)).toMatchObject({ type: 'gate', action: 'answered', outcome: 'veto', mode: 'final' })
@@ -134,7 +144,7 @@ describe('settle seam at final gates — outcome-ordered settlement (C5 D3)', ()
 
   it('abort appends the answered event alone and reaches the aborted final', async () => {
     const h = makeParkedFinalGate()
-    const result = await h.settleWith({ items: [], blockerAnswers: [], acks: [], decision: 'abort' })
+    const result = settledOf(await h.settleWith({ items: [], blockerAnswers: [], acks: [], decision: 'abort' }))
     expect(result.outcome).toBe('abort')
     expect(h.appended).toHaveLength(1)
     expect(h.log().at(-1)).toMatchObject({ type: 'gate', action: 'answered', outcome: 'abort', mode: 'final' })

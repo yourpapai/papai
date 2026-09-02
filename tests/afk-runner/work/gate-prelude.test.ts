@@ -188,6 +188,26 @@ describe('gate prelude — the autonomy ladder as producer', () => {
     expect(md).toContain('decided-by: policy R1')
   })
 
+  it('a rejected producer settle stays crash-shaped — the refusal alarm — with its auto_decision already appended (D1)', async () => {
+    const h = await makePreludeHarness()
+    // The recorded result is clean and the fold carries no convergence record
+    // to contradict it, so R1 approves — but the sidecar re-read declares an
+    // open BLOCKER the rendered approve does not answer: the settle's
+    // preflight rejects after the ladder's decision already landed.
+    fs.writeFileSync(
+      path.join(h.runDir, 'sidecars', 'resolutions-1.json'),
+      JSON.stringify({
+        resolutions: [{ id: 'F1', class: 'BLOCKER', resolution: 'dismissed', justification: 'kept' }],
+        assumptions: [],
+      }),
+    )
+    await expect(h.prelude({ mode: 'final', reviewResult: reviewResult({ outcome: 'converged' }) })).rejects.toThrow(
+      /open blockers F1/u,
+    )
+    expect(h.emitted.some(isApproveDecision)).toBe(true)
+    expect(h.emitted.some(isAnsweredGate)).toBe(false)
+  })
+
   it('emission-order pin (run-analysis D4): the approve auto_decision precedes the settle seam’s answered event', async () => {
     const h = await makePreludeHarness()
     await h.prelude({ mode: 'final', reviewResult: reviewResult({ outcome: 'converged' }) })

@@ -102,13 +102,25 @@ function preflightRoundtrip(md: string, answers: GateAnswers, expected: Expected
  * Settle from an answers object (TUI-shape producer, ladder, steer): render
  * the answers into the gate file, then run the file through the seam — the
  * rendered text must parse back as the same decision (design D5). The
- * round-trip is pre-flighted in memory: a failed or flipped parse
- * overwrites nothing and appends nothing (D2). Producer-lane failures stay
- * crash-shaped: a rejection after the write rethrows as the refusal alarm.
+ * round-trip is pre-flighted in memory: a failed or flipped parse returns a
+ * rejected-shape result (D1) — nothing is written and nothing is appended
+ * either way (the D2 preflight invariant). Machine producers convert a
+ * returned rejection back into the refusal-alarm throw at their call sites;
+ * the waiter's steer branch feeds it to the feedback path. A rejection after
+ * the write rethrows as the refusal alarm.
  */
-export async function settleGateWithAnswers(input: SettleInput, answers: GateAnswers): Promise<SettleResult> {
-  const md = renderGateAnswers(answers)
-  preflightRoundtrip(md, answers, input.expected)
+export async function settleGateWithAnswers(
+  input: SettleInput,
+  answers: GateAnswers,
+): Promise<SettleResult | GateSettleRejection> {
+  let md: string
+  try {
+    md = renderGateAnswers(answers)
+    preflightRoundtrip(md, answers, input.expected)
+  } catch (error) {
+    const reason = error instanceof Error ? error.message : String(error)
+    return { kind: 'rejected', reason: withEmptyExpectedHint(reason, input.expected) }
+  }
   await writeFile(path.join(input.gate.runDir, `gate-${input.version}.md`), md)
   const result = await settleGateFile(input)
   if ('kind' in result) {

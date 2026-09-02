@@ -135,7 +135,7 @@ export async function runGatePrelude(input: GatePreludeInput): Promise<GatePrelu
     gateVersion: input.version,
   })
   if (decision.action === 'approve' || decision.action === 'extend') {
-    await settleGateWithAnswers(
+    const settled = await settleGateWithAnswers(
       {
         gate: {
           emit: input.emit,
@@ -152,6 +152,11 @@ export async function runGatePrelude(input: GatePreludeInput): Promise<GatePrelu
         ? renderAutoApproveAnswers(decision, assumptions)
         : { items: [], blockerAnswers: [], acks: [], decision: 'extend' },
     )
+    // Machine producers rethrow rejections (D1): the auto_decision above is
+    // already appended, so a settle that cannot land must stay loud.
+    if ('kind' in settled) {
+      throw new Error(`prelude settle rejected after its auto_decision: ${settled.reason}`)
+    }
   }
   return { rule: decision.rule, action: decision.action }
 }
