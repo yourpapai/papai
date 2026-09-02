@@ -82,6 +82,34 @@ describe('llm-orchestrator-support', () => {
     ])
   })
 
+  test('handleToolCallFinish forwards the event turnId to the llm:tool_result emit', () => {
+    const emitCalls: Array<{ event: string; turnId: string | undefined }> = []
+    const deps = {
+      emit: (event: string, _userId: string, _payload: Record<string, unknown>, turnId?: string): void => {
+        emitCalls.push({ event, turnId })
+      },
+      log: {
+        warn: mock(() => {}),
+        error: mock(() => {}),
+      },
+    }
+
+    handleToolCallFinish(
+      'ctx-1',
+      undefined,
+      {
+        toolCall: { toolName: 'get_task', toolCallId: 'call-1' },
+        success: true,
+        output: { id: 'task-1' },
+        durationMs: 5,
+        turnId: 'turn-9',
+      },
+      deps,
+    )
+
+    expect(emitCalls).toEqual([{ event: 'llm:tool_result', turnId: 'turn-9' }])
+  })
+
   test('handleToolCallFinish logs structured failures when reply is suppressed', () => {
     const emitCalls: Array<{ event: string; userId: string; payload: unknown }> = []
     const deps = {

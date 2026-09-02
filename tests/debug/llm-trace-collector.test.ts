@@ -156,6 +156,244 @@ describe('handleLlmTraceEvent', () => {
     expect(pushed[0]!.toolCalls).toHaveLength(0)
   })
 
+  test('concurrent generations in one context consume their own turn pendings', () => {
+    const ctx = 'u:dm'
+    handleLlmTraceEvent(
+      {
+        type: 'llm:start',
+        timestamp: 1,
+        scope: userScope(ctx),
+        data: { model: 'm-interactive' },
+        turnId: 'turn-interactive',
+      },
+      callbacks(pushed),
+      stats,
+      () => {},
+    )
+    handleLlmTraceEvent(
+      {
+        type: 'llm:start',
+        timestamp: 2,
+        scope: userScope(ctx),
+        data: { model: 'm-proactive' },
+        turnId: 'proactive:u:dm:1',
+      },
+      callbacks(pushed),
+      stats,
+      () => {},
+    )
+    handleLlmTraceEvent(
+      {
+        type: 'llm:tool_result',
+        timestamp: 3,
+        scope: userScope(ctx),
+        data: { toolName: 'get_task', toolCallId: 'c1', durationMs: 5, success: true },
+        turnId: 'turn-interactive',
+      },
+      callbacks(pushed),
+      stats,
+      () => {},
+    )
+    handleLlmTraceEvent(
+      {
+        type: 'llm:end',
+        timestamp: 4,
+        scope: userScope(ctx),
+        data: { model: 'm-proactive' },
+        turnId: 'proactive:u:dm:1',
+      },
+      callbacks(pushed),
+      stats,
+      () => {},
+    )
+    handleLlmTraceEvent(
+      {
+        type: 'llm:end',
+        timestamp: 5,
+        scope: userScope(ctx),
+        data: { model: 'm-interactive' },
+        turnId: 'turn-interactive',
+      },
+      callbacks(pushed),
+      stats,
+      () => {},
+    )
+
+    expect(pushed).toHaveLength(2)
+    expect(pushed[0]!.model).toBe('m-proactive')
+    expect(pushed[0]!.toolCalls).toHaveLength(0)
+    expect(pushed[1]!.model).toBe('m-interactive')
+    expect(pushed[1]!.toolCalls.map((call) => call.toolName)).toEqual(['get_task'])
+    expect(pendingTraces.size).toBe(0)
+  })
+
+  test('llm:error consumes only its own turn pending under concurrency', () => {
+    const ctx = 'u:err'
+    handleLlmTraceEvent(
+      { type: 'llm:start', timestamp: 1, scope: userScope(ctx), data: { model: 'm-a' }, turnId: 'turn-a' },
+      callbacks(pushed),
+      stats,
+      () => {},
+    )
+    handleLlmTraceEvent(
+      { type: 'llm:start', timestamp: 2, scope: userScope(ctx), data: { model: 'm-b' }, turnId: 'turn-b' },
+      callbacks(pushed),
+      stats,
+      () => {},
+    )
+    handleLlmTraceEvent(
+      {
+        type: 'llm:error',
+        timestamp: 5,
+        scope: userScope(ctx),
+        data: { model: 'm-a', error: 'boom' },
+        turnId: 'turn-a',
+      },
+      callbacks(pushed),
+      stats,
+      () => {},
+    )
+    handleLlmTraceEvent(
+      { type: 'llm:end', timestamp: 6, scope: userScope(ctx), data: { model: 'm-b' }, turnId: 'turn-b' },
+      callbacks(pushed),
+      stats,
+      () => {},
+    )
+
+    expect(pushed).toHaveLength(2)
+    expect(pushed[0]!.model).toBe('m-a')
+    expect(pushed[0]!.duration).toBe(4)
+    expect(pushed[1]!.model).toBe('m-b')
+    expect(pendingTraces.size).toBe(0)
+  })
+
+  test('llm:end with an unmatched turnId consumes nothing', () => {
+    const ctx = 'u:miss'
+    handleLlmTraceEvent(
+      { type: 'llm:start', timestamp: 1, scope: userScope(ctx), data: { model: 'm-a' }, turnId: 'turn-a' },
+      callbacks(pushed),
+      stats,
+      () => {},
+    )
+    handleLlmTraceEvent(
+      { type: 'llm:end', timestamp: 2, scope: userScope(ctx), data: { model: 'm-x' }, turnId: 'turn-unknown' },
+      callbacks(pushed),
+      stats,
+      () => {},
+    )
+    handleLlmTraceEvent(
+      { type: 'llm:end', timestamp: 3, scope: userScope(ctx), data: { model: 'm-a' }, turnId: 'turn-a' },
+      callbacks(pushed),
+      stats,
+      () => {},
+    )
+
+    expect(pushed).toHaveLength(2)
+    expect(pushed[0]!.model).toBe('m-x')
+    expect(pushed[1]!.model).toBe('m-a')
+    expect(pendingTraces.size).toBe(0)
+  })
+
+  test('per-user pendings stay bounded when terminal events never arrive', () => {
+    const ctx = 'u:cap'
+    for (let i = 0; i < 6; i++) {
+      handleLlmTraceEvent(
+        { type: 'llm:start', timestamp: i, scope: userScope(ctx), data: { model: `m-${i}` }, turnId: `turn-${i}` },
+        callbacks(pushed),
+        stats,
+        () => {},
+      )
+    }
+
+    expect(pendingTraces.size).toBe(4)
+
+    handleLlmTraceEvent(
+      { type: 'llm:end', timestamp: 9, scope: userScope(ctx), data: { model: 'm-5' }, turnId: 'turn-5' },
+      callbacks(pushed),
+      stats,
+      () => {},
+    )
+    expect(pushed).toHaveLength(1)
+    expect(pushed[0]!.model).toBe('m-5')
+  })
+
+  test('turn-less end with ambiguous pendings consumes nothing', () => {
+    const ctx = 'u:legacy'
+    handleLlmTraceEvent(
+      { type: 'llm:start', timestamp: 1, scope: userScope(ctx), data: { model: 'm-a' }, turnId: 'turn-a' },
+      callbacks(pushed),
+      stats,
+      () => {},
+    )
+    handleLlmTraceEvent(
+      { type: 'llm:start', timestamp: 2, scope: userScope(ctx), data: { model: 'm-b' }, turnId: 'turn-b' },
+      callbacks(pushed),
+      stats,
+      () => {},
+    )
+    handleLlmTraceEvent(
+      { type: 'llm:end', timestamp: 3, scope: userScope(ctx), data: { model: 'm-x' } },
+      callbacks(pushed),
+      stats,
+      () => {},
+    )
+
+    expect(pushed).toHaveLength(1)
+    expect(pushed[0]!.model).toBe('m-x')
+    expect(pendingTraces.size).toBe(2)
+
+    handleLlmTraceEvent(
+      { type: 'llm:end', timestamp: 4, scope: userScope(ctx), data: { model: 'm-a' }, turnId: 'turn-a' },
+      callbacks(pushed),
+      stats,
+      () => {},
+    )
+    expect(pendingTraces.size).toBe(1)
+  })
+
+  test('turn-less tool_result attaches to the most recent pending for the user', () => {
+    const ctx = 'u:legacy-tool'
+    handleLlmTraceEvent(
+      { type: 'llm:start', timestamp: 1, scope: userScope(ctx), data: { model: 'm-a' }, turnId: 'turn-a' },
+      callbacks(pushed),
+      stats,
+      () => {},
+    )
+    handleLlmTraceEvent(
+      { type: 'llm:start', timestamp: 2, scope: userScope(ctx), data: { model: 'm-b' }, turnId: 'turn-b' },
+      callbacks(pushed),
+      stats,
+      () => {},
+    )
+    handleLlmTraceEvent(
+      {
+        type: 'llm:tool_result',
+        timestamp: 3,
+        scope: userScope(ctx),
+        data: { toolName: 'ta', toolCallId: 'x', durationMs: 1, success: true },
+      },
+      callbacks(pushed),
+      stats,
+      () => {},
+    )
+    handleLlmTraceEvent(
+      { type: 'llm:end', timestamp: 4, scope: userScope(ctx), data: { model: 'm-b' }, turnId: 'turn-b' },
+      callbacks(pushed),
+      stats,
+      () => {},
+    )
+    handleLlmTraceEvent(
+      { type: 'llm:end', timestamp: 5, scope: userScope(ctx), data: { model: 'm-a' }, turnId: 'turn-a' },
+      callbacks(pushed),
+      stats,
+      () => {},
+    )
+
+    expect(pushed).toHaveLength(2)
+    expect(pushed[0]!.toolCalls.map((call) => call.toolName)).toEqual(['ta'])
+    expect(pushed[1]!.toolCalls).toHaveLength(0)
+  })
+
   test('resetLlmBuffers clears both captured traces and pending traces after capture', () => {
     pushTrace({
       timestamp: 1,

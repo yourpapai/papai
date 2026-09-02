@@ -239,7 +239,7 @@ export const handleToolCallFinishEvent = (ctx: ToolCallContext, event: ToolCallF
   }
   reportToolFinished(ctx, event)
   ctx.liveStatus?.onToolFinish()
-  handleToolCallFinish(ctx.contextId, undefined, event)
+  handleToolCallFinish(ctx.contextId, undefined, { ...event, turnId: ctx.turnId })
 }
 
 export const buildToolCallFinishHandler =

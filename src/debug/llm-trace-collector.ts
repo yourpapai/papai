@@ -46,9 +46,16 @@ type PendingLlmTrace = {
   userId: string
   model: string
   toolCalls: Array<LlmTraceToolCall>
+  turnId: string | undefined
 }
 
-type TraceEvent = { type: string; timestamp: number; scope: Scope; data: Record<string, unknown> }
+type TraceEvent = {
+  type: string
+  timestamp: number
+  scope: Scope
+  data: Record<string, unknown>
+  turnId?: string
+}
 type TraceCallbacks = {
   pushTrace: (trace: LlmTrace) => void
   broadcastTrace: (trace: LlmTrace, ts: number) => void
@@ -56,8 +63,69 @@ type TraceCallbacks = {
 
 export const LLM_TRACE_CAPACITY = 65535
 
+/**
+ * Per-user cap on stored pendings. Keys are user+turn scoped, and a turn aborted
+ * between llm:start and its terminal event never consumes its entry, so without
+ * a cap entries would accumulate per unique turn id over process uptime.
+ */
+const MAX_PENDING_PER_USER = 4
+
 export const recentLlm: LlmTrace[] = []
 export const pendingTraces = new Map<string, PendingLlmTrace>()
+
+// Pending keys are scoped by user id AND turn id: a proactive generation
+// overlapping an interactive turn in the same storage context shares the user
+// key, and last-write-wins would let either side's start/end steal the other's
+// pending (wrong model, misattributed tool calls).
+const pendingKey = (userId: string, turnId: string | undefined): string => `${userId}\u0000${turnId ?? ''}`
+
+const pendingEntriesForUser = (userId: string): Array<[string, PendingLlmTrace]> => {
+  const prefix = `${userId}\u0000`
+  return [...pendingTraces.entries()].filter(([key]) => key.startsWith(prefix))
+}
+
+/** Consume the pending for a terminal (llm:end/llm:error) event. */
+const takePending = (userId: string, turnId: string | undefined): PendingLlmTrace | undefined => {
+  const key = pendingKey(userId, turnId)
+  const exact = pendingTraces.get(key)
+  if (exact !== undefined) {
+    pendingTraces.delete(key)
+    return exact
+  }
+  // A terminal event whose turn id matches no pending must not consume another
+  // turn's pending. Only turn-less emitters may fall back, and only when a
+  // single pending remains, so the match is unambiguous.
+  if (turnId !== undefined) return undefined
+  const entries = pendingEntriesForUser(userId)
+  if (entries.length !== 1) return undefined
+  const entry = entries[0]!
+  pendingTraces.delete(entry[0])
+  return entry[1]
+}
+
+/** Resolve the pending an llm:tool_result attaches to. */
+const pendingForToolResult = (userId: string, turnId: string | undefined): PendingLlmTrace | undefined => {
+  const exact = pendingTraces.get(pendingKey(userId, turnId))
+  if (exact !== undefined) return exact
+  if (turnId !== undefined) return undefined
+  // Tool results without a turn id (legacy emitters): attach to the most
+  // recently started pending for the user.
+  const entries = pendingEntriesForUser(userId)
+  return entries.length === 0 ? undefined : entries[entries.length - 1]![1]
+}
+
+const prunePendingsForUser = (userId: string): void => {
+  let excess = pendingEntriesForUser(userId).length - MAX_PENDING_PER_USER
+  if (excess <= 0) return
+  const prefix = `${userId}\u0000`
+  for (const key of pendingTraces.keys()) {
+    if (excess === 0) break
+    if (key.startsWith(prefix)) {
+      pendingTraces.delete(key)
+      excess--
+    }
+  }
+}
 
 export function pushTrace(trace: LlmTrace): void {
   if (recentLlm.length >= LLM_TRACE_CAPACITY) recentLlm.shift()
@@ -185,28 +253,28 @@ export function handleLlmTraceEvent(
   const userId = traceKey(event)
 
   if (event.type === 'llm:start') {
-    pendingTraces.set(userId, {
+    pendingTraces.set(pendingKey(userId, event.turnId), {
       startTimestamp: event.timestamp,
       userId,
       model: str(event.data['model']),
       toolCalls: [],
+      turnId: event.turnId,
     })
+    prunePendingsForUser(userId)
   } else if (event.type === 'llm:tool_result') {
-    const pending = pendingTraces.get(userId)
+    const pending = pendingForToolResult(userId, event.turnId)
     if (pending !== undefined) pending.toolCalls.push(buildTraceToolCall(event.data))
     stats.totalToolCalls++
     scheduleStatsBroadcast()
   } else if (event.type === 'llm:end') {
-    const pending = pendingTraces.get(userId)
-    pendingTraces.delete(userId)
+    const pending = takePending(userId, event.turnId)
     const trace = buildEndTrace(event, traceUserId(event, userId), pending)
     callbacks.pushTrace(trace)
     stats.totalLlmCalls++
     scheduleStatsBroadcast()
     callbacks.broadcastTrace(trace, event.timestamp)
   } else if (event.type === 'llm:error') {
-    const pending = pendingTraces.get(userId)
-    pendingTraces.delete(userId)
+    const pending = takePending(userId, event.turnId)
     const trace = buildErrorTrace(event, traceUserId(event, userId), pending)
     callbacks.pushTrace(trace)
     callbacks.broadcastTrace(trace, event.timestamp)
