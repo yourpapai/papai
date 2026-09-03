@@ -454,8 +454,8 @@ the server or pin it from a lockfile, with the pinned command embedded in
 - **Structural code index server** (the `codeindex` pattern). The repo's
   protocol names it and its four queries — `code_symbol`, `code_search`,
   `code_impact`, `code_index` — with `limit`/`kinds`/`scopeTiers`
-  shaping (`CLAUDE.md:138-151`); the server itself lives outside this
-  repository (`CLAUDE.md:42`). Transport: not on record in this repo —
+  shaping (`CLAUDE.md:139-152`); the server itself lives outside this
+  repository (`CLAUDE.md:43`). Transport: not on record in this repo —
   the entry shape (local stdio or remote) is undetermined here, labelled
   as such rather than guessed. Install/pinning: per the shared mechanics
   above if stdio (ephemeral runners must install and pin it per build);
