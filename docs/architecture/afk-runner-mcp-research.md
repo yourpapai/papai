@@ -50,8 +50,8 @@ pid-disciplined: children are killed by recorded pid only, never by name.
 
 Status: complete — evidence (§1.1–§1.3, §4.1), comparisons (§1.4, §2.1),
 catalogue (§3.1), doctrine (§4.2), recommendation (§5), and boundaries
-(§6) all landed (tasks 1.1–3.6); only the rollout pointers (task 4.1)
-remain.
+(§6) all landed (tasks 1.1–3.6); referenced from `docs/architecture/afk-runner.md`
+and the `CLAUDE.md` docs table (task 4.1).
 
 ---
 
