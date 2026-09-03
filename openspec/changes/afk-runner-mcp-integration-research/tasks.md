@@ -3,7 +3,7 @@ This change is docs-only research (skip_specs: true; design.md records no Open Q
 ## 1. Rig and deliverable skeleton
 
 - [x] 1.1 Create `docs/architecture/afk-runner-mcp-research.md` as a skeleton: SPDX header (licence-header gate), evidence-first section order (§1 injection surfaces, §2 scoping, §3 catalogue, §4 credentials/security/degradation, §5 recommendation + follow-ups), the verified/by-inspection labelling convention, and the D8 boundary statements as section stubs. Verify: `bun run format:check && bun run lint` (SPDX header accepted).
-- [ ] 1.2 Build the throwaway experiment rig in a temp dir (not committed): minimal trace-logged stub MCP server exposing two tools, placeholder token values only, a pid-recording wrapper on every child, and a teardown that kills recorded pids only. Verify: recorded rig transcript shows a `connected` status and `<server>_<tool>` naming through one `opencode run --dir <cwd>` spawn, and `ps -p <recorded pids>` is empty after teardown.
+- [x] 1.2 Build the throwaway experiment rig in a temp dir (not committed): minimal trace-logged stub MCP server exposing two tools, placeholder token values only, a pid-recording wrapper on every child, and a teardown that kills recorded pids only. Verify: recorded rig transcript shows a `connected` status and `<server>_<tool>` naming through one `opencode run --dir <cwd>` spawn, and `ps -p <recorded pids>` is empty after teardown.
 
 ## 2. Live evidence through afk-runner's spawn shape
 
