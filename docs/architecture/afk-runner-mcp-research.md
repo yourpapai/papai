@@ -48,10 +48,10 @@ behaviour could not be verified live carries that unverified label into
 Credentials appear only as placeholder values, and experiments are
 pid-disciplined: children are killed by recorded pid only, never by name.
 
-Status: evidence complete (§1.1–§1.3, §4.1 — tasks 2.1–2.4); §1.4's
-injection-surface comparison, §2.1's scoping comparison, and §3.1's
-server catalogue written (tasks 3.1–3.3); the §4 doctrine restatement,
-ranking, and boundaries (§4.2–§6) are still to land.
+Status: evidence complete (§1.1–§1.3, §4.1 — tasks 2.1–2.4); the
+comparison tables (§1.4, §2.1), the catalogue (§3.1), and the §4.2
+per-surface doctrine written (tasks 3.1–3.4); the ranking and boundaries
+(§5–§6) are still to land.
 
 ---
 
@@ -586,10 +586,103 @@ polled through `GET /mcp` with an 8 s per-call bound:
   follow-up must emit `allow` or absent, and must not rely on `ask` as
   a hold-point.
 
-*(the §4 doctrine restatement per injection surface is task 3.4's; the
-stub below stands until then.)*
+### 4.2 The doctrine restated per injection surface (task 3.4)
 
-*(stub — task 3.4.)*
+The carried-forward doctrine (D6), restated per surface so no option can
+be adopted with a security property left implicit. Labels as everywhere
+else; the degrade-never-hang half is **verified** (§4.1) and binds every
+surface identically, because it is the binary's own behaviour.
+
+**The content route — options (a) and (c), one channel.**
+
+- *Credentials* — the S3-9 class binds by inspection of the sibling
+  workspace's verified finding: the provider key reached the model
+  through `OPENCODE_CONFIG_CONTENT` because every process the model
+  starts inherits the variable — `echo $OPENCODE_CONFIG_CONTENT` was a
+  complete disclosure (`opencode-agent/ROADMAP.md:906-916`) — and the
+  afk-runner-built content would carry the same class of payload by
+  construction (the sibling's own builder states it: "This value
+  contains the API key — never log it", `openai-config.ts:288-296`).
+  The sibling's containment — the provider proxy placeholder plus value
+  scrubbing (`opencode-agent/src/secrets.ts:106`, consumed by
+  `contain.ts:258`) — is not part of afk-runner and stays a named
+  follow-up (§5); a papai-hosted remote's binding token would ride
+  `headers` inside the content, the same class (§3.1). Until containment
+  lands, the recommendation inherits S3-9's lesson: prefer servers that
+  need no credential in the content at all.
+- *Untrusted input* — never defines a server, as a design decision
+  needing no binary evidence: task files, agent prompts, gate answers,
+  issue and chat text contribute nothing to the `mcp` block on any
+  option. The set arrives only through the operator's knob and config —
+  the trust edges §2.1 scored. The sibling's on-record rejection of
+  issue/comment-level configuration is the same rule wearing its other
+  face (`opencode-agent/docs/mcp-integration-research.md:629-646`).
+- *Grants* — **allow or absent**, and §4.1 adds the verified reason
+  this route cannot even offer `ask` as a choice: `--auto` waves it
+  through. The builder emits the generated `<server>_*: "allow"` keys
+  per profile after the deny base (by inspection,
+  `permissions.ts:60-77`), or nothing.
+- *Degradation* — **verified** (§4.1): a failing command degrades to
+  `failed` data, `enabled: false` never spawns, a hung child is bounded
+  at 30 s and reaped, and a status poller must bound its own calls.
+
+**The repo-local file — option (b).**
+
+- *Credentials* — none possible: a committed file is leaked by
+  definition; placeholder-only doctrine applies to any example that
+  ships in the tree.
+- *Untrusted input* — the file's trust model is exactly the reviewed
+  pull request that carries it (§2.1's trust edge); the same rejection
+  holds — no run-time text writes it, and the run's agents hold edit
+  tools over the tree it lives in, which is why option (b) alone can
+  never be the gate.
+- *Grants* — whatever the file says, validated only by the binary's
+  loader (§1.4's validation row); the allow-or-absent doctrine is the
+  operator's discipline here, unenforced by afk-runner. And **verified**
+  (§1.2): a delivered content's same-key deny voids the file's grants —
+  precedence the operator must know.
+- *Degradation* — identical to the content route (**verified** §4.1:
+  the mechanics are the binary's, independent of the channel).
+
+**The claude route — option (d).**
+
+- *Credentials* — readable by the child and its children: the
+  credential rides the child environment by design
+  (`review-loop/src/backend-select.ts:41-49`, `:98-102`), the loop's
+  own record accepts the fixer residual ("the credential is readable by
+  the fixer's Bash children"), the MCP doc is a file the child reads,
+  and server `env` values ride inside it — the S3-9 family with a
+  different carrier. The claude child env at least strips
+  `OPENCODE_CONFIG_CONTENT` by name
+  (`review-loop/src/agent-command.ts:168`), so the two routes' exposure
+  channels do not compose.
+- *Untrusted input* — the same rejection: the per-spawn doc is written
+  by the runner from operator config only.
+- *Grants* — claude's allowlist vocabulary differs in kind (the doc
+  plus allowlist surface — the D8 gating boundary); allow-or-absent
+  maps to allowlist membership, but the mapping is **by inspection
+  only**: the rig verified connection, naming, and round trip (§1.3),
+  not the claude-side grant enforcement, and the claude route's failure
+  degradation was never driven — both carry forward as explicit
+  unknowns into §5.
+- *Degradation* — connection **verified** (§1.3); failure behaviour
+  unverified on this route (stated above, not guessed).
+
+**What the runner emits when a server dies — the L0/L1 guidance.** The
+event surface already exists: the L0/L1 agent-noise schemas
+(`afk-runner/src/agent-noise-schemas.ts:19-73` — L0 `tool_use` /
+`step_finish`, L1 `spawned` / `retrying` / `killed` / `done`, "telemetry
+the fold tolerates, never drives on"), emitted today at the spawn seam
+(`afk-runner/src/agent-layer.ts:175`). The guidance, proposal-shaped:
+a dead server should surface as telemetry at these altitudes — an
+L1-class event at spawn time naming the agent and the server's resolved
+status, and an L0-class record when a call targets a tool a dead server
+would have owned — so the run report shows the gap without the run
+failing. What the research fixes is the class (L0/L1), the payload
+discipline (names, statuses, counts — never a server's `environment`,
+`headers`, or any URL that embeds a token), and the never-fail rule;
+the exact schema addition is the follow-up implementation change's to
+design.
 
 ## 5. Recommendation and follow-ups
 
