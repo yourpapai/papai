@@ -674,7 +674,7 @@ surface identically, because it is the binary's own behaviour.
 
 **What the runner emits when a server dies — the L0/L1 guidance.** The
 event surface already exists: the L0/L1 agent-noise schemas
-(`afk-runner/src/agent-noise-schemas.ts:19-73` — L0 `tool_use` /
+(`afk-runner/src/agent-noise-schemas.ts:19-72` — L0 `tool_use` /
 `step_finish`, L1 `spawned` / `retrying` / `killed` / `done`, "telemetry
 the fold tolerates, never drives on"), emitted today at the spawn seam
 (`afk-runner/src/agent-layer.ts:175`). The guidance, proposal-shaped:
