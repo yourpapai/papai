@@ -300,7 +300,7 @@ would know the set exists.
 mechanics are on record from the sibling workspace, by inspection: the
 knob is parsed and refused at job start (`parseMcpServers`,
 `opencode-agent/src/mcp-servers.ts:58-73`), server names are constrained
-to the tool-name-prefix-safe alphabet (`mcp-servers.ts:35-44`), the
+to the tool-name-prefix-safe alphabet (`mcp-servers.ts:33`, enforced at `:88-92`), the
 declarations are strict local/remote schemas (`mcp-servers.ts:48-55`),
 and the parsed set rides the one settings object both execution paths
 read so they cannot drift (`opencode-agent/src/openai-config.ts:100-123`)
