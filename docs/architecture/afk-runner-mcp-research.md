@@ -48,9 +48,9 @@ behaviour could not be verified live carries that unverified label into
 Credentials appear only as placeholder values, and experiments are
 pid-disciplined: children are killed by recorded pid only, never by name.
 
-Status: skeleton with §1.1 (ambient-only) and §1.2 (content-set) evidence
-recorded (tasks 2.1–2.2); the claude-route and degradation experiments and
-all analysis sections are still to land.
+Status: skeleton with §1.1 (ambient-only), §1.2 (content-set) and §1.3
+(claude route) evidence recorded (tasks 2.1–2.3); the degradation
+experiments and all analysis sections are still to land.
 
 ---
 
@@ -191,6 +191,56 @@ content block therefore needs no knowledge of ambient files to be
 authoritative, and a deny-by-default block inside it cannot be loosened
 by anything the spawn cwd carries. No configuration in this arm was
 unrunnable, so no unverified label carries forward from task 2.2.
+
+### 1.3 The claude route: `--mcp-config` written non-empty (task 2.3)
+
+The seam being studied, by inspection: review-loop's native claude
+profile composes `--setting-sources '' --strict-mcp-config --mcp-config
+<doc>` (`review-loop/src/claude-argv.ts:54-63`), the doc written per
+spawn by `defaultCreateClaudeSpawnDir`
+(`review-loop/src/agent-command.ts:71-79`) — an intentionally **empty**
+`{ "mcpServers": {} }` document. The binary is the workflow's pin
+`@anthropic-ai/claude-code@2.1.251`
+(`.github/workflows/agent-pipeline.yml:474`). The threading
+**prerequisite** (by inspection, nothing designed): afk-runner's
+`runSpawn` threads no `backend`/`claude` options at all
+(`afk-runner/src/agent-layer.ts:226-251`), and review-loop's spawn
+options read `backend` — "absent is `opencode`" — with the claude
+context "assembled once in `runCli`"
+(`review-loop/src/agent-runner.ts:94-97`); reaching this seam from
+afk-runner is a threading change this research records but does not
+design.
+
+The experiment (rig: the recorded zero-spend method — the real pinned
+CLI driven against a loopback stub Anthropic endpoint over
+`ANTHROPIC_BASE_URL` with an invalid stub token and an env built from
+nothing, the `claude-stub.integration.ts` pattern; reproduction = the
+argv below with the doc swapped; pid-recorded teardown, census clean):
+
+- **verified** — control, the doc exactly as review-loop writes it today
+  (empty): the CLI's `system/init` line reports `"mcp_servers":[]`, the
+  model-visible tool table carries the 23 built-in tools and no `mcp__*`
+  entries, and no MCP connection is made.
+- **verified** — the same doc made non-empty with a `research` stdio
+  server (placeholder token via `env`): the server connects under
+  `--strict-mcp-config` and is the only one — the CLI's own init line
+  reports `"mcp_servers":[{"name":"research","status":"connected"}]`,
+  the stub trace holds the full initialize/`tools/list` handshake from
+  `clientInfo.name: "claude-code"` (version 2.1.251), and the main
+  turn's tool table carries `mcp__research__echo` and
+  `mcp__research__env_probe` beside the 23 built-ins — claude's
+  `<server>__<tool>` naming (double underscore, distinct from opencode's
+  single). A forced tool call round-tripped: the CLI executed the MCP
+  tool (`tools/call` in the stub trace) and the `tool_result` reached
+  the model, turn completed exit 0.
+
+Reading for option (d): the claude seam already exists in review-loop
+end to end — the doc is the whole MCP surface under
+`--strict-mcp-config`, non-empty works, the connected status is in the
+CLI's own stdout, and the naming contract is the model-visible table.
+What afk-runner lacks is only the threading of `backend`/`claude` (and a
+per-spawn doc writer) through `runSpawn` — recorded as the prerequisite
+finding option (d) carries into §5's ranking.
 
 ## 2. Scoping the server set to levels of task work
 
