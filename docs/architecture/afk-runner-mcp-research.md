@@ -48,9 +48,9 @@ behaviour could not be verified live carries that unverified label into
 Credentials appear only as placeholder values, and experiments are
 pid-disciplined: children are killed by recorded pid only, never by name.
 
-Status: skeleton with §1.1's ambient-only evidence recorded (task 2.1); the
-content-set, claude-route, and degradation experiments and all analysis
-sections are still to land.
+Status: skeleton with §1.1 (ambient-only) and §1.2 (content-set) evidence
+recorded (tasks 2.1–2.2); the claude-route and degradation experiments and
+all analysis sections are still to land.
 
 ---
 
@@ -142,6 +142,55 @@ The probe list itself is live log evidence; the binary ships compiled
 (`node_modules/opencode-ai/bin/opencode.exe`, an ELF), so no loader
 source exists to inspect — the discovery list is recorded from the
 pinned binary's own DEBUG output only.
+
+### 1.2 Content-set: the discovered file vs `OPENCODE_CONFIG_CONTENT` (task 2.2)
+
+Both sources present at once — the shape option (a) plus option (b) would
+create (content carrying provider + deny-by-default permission blocks, as
+the proposal's option (a) sketches; the file carrying its own provider,
+`mcp`, and permission keys). Same rig and spawn shape as §1.1, two stub
+providers on distinct ports so each side's provider is distinguishable by
+where the requests land; permission shapes validated against the pinned
+SDK's `PermissionConfig` (a tool-name → `"allow"|"deny"|"ask"` object,
+`@opencode-ai/sdk` `types.gen.d.ts:1328-1350`). Three arms: disjoint keys
+(content: provider + `mcp.research` + `permission: {"*": "deny"}`; file:
+`mcp.localfile` + `permission: {"bash": "allow"}`), same-key conflicts
+(both sides define provider `stub` on different ports and an mcp server
+`shared` with distinguishable trace files), and a permission leaf
+conflict (content `bash: deny`, file `bash: allow`).
+
+- **verified** — the file is still discovered and loaded while content is
+  set: the DEBUG log carries both the `loaded custom config from
+  OPENCODE_CONFIG_CONTENT` marker and the `<dir>/opencode.json` probe
+  line, in every arm.
+- **verified** — top-level maps **merge**: with both sources present, the
+  content's `research` server and the file's `localfile` server both
+  spawned and completed their handshakes (both trace files hold the full
+  initialize/`tools/list` exchange; both pid-recording wrappers fired).
+  The file's unique keys are not clobbered by the content.
+- **verified** — **same-key conflicts resolve to the content**. Provider
+  `stub` defined by both sides: every request went to the content's
+  endpoint (3 requests; the file's port received 0 across all arms). mcp
+  server `shared` defined by both sides: the content's definition is the
+  one that spawned — its trace holds the handshake and a `tools/call`,
+  its tools (`shared_echo`, `shared_env_probe`) reached the model-visible
+  table, and the file-side trace file was never created (its server never
+  spawned).
+- **verified** — **the content's permission is final; the file cannot
+  grant back**. With content `permission: {"*": "deny"}`, the main
+  turn's prompt-time tool table was completely empty — built-ins
+  included — and the file's `bash: allow` did not rescue bash. With the
+  leaf conflict (content `bash: deny`, file `bash: allow`), the main
+  turn's table carried nine tools and `bash` was not among them. What
+  the content denies, no discovered file can re-enable.
+
+Reading for option (a): `OPENCODE_CONFIG_CONTENT` **overlays** the
+discovered config — it merges with the file's unique entries and wins
+every same-key conflict, including permission denies. An afk-runner-built
+content block therefore needs no knowledge of ambient files to be
+authoritative, and a deny-by-default block inside it cannot be loosened
+by anything the spawn cwd carries. No configuration in this arm was
+unrunnable, so no unverified label carries forward from task 2.2.
 
 ## 2. Scoping the server set to levels of task work
 
