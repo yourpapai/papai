@@ -48,8 +48,9 @@ behaviour could not be verified live carries that unverified label into
 Credentials appear only as placeholder values, and experiments are
 pid-disciplined: children are killed by recorded pid only, never by name.
 
-Status: **skeleton** — the sections below are stubs recording what will
-land where and from which task; no experiment has run yet.
+Status: skeleton with §1.1's ambient-only evidence recorded (task 2.1); the
+content-set, claude-route, and degradation experiments and all analysis
+sections are still to land.
 
 ---
 
@@ -81,6 +82,66 @@ could reach that seam's children:
   here.
 
 *(stub — task 3.1 scores these options from the experiment evidence.)*
+
+### 1.1 Ambient-only: what afk-runner's spawn delivers today (task 2.1)
+
+The spawn shape being studied, by inspection: the opencode branch of
+`buildAgentCommand` composes `opencode run --auto --format json --model
+<model> --dir <cwd> … <prompt>` and sets **no child environment** —
+`AgentCommand.env` is claude-branch-only
+(`review-loop/src/agent-command.ts:34-35`, `:133-150`), so `realSpawn`
+inherits `process.env` unchanged
+(`review-loop/src/spawn.ts:113-116`), and afk-runner threads no config of
+its own anywhere in `runSpawn`/`runStageAgent`
+(`afk-runner/src/agent-layer.ts:226-251`, `:253`). Spawn cwd equals the
+`--dir` value (`review-loop/src/agent-runner.ts:154-158`). The binary is
+the workflow's pin `opencode-ai@1.18.7`
+(`.github/workflows/agent-pipeline.yml:450`).
+
+The experiment (rig: throwaway stub MCP server `echo`/`env_probe` +
+stub OpenAI-compatible provider in a temp dir; reproduction = place an
+`opencode.json` with the provider and `mcp` blocks as described, run the
+command shape above with `--print-logs --log-level DEBUG`, and read the
+`loading path=` log lines, the provider's request bodies, and the MCP
+trace; placeholder tokens only, pid-recorded teardown, `ps -p` census
+clean): `OPENCODE_CONFIG_CONTENT` explicitly unset for every child
+(afk-runner never sets it; the invoking environment's own value is an
+environment artifact, neutralised for isolation), then one
+`opencode run --dir <dir>` spawn per arm with a repo-local
+`opencode.json` carrying the stub provider and an `mcp` server named
+`localfile`.
+
+- **verified** — a repo-local `opencode.json` at the `--dir` cwd loads.
+  The DEBUG log's config-discovery lines list exactly four probes: the
+  three global user paths (`~/.config/opencode/config.json`,
+  `opencode.json`, `opencode.jsonc` — none exist on this runner), then
+  `<dir>/opencode.json`. The file's server connected (full
+  initialize/`tools/list` handshake from `clientInfo.name: "opencode"` in
+  the stub trace), and the model-visible tool table carried
+  `localfile_echo` and `localfile_env_probe`; a forced tool call round
+  tripped (`tools/call` with the unprefixed wire name `echo`, result
+  returned, turn completed exit 0).
+- **verified** — a repo-local `opencode.json` **above** the `--dir`
+  directory does not load: only the three global paths were probed, zero
+  provider requests, and the turn failed
+  (`ProviderModelNotFoundError: Model not found: stub/stub-model`, exit
+  1). No parent walk-up: the instance directory is the `--dir` value.
+- **verified** — afk-runner's bare-ambient state fails fast, never a
+  hang: with no config anywhere (the control arm), the argv `--model
+  stub/stub-model` reference cannot resolve
+  (`ProviderModelNotFoundError`, stdout `{"type":"error",…}`, exit 1
+  after ~2 s). The `--model` reference afk-runner passes names a
+  provider the ambient config must define; today afk-runner delivers
+  nothing that defines one.
+
+Reading for the merge-vs-override question: the project file is probed
+**after** the global user config and is the last discovered layer before
+`OPENCODE_CONFIG_CONTENT` — so option (b) reaches the children today, and
+whether it survives option (a) is exactly the content-set arm (task 2.2).
+The probe list itself is live log evidence; the binary ships compiled
+(`node_modules/opencode-ai/bin/opencode.exe`, an ELF), so no loader
+source exists to inspect — the discovery list is recorded from the
+pinned binary's own DEBUG output only.
 
 ## 2. Scoping the server set to levels of task work
 
