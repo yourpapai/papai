@@ -48,9 +48,9 @@ behaviour could not be verified live carries that unverified label into
 Credentials appear only as placeholder values, and experiments are
 pid-disciplined: children are killed by recorded pid only, never by name.
 
-Status: skeleton with §1.1 (ambient-only), §1.2 (content-set) and §1.3
-(claude route) evidence recorded (tasks 2.1–2.3); the degradation
-experiments and all analysis sections are still to land.
+Status: skeleton with §1.1–§1.3 (ambient-only, content-set, claude route)
+and §4.1 (degrade-never-hang + unattended grants) evidence recorded
+(tasks 2.1–2.4); the analysis sections (§3.1–3.6) are still to land.
 
 ---
 
@@ -309,7 +309,58 @@ The section also records what the runner should emit/log when a server
 fails (L0/L1 agent events) so a dead server is visible without failing
 the run.
 
-*(stub — tasks 2.4 and 3.4.)*
+### 4.1 Live re-grounding through afk-runner's spawn shape (task 2.4)
+
+The sibling research's degrade-never-hang and unattended-grant claims,
+re-driven through the real pinned binary on the CLI spawn shape afk-runner
+uses (`opencode run --dir` / `opencode serve`, config delivered in the
+inherited environment — the channel option (a) would use; same rig,
+placeholder tokens only, pid-recorded teardown, census clean). A
+four-server block in one boot — `ok` (works), `bad` (failing command),
+`off` (`enabled: false`), `hang` (stdio child that never initializes) —
+polled through `GET /mcp` with an 8 s per-call bound:
+
+- **verified** — a failing server command degrades to data, never a
+  crash or a hang: `bad` reports `{"status":"failed","error":"MCP error
+  -32000: Connection closed"}` while `ok` connects and serves normally
+  in the same boot.
+- **verified** — a stdio child that never initializes is bounded by
+  opencode itself at 30 s: `hang` reports `{"status":"failed","error":
+  "Operation timed out after 30000ms"}`, and the child's pid-recording
+  wrapper's pid was already gone at teardown — reaped by opencode, no
+  leak.
+- **verified** — `enabled: false` means the child is never spawned at
+  all: status `disabled`, and the entry's pid-recording wrapper never
+  wrote its pid file.
+- **verified** — a status poller must bound its own calls: while the
+  hang client was settling, `GET /mcp` blocked past three consecutive
+  8 s poll deadlines; the full map only answered ~34 s after boot, every
+  entry final at once. The cheap lesson from the sibling doc re-holds:
+  treat the 30 s ceiling as the poll-time floor, or the runner reads its
+  own timeout as a missing server.
+- **verified — and this is a new finding, not a carried one** — an `ask`
+  grant does **not** deadlock an unattended turn under afk-runner's spawn
+  shape. With `permission: {"ok_*": "ask"}` in the delivered config, the
+  tool stayed in the prompt-time table, the forced call executed
+  (`tools/call` reached the server, tool part `state: completed`), the
+  DEBUG log records `evaluated permission=ok_echo … action.action=ask`
+  with no permission prompt anywhere, and the turn completed exit 0 in
+  7 s. `--auto` (review-loop's `opencodeCommand` passes it,
+  `review-loop/src/agent-command.ts:138`) auto-approves permissions that
+  are not explicitly denied — and an `ask` rule is not a deny — so on
+  this route `ask` behaves as `allow`. The wildcard `<server>_*` key
+  form itself works at the top level (the deny control with
+  `{"ok_*": "deny"}` filtered both tools from the table). Security
+  reading for §5: under afk-runner's shape the doctrine "unattended
+  grants are `allow` or absent, never `ask"` sharpens — `ask` buys
+  nothing and gates nothing, because `--auto` waves it through; the
+  follow-up must emit `allow` or absent, and must not rely on `ask` as
+  a hold-point.
+
+*(the §4 doctrine restatement per injection surface is task 3.4's; the
+stub below stands until then.)*
+
+*(stub — task 3.4.)*
 
 ## 5. Recommendation and follow-ups
 
