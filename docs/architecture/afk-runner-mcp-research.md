@@ -339,7 +339,7 @@ would carry two grant vocabularies for one server set.
 | Authority over ambient | wins every same-key conflict (verified) | loses to any content (verified) | inherits (a)'s (verified channel) | n/a (different binary) |
 | Per-level scoping possible | yes — the builder composes per spawn (by inspection: one builder, `openai-config.ts:160-171`) | no — one static set per checkout | yes — parsed per invocation | yes — per-spawn doc (seam exists, `agent-command.ts:71-79`) |
 | Credential exposure | model-readable content (S3-9, by inspection anchor `openai-config.ts:288-296`) | none possible (committed file) | values join the secret set (by inspection, `secrets.ts:106`) | child-env readable (D6; §1.3's env) |
-| Unattended grant safety | verified: allow-or-absent; `ask` is auto-approved (§4.1) | verified: same rules apply (§4.1) | generated `allow` grants (by inspection, `permissions.ts:60-67`) | allowlist vocabulary differs (by inspection) |
+| Unattended grant safety | verified: allow-or-absent; `ask` is auto-approved (§4.1) | verified on the content channel only (§4.1): same rules as (a), same engine (§1.2) — file-channel `ask` not driven | generated `allow` grants (by inspection, `permissions.ts:60-67`) | allowlist vocabulary differs (by inspection) |
 | Prerequisite work | config builder in afk-runner | none (zero code) | knob parse + schema surface | claude backend threading first |
 | Validation on arrival | afk-runner's zod (repo convention) | the binary's loader only | knob parse refuses at start (by inspection) | the CLI's own errors |
 
