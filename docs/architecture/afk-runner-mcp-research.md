@@ -49,9 +49,9 @@ Credentials appear only as placeholder values, and experiments are
 pid-disciplined: children are killed by recorded pid only, never by name.
 
 Status: evidence complete (§1.1–§1.3, §4.1 — tasks 2.1–2.4); the
-comparison tables (§1.4, §2.1), the catalogue (§3.1), and the §4.2
-per-surface doctrine written (tasks 3.1–3.4); the ranking and boundaries
-(§5–§6) are still to land.
+comparison tables (§1.4, §2.1), the catalogue (§3.1), the §4.2
+per-surface doctrine, and §5's ranked recommendation written
+(tasks 3.1–3.5); the D8 boundaries (§6) are still to land.
 
 ---
 
@@ -684,16 +684,94 @@ discipline (names, statuses, counts — never a server's `environment`,
 the exact schema addition is the follow-up implementation change's to
 design.
 
-## 5. Recommendation and follow-ups
+## 5. Recommendation and follow-ups (task 3.5)
 
-> Filled by task 3.5: the ranking derives from the §1 and §2 tables,
-> states which conclusions any unverified label changes, and names the
-> follow-ups (credential containment, per-server opt-out) plus an outline
-> of the follow-up implementation change — capability named at
-> feature-domain granularity, config-surface and injection-point sketch,
-> proposal-shaped, nothing implemented.
+The ranking derives from §1.4's option table and §2.1's scoping table —
+no new claims, only their consequences. This section is a recommendation
+and an outline, not an implementation: the change it informs is a
+separate follow-up proposal, and nothing here is wired (the design-risk
+framing this doc exists under).
 
-*(stub — task 3.5.)*
+**1. Afk-runner builds `OPENCODE_CONFIG_CONTENT` per spawn, fed by an
+operator knob — options (a)+(c) as one two-layer design.** It is the
+only option pair whose delivery is **verified** live on afk-runner's own
+spawn shape (§1.1, §1.2), whose authority over ambient config is
+**verified** (content overlays the discovered file, wins every same-key
+conflict, and cannot be loosened by the tree), whose grants and
+degradation are **verified** on this exact route (§4.1), and which
+scores per-level composable with validated-at-start config on both
+§1.4 dimensions that the other options fail. The scoping shape it
+carries is §2.1's conclusion: a **global base set with per-role
+narrowing** — checking roles (reviewer, skeptic) shed the work servers
+drafter/decomposer/atomicity carry — composed at the seam that already
+holds the role (`afk-runner/src/agent-layer.ts:174`, beside `modelFor`).
+
+**2. A repo-local `opencode.json` as checked-in defaults, not the
+mechanism.** **Verified** real today (§1.1) and free, but static,
+unvalidated beyond the binary's loader, scoped to the whole checkout,
+and — **verified** — powerless beside any delivered content (§1.2). Its
+role in the recommendation is a complement: repo-owned defaults an
+operator can review in the PR that changes them, never the per-level
+surface.
+
+**3. The claude `--mcp-config` route, after its prerequisite.**
+Connection, naming, and round trip are **verified** (§1.3), but the
+route is blocked behind threading the claude backend through afk-runner's
+seam (`afk-runner/src/agent-layer.ts:226-251` — a change of its own) and
+carries a second grant vocabulary. Ranked last not on viability but on
+sequencing: it is the follow-up that lands after backend threading, not
+part of the first change.
+
+**Which conclusions any unverified label changes.** The winner rests on
+none: every load-bearing claim for options (a)+(c) — delivery, authority,
+grant behaviour, degradation — is **verified** on afk-runner's own shape.
+The unverified labels bound the edges. The claude route's two unknowns
+(§4.2: grant enforcement, failure degradation) affect only option (d),
+which the ranking already places behind a prerequisite — if either
+turned adverse, (d) drops further and nothing above it moves. The knob
+mechanics are the sibling's by inspection (`mcp-servers.ts:58-73`); a
+behavioural surprise in afk-runner's port would revise the config-surface
+sketch below, not the ranking, because the knob rides option (a)'s
+**verified** channel either way. The catalogue's unknowns (codeindex
+transport, `websearch` runtime, task-tracker MCP exposure — §3.1) bind
+only their own entries' install stories.
+
+**The follow-up implementation change — outline (nothing implemented).**
+Capability named at feature-domain granularity: **`afk-runner-agent-mcp`**
+— the afk-runner agent MCP injection surface, one change, not one per
+experiment. What it would decide (its proposal's job, sketched only):
+
+- *Config surface:* how the server set enters the run — an operator
+  knob read and refused at start (the sibling's parse-and-refuse shape,
+  `mcp-servers.ts:58-73`) or keys beside the strict five-key
+  `RunnerConfigSchema` (`afk-runner/src/config.ts:58`); either way a
+  global base map plus the optional per-role narrowing map, with the
+  role vocabulary validated against `AgentRoleSchema`.
+- *Injection point:* the per-spawn builder at the seam that already
+  holds the role and the model (`agent-layer.ts:174`), composing the
+  provider block, the deny-by-default permission base, the generated
+  per-profile `<server>_*: "allow"` grants (`permissions.ts:60-77`'s
+  shape), and the `mcp` map into the content serialized to the child —
+  including how the opencode spawn branch, which today sets no child
+  environment (`review-loop/src/agent-command.ts:34-35`), threads it.
+- *Emission:* the L0/L1 dead-server events under §4.2's payload
+  discipline.
+- *What it explicitly inherits as decided:* untrusted input never
+  defines a server; grants are allow-or-absent; degrade-never-hang; the
+  precedence facts of §1.2.
+
+**Named follow-ups, each its own change (deferred, risks on record):**
+
+- **Credential containment for the afk-runner content route** — the
+  proxy-placeholder/scrubbing generalisation the sibling built
+  (`secrets.ts:106`, `contain.ts:258`) is not here; until it lands, the
+  recommendation is the one S3-9 taught: prefer servers that need no
+  credential in the content at all (§4.2).
+- **Per-server opt-out** — narrows the base-set shape (an operator can
+  turn one server off without editing the whole set); the sibling's
+  deferred item, carried for the same reason.
+- **The claude-backend threading change** — option (d)'s prerequisite,
+  named here so it is not mistaken for part of `afk-runner-agent-mcp`.
 
 ## 6. System boundaries (design D8)
 
