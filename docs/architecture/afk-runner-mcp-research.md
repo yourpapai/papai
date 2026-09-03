@@ -49,9 +49,9 @@ Credentials appear only as placeholder values, and experiments are
 pid-disciplined: children are killed by recorded pid only, never by name.
 
 Status: evidence complete (§1.1–§1.3, §4.1 — tasks 2.1–2.4); §1.4's
-injection-surface comparison and §2.1's scoping comparison written
-(tasks 3.1–3.2); the catalogue, §4 doctrine restatement, ranking, and
-boundaries (§3–§6) are still to land.
+injection-surface comparison, §2.1's scoping comparison, and §3.1's
+server catalogue written (tasks 3.1–3.3); the §4 doctrine restatement,
+ranking, and boundaries (§4.2–§6) are still to land.
 
 ---
 
@@ -429,19 +429,95 @@ ranks from both tables.
 > Filled by task 3.3; bounded by repo precedents (design D5), not a
 > marketplace survey. Every entry carries a repo `file:line` anchor.
 
-Candidates the repo already names:
+### 3.1 The catalogue (task 3.3)
 
-- a structural code index server (the `codeindex` pattern);
-- papai-hosted remotes — plugin tools at `/mcp/plugin/<pluginId>` and the
-  context vault — reachable only over streamable-http per papai's pooled
-  client, which local stdio-spawned routes must be measured against;
-- task-tracker access (Kaneo/YouTrack-shaped);
-- web search.
+Bounded by repo precedents (design D5), not a marketplace survey; every
+entry carries a repo anchor. Shared mechanics first, so the entries
+don't repeat them: opencode's per-entry `timeout` field exists on both
+config shapes (`@opencode-ai/sdk` `types.gen.d.ts:1476` local,
+`:1502` remote) and the default bound is the **verified** 30 s of §4.1;
+local stdio delivery into afk-runner's route is **verified** working
+(§1.1), remote entries' shapes (`url`/`headers`, `:1485-1502`) are by
+inspection plus the sibling doc's on-record verification of static-header
+remotes with `oauth: false` under unattended runs
+(`opencode-agent/docs/mcp-integration-research.md:51-100`); and the
+install/pinning story for any local stdio server on an ephemeral runner
+is the sibling doc's on-record answer — a build step can `bunx`/`npx`
+the server or pin it from a lockfile, with the pinned command embedded in
+`McpLocalConfig.command` (`opencode-agent/docs/mcp-integration-research.md:499`,
+`:794`).
 
-Each entry records transport constraints, the install/pinning story for
-stdio servers on ephemeral runners, and startup/timeout behaviour.
+- **Structural code index server** (the `codeindex` pattern). The repo's
+  protocol names it and its four queries — `code_symbol`, `code_search`,
+  `code_impact`, `code_index` — with `limit`/`kinds`/`scopeTiers`
+  shaping (`CLAUDE.md:138-151`); the server itself lives outside this
+  repository (`CLAUDE.md:42`). Transport: not on record in this repo —
+  the entry shape (local stdio or remote) is undetermined here, labelled
+  as such rather than guessed. Install/pinning: per the shared mechanics
+  above if stdio (ephemeral runners must install and pin it per build);
+  if remote, a URL + header story. Startup/timeout: the shared 30 s
+  bound; its four queries are read-only by contract, the blast-radius
+  profile of a checking server (§2.1).
+- **papai-hosted remotes** (`/mcp/plugin/<pluginId>`, context-vault).
+  The route is live repo code: prefix `/mcp/plugin/`
+  (`src/mcp-server/server-route.ts:21`, router doc `:136`), plugin tool
+  descriptors bridged (`src/mcp-server/plugin-bridge.ts:53`), gated by
+  the manifest flag `mcpServer: true`
+  (`src/plugins/types.ts:210`) — and the repo carries its own live
+  example, `plugins/synthetic-web-search/plugin.json`. Binding tokens
+  authenticate the route: 30-day HMAC-signed binding tokens
+  (`src/mcp-server/token.ts:13-16`). context-vault's manifest contributes
+  the read-only tools `list_agent_specs`/`get_agent_spec` with
+  `storageScope: group`, `defaultEnabled: false`, and a 3000 ms
+  activation timeout (`plugins/context-vault/plugin.json`). Transport
+  constraint, by inspection: papai's own MCP client pool is
+  streamable-http only today — "Stdio transport is a future extension"
+  (`src/mcp/client-pool.ts:104-105`, enum at `src/mcp/types.ts:30`) —
+  and its user endpoints are HTTPS-enforced
+  (`src/mcp/types.ts:17-18`); a runner agent consuming the hosted route
+  would therefore drive it as an opencode **remote** entry (or a claude
+  remote doc), with the binding token riding `headers` — i.e. a
+  credential inside config content or the claude doc, the §4 exposure
+  class, and the papai-`tool_prefs` bypass §6 records. Startup/timeout:
+  papai-side plugin activation is bounded (3000 ms in both hosted
+  manifests); the MCP connection itself follows the shared 30 s bound.
+- **Task-tracker access** (Kaneo/YouTrack-shaped). The repo precedents
+  are provider plugins, not MCP servers:
+  `plugins/task-provider-kaneo/plugin.json` contributes
+  `taskProviderTypes: ["kaneo"]` with capability-gated operations
+  (`comments.create`…), beside `plugins/task-provider-youtrack/` and
+  `plugins/task-provider-github/`, all implementing the normalized
+  `TaskProvider` interface (`src/providers/types.ts:81-86`, gated by
+  `TaskCapability`, `:33,66`; registration contract in
+  `src/providers/CLAUDE.md:12-16`). Transport: no MCP server for task
+  tracking exists in-repo — exposing it to runner agents would either
+  ride the papai-hosted remote route above (the bridge exists; the
+  plugins would need the `mcpServer` flag and their tools bridged) or be
+  a new local stdio wrapper; neither is on record, labelled as such.
+  Install/pinning: hosted = none; stdio wrapper = the shared mechanics.
+  Startup/timeout: the shared mechanics. The security note is §4's
+  doctrine: a task-tracker server can mutate work items, so it is a work
+  server (§2.1's blast radius), never a checking role's default.
+- **Web search**. Two repo-grounded shapes. First, the repo already
+  hosts a search MCP server: `plugins/synthetic-web-search/plugin.json`
+  sets `mcpServer: true`, contributes the `search` tool, scopes its
+  `api_key` as sensitive/admin config, allow-lists its egress host
+  (`providerAllowedHosts: ["api.synthetic.new"]`), and bounds activation
+  at 3000 ms — the complete hosted-remote shape with credentials living
+  papai-side, never in the runner's config. Second, the binaries carry
+  built-ins: `webfetch` is **verified** present in the model-visible
+  tool tables of both routes (§1.2, §1.3), and `websearch` exists as a
+  permission key in the pinned SDK's permission type
+  (`types.gen.d.ts:1345`) — gateable by the same maps, though its
+  runtime behaviour was not driven in the rig and stays unverified.
+  Install/pinning: hosted = none; built-ins = none; an external search
+  API as a stdio server would follow the shared mechanics. 
+  Startup/timeout: 3000 ms activation papai-side; the shared 30 s bound
+  for any MCP shape.
 
-*(stub — task 3.3.)*
+*(catalogue closed by the D5 boundary: external servers beyond these
+four families appear only as shape examples above, not endorsements,
+and nothing here is an install recommendation.)*
 
 ## 4. Credentials, security, and degradation
 
