@@ -49,9 +49,9 @@ Credentials appear only as placeholder values, and experiments are
 pid-disciplined: children are killed by recorded pid only, never by name.
 
 Status: evidence complete (§1.1–§1.3, §4.1 — tasks 2.1–2.4); §1.4's
-injection-surface comparison written (task 3.1); the scoping comparison,
-catalogue, §4 doctrine restatement, ranking, and boundaries (§2–§6) are
-still to land.
+injection-surface comparison and §2.1's scoping comparison written
+(tasks 3.1–3.2); the catalogue, §4 doctrine restatement, ranking, and
+boundaries (§3–§6) are still to land.
 
 ---
 
@@ -380,7 +380,49 @@ surface** — extension of the strict five-key `RunnerConfigSchema`
 composes with the `modelFor` precedent; **cost profile** — which axes pay
 server startups for stages that never use the tools.
 
-*(stub — task 3.2 fills the table and names the recommended shape.)*
+### 2.1 The comparison (task 3.2)
+
+The facts each axis rests on, by inspection. **Per-role**: the role is
+already in the builder's hand — `runStageAgent` receives
+`options.role` (`afk-runner/src/agent-layer.ts:35`) and resolves the
+model at `:174` through `modelFor` (`afk-runner/src/config.ts:127`),
+the existing per-role hook, role-insensitive today (it returns
+`config.model`, the `_role` parameter unconsumed); the role vocabulary
+is a closed 8-member enum (`AgentRoleSchema`,
+`afk-runner/src/config.ts:11-20`). **Per-stage**: the six spawn sites —
+estimator (`work/intake.ts:126`), drafter (`work/draft.ts:80`),
+reviewer/resolver (`work/review-agents.ts:37`, `:67`), the escalation
+resolver (`work/veto-updater.ts:228`), decomposer (`work/decompose.ts:60`),
+atomicity (`work/atomicity.ts:44`) — coincide 1:1 with roles except the
+review stage, which spawns two roles from one site pair. **Per-depth**:
+`DepthProfile` rides the kernel context
+(`afk-runner/src/kernel/machine.ts:49`, set by the `depth` event at
+`:99`) and gates the tail (`runsAtomicity`, `work/decompose.ts:19`,
+consumed at `work/atomicity.ts:68`) — known before any spawn. And each
+`opencode run` spawn boots its **own** opencode instance and its own MCP
+children — verified across every rig arm — so whatever set an axis
+assigns, its boot cost multiplies by the run's six-plus spawns.
+
+| Dimension | per-role | per-stage | per-depth | global |
+| --- | --- | --- | --- | --- |
+| Trust edge | Runner-level: the mapping keys on code-owned role names (closed enum, `config.ts:11-20`); untrusted text cannot mint a role, so the influencer set is exactly today's operator class. | Identical — stage identity lives in the six code sites; no new influencer. | Identical — depth arrives from the run's own profile (`machine.ts:99`), never from outside text. | Identical — one set, one owner; the narrowest surface to audit. |
+| Blast radius | Sharpest: checking servers for reviewer/skeptic, work servers for drafter/decomposer/atomicity — grants differ per role by construction. | Near-sharp: 1:1 with role except review, where one stage owns reviewer (checking) and resolver (work) — a stage-level set hands both the union. | Coarse: every agent in a depth tier holds the same set; the checking/work distinction collapses within S/M/L. | Maximal: every agent holds every server; the distinction disappears entirely. |
+| Config surface | A per-role map beside the strict five-key schema — a deliberate extension of `z.strictObject` (`config.ts:58`), ~8 keys for the operator to know and the validator to check; or a global list plus narrowing keys. | Same extension cost with 6 keys, one of which (review) carries two roles' worth. | Smallest keyed surface (3 keys) — but the keys cut across the wrong grain. | Smallest possible: one server list — one schema key, or an env knob with no schema change at all. |
+| Grant composition (incl. `modelFor`) | Composes directly with the existing hook: an `mcpFor` sits beside `modelFor` at the one seam already holding the role (`agent-layer.ts:174`), emitting the sibling's proven per-profile grant shape (`permissions.ts:76-77`). | Needs a stage→roles mapping in code to emit grants; composes with `modelFor` only where stage maps 1:1 to role. | Orthogonal to `modelFor` — role keeps the model, depth takes the servers, no shared seam. | One grant set; nothing to compose. |
+| Cost profile | Each spawn boots only its role's servers — a checking role never pays a work server's startup. | Same per-spawn economy; review pays the union once per reviewer/resolver spawn. | Spawns pay for servers their role never uses, bounded by tier. | Every spawn pays every server's boot across the run's six-plus spawns — the widest set multiplies the widest. |
+
+**Scoring conclusion.** No axis wins outright: per-role is the precise
+fit for blast radius and grant composition but carries the largest
+config surface; global is the cheapest surface with the worst blast
+radius and the widest boot bill; per-stage and per-depth sit between
+without fixing either end. The table points at the mixed shape — a
+**global base set with per-role narrowing** (checking roles shed the
+work servers), stated here as the composition it is (design D4): one
+global list for the common servers, an optional per-role narrowing map,
+both through the (a)+(c) delivery pair §1.4 scored. Its config surface —
+where the base list and the narrowing map live, and what the strict
+schema gains — is the follow-up implementation change's to design; §5
+ranks from both tables.
 
 ## 3. Server catalogue and transports
 
