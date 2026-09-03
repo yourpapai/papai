@@ -48,10 +48,10 @@ behaviour could not be verified live carries that unverified label into
 Credentials appear only as placeholder values, and experiments are
 pid-disciplined: children are killed by recorded pid only, never by name.
 
-Status: evidence complete (§1.1–§1.3, §4.1 — tasks 2.1–2.4); the
-comparison tables (§1.4, §2.1), the catalogue (§3.1), the §4.2
-per-surface doctrine, and §5's ranked recommendation written
-(tasks 3.1–3.5); the D8 boundaries (§6) are still to land.
+Status: complete — evidence (§1.1–§1.3, §4.1), comparisons (§1.4, §2.1),
+catalogue (§3.1), doctrine (§4.2), recommendation (§5), and boundaries
+(§6) all landed (tasks 1.1–3.6); only the rollout pointers (task 4.1)
+remain.
 
 ---
 
@@ -775,22 +775,59 @@ experiment. What it would decide (its proposal's job, sketched only):
 
 ## 6. System boundaries (design D8)
 
-Four statements the follow-up cannot conflate; stubs below, filled in
-full by task 3.6.
+Four statements the follow-up cannot conflate; each carried in full with
+its anchors.
 
-- **Gating / tool-prefs.** *(stub)* afk-runner's stage agents are
-  opencode/claude subprocesses gated by opencode permission maps and the
-  claude CLI's own `--mcp-config`/allowlist surface — papai-core's
-  capability gating and per-context `tool_prefs` do not apply to them;
-  and a papai-hosted server consumed from a runner agent bypasses papai's
-  `tool_prefs` allow/deny resolution entirely.
-- **Scope model.** *(stub)* this change adds no persisted state — the
-  deliverable is repo content keyed to nothing; the follow-up's config
-  keys at the runner level, outside papai's per-user/group scope model.
-- **Dependency surface.** *(stub)* none — no DB change, no drizzle
-  migration, no new packages; the doc sits in the existing
-  `docs/architecture/` home and the sibling research is cited, never
-  imported.
-- **Hook surface.** *(stub)* the write-hook pipeline gates the file
-  writes for headers/format; docs are not gateable implementation code,
-  so no TDD test pair and no mutation floor applies to this deliverable.
+- **Gating / tool-prefs.** Afk-runner's stage agents are opencode/claude
+  subprocesses gated by opencode permission maps — the `<server>_*` keys
+  inside each profile's deny-by-default map, **verified** live on this
+  route (§1.2's deny arms, §4.1's ask/deny evaluation lines; the
+  generated-grant shape at `opencode-agent/src/permissions.ts:60-77`) —
+  and, on the claude route, the CLI's own `--mcp-config`/allowlist
+  surface (§1.3). Papai-core's capability gating and per-context
+  three-state `tool_prefs` (`src/tools/tool-preferences.ts:17`,
+  resolved at `src/tools/index.ts:22,52`, scoped by the entity-scope
+  registry of `docs/architecture/behaviors.md:24` / `src/chat/context-scope.ts`)
+  do **not** apply to them: the runner is an MCP client outside papai's
+  context model — its spawns carry no storage context id, no
+  `platformInstanceId`, no user identity, so there is no context for
+  `tool_prefs` to resolve against. Conversely — a stated consequence,
+  not a defect to fix here — consuming a papai-hosted server
+  (`/mcp/plugin/<pluginId>`, `src/mcp-server/server-route.ts:21`,
+  authenticated by a binding token, `src/mcp-server/token.ts:13`) from a
+  runner agent bypasses papai's `tool_prefs` allow/deny resolution
+  entirely: the call is subject to the runner's permission maps alone,
+  and papai's per-context gate never sees it.
+- **Scope model.** This change adds no persisted state: the deliverable
+  is repo content keyed to nothing — no storage context id, config
+  context id, platform instance id, or user id (the scope model's four
+  keying dimensions, `docs/architecture/behaviors.md:24`,
+  `src/chat/context-scope.ts`). The follow-up's config, whatever surface
+  wins in §5, keys at the **runner level** — the per-invocation
+  afk-runner config file or environment
+  (`afk-runner/src/config.ts:58`'s strict schema is the existing shape) —
+  outside papai's per-user/group scope model entirely; nothing in
+  papai's SQLite (context settings, platform instances, tool prefs)
+  reads, stores, or validates it.
+- **Dependency surface.** None. No DB change — no drizzle migration, no
+  backfill, nothing under `src/db/`. No new packages: the experiments
+  consumed the already-pinned binaries (`opencode-ai@1.18.7`,
+  `.github/workflows/agent-pipeline.yml:450`;
+  `@anthropic-ai/claude-code@2.1.251`, `:474`) and the zod-declared
+  shapes already on record (`@opencode-ai/sdk` types, cited throughout
+  §1–§4). No new module is created: the doc sits in the existing
+  `docs/architecture/` home beside `afk-runner.md`, and the sibling
+  research doc is cited, never imported — afk-runner's copy-never-import
+  discipline applied to its docs layer.
+- **Hook surface.** The write-hook pipeline gates the three file writes —
+  this doc (SPDX header mandatory: the licence-header gate) and the two
+  pointer edits (`docs/architecture/afk-runner.md`, the `CLAUDE.md`
+  docs-table row) — for headers and format
+  (`docs/architecture/commands.md` documents the pipeline). Docs are not
+  gateable implementation code: no TDD test pair exists for this
+  deliverable and none is required, and no mutation floor applies — the
+  Stryker gate measures product code only (`src/`, `client/`,
+  `plugins/`, via `isGateableImplFile`), so a docs-only diff selects
+  zero targets. The change's order of work followed its own tasks:
+  rig and live experiments first, evidence recorded, doc drafted,
+  gates run.
