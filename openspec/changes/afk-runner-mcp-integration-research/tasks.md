@@ -24,4 +24,4 @@ This change is docs-only research (skip_specs: true; design.md records no Open Q
 ## 4. Rollout and gates
 
 - [x] 4.1 Add the one-line pointer in `docs/architecture/afk-runner.md` and the docs-table row in `CLAUDE.md` (proposal Files to touch). Verify: `bun run format:check && bun run lint`.
-- [ ] 4.2 Final: run full `bun test`, `bun run typecheck`, `bun run lint`, and confirm the affected docs pages are updated and consistent (`docs/architecture/afk-runner-mcp-research.md`, `docs/architecture/afk-runner.md`, `CLAUDE.md`). Verify: `bun test && bun run typecheck && bun run lint && bun run format:check`.
+- [x] 4.2 Final: run full `bun test`, `bun run typecheck`, `bun run lint`, and confirm the affected docs pages are updated and consistent (`docs/architecture/afk-runner-mcp-research.md`, `docs/architecture/afk-runner.md`, `CLAUDE.md`). Verify: `bun test && bun run typecheck && bun run lint && bun run format:check`.
