@@ -365,8 +365,9 @@ in afk-runner today, plus the global fallback (by inspection):
   estimator/decomposer/atomicity/planner,
   `afk-runner/src/config.ts:11-20`); `modelFor` (`config.ts:127`) is the
   existing per-role hook, currently role-insensitive.
-- **per-stage** — the six spawn sites (estimator, drafter,
-  reviewer/resolver ×2, decomposer, atomicity).
+- **per-stage** — the seven spawn sites (estimator, drafter,
+  reviewer/skeptic, review resolver, escalation resolver, decomposer,
+  atomicity).
 - **per-depth** — S/M/L round caps and tail shape.
 - **global** — one set for every agent.
 
@@ -389,12 +390,15 @@ model at `:174` through `modelFor` (`afk-runner/src/config.ts:127`),
 the existing per-role hook, role-insensitive today (it returns
 `config.model`, the `_role` parameter unconsumed); the role vocabulary
 is a closed 8-member enum (`AgentRoleSchema`,
-`afk-runner/src/config.ts:11-20`). **Per-stage**: the six spawn sites —
+`afk-runner/src/config.ts:11-20`). **Per-stage**: the seven spawn sites —
 estimator (`work/intake.ts:126`), drafter (`work/draft.ts:80`),
-reviewer/resolver (`work/review-agents.ts:37`, `:67`), the escalation
-resolver (`work/veto-updater.ts:228`), decomposer (`work/decompose.ts:60`),
-atomicity (`work/atomicity.ts:44`) — coincide 1:1 with roles except the
-review stage, which spawns two roles from one site pair. **Per-depth**:
+reviewer/skeptic (`work/review-agents.ts:37`, `role: lens`), review
+resolver (`work/review-agents.ts:67`), escalation resolver
+(`work/veto-updater.ts:228`), decomposer (`work/decompose.ts:60`),
+atomicity (`work/atomicity.ts:44`) — spawn across six stages: reviewer
+and skeptic share one lens-parameterized site, resolver spawns from two
+stages (review and escalation), and `planner` (the enum's eighth member)
+never spawns through the seam. **Per-depth**:
 `DepthProfile` rides the kernel context
 (`afk-runner/src/kernel/machine.ts:49`, set by the `depth` event at
 `:99`) and gates the tail (`runsAtomicity`, `work/decompose.ts:19`,
@@ -405,9 +409,9 @@ assigns, its boot cost multiplies by the run's six-plus spawns.
 
 | Dimension | per-role | per-stage | per-depth | global |
 | --- | --- | --- | --- | --- |
-| Trust edge | Runner-level: the mapping keys on code-owned role names (closed enum, `config.ts:11-20`); untrusted text cannot mint a role, so the influencer set is exactly today's operator class. | Identical — stage identity lives in the six code sites; no new influencer. | Identical — depth arrives from the run's own profile (`machine.ts:99`), never from outside text. | Identical — one set, one owner; the narrowest surface to audit. |
-| Blast radius | Sharpest: checking servers for reviewer/skeptic, work servers for drafter/decomposer/atomicity — grants differ per role by construction. | Near-sharp: 1:1 with role except review, where one stage owns reviewer (checking) and resolver (work) — a stage-level set hands both the union. | Coarse: every agent in a depth tier holds the same set; the checking/work distinction collapses within S/M/L. | Maximal: every agent holds every server; the distinction disappears entirely. |
-| Config surface | A per-role map beside the strict six-key schema — a deliberate extension of `z.strictObject` (`config.ts:58`), ~8 keys for the operator to know and the validator to check; or a global list plus narrowing keys. | Same extension cost with 6 keys, one of which (review) carries two roles' worth. | Smallest keyed surface (3 keys) — but the keys cut across the wrong grain. | Smallest possible: one server list — one schema key, or an env knob with no schema change at all. |
+| Trust edge | Runner-level: the mapping keys on code-owned role names (closed enum, `config.ts:11-20`); untrusted text cannot mint a role, so the influencer set is exactly today's operator class. | Identical — stage identity lives in the seven code sites; no new influencer. | Identical — depth arrives from the run's own profile (`machine.ts:99`), never from outside text. | Identical — one set, one owner; the narrowest surface to audit. |
+| Blast radius | Sharpest: checking servers for reviewer/skeptic, work servers for drafter/decomposer/atomicity — grants differ per role by construction. | Near-sharp: reviewer and skeptic share one lens site and resolver spawns from review and escalation; the review stage owns checking (reviewer/skeptic) and work (resolver) roles — a stage-level set hands it the union. | Coarse: every agent in a depth tier holds the same set; the checking/work distinction collapses within S/M/L. | Maximal: every agent holds every server; the distinction disappears entirely. |
+| Config surface | A per-role map beside the strict six-key schema — a deliberate extension of `z.strictObject` (`config.ts:58`), ~8 keys for the operator to know and the validator to check; or a global list plus narrowing keys. | Same extension cost with 6 keys, one of which (review) carries three roles' worth (reviewer, skeptic, resolver). | Smallest keyed surface (3 keys) — but the keys cut across the wrong grain. | Smallest possible: one server list — one schema key, or an env knob with no schema change at all. |
 | Grant composition (incl. `modelFor`) | Composes directly with the existing hook: an `mcpFor` sits beside `modelFor` at the one seam already holding the role (`agent-layer.ts:174`), emitting the sibling's proven per-profile grant shape (`permissions.ts:76-77`). | Needs a stage→roles mapping in code to emit grants; composes with `modelFor` only where stage maps 1:1 to role. | Orthogonal to `modelFor` — role keeps the model, depth takes the servers, no shared seam. | One grant set; nothing to compose. |
 | Cost profile | Each spawn boots only its role's servers — a checking role never pays a work server's startup. | Same per-spawn economy; review pays the union once per reviewer/resolver spawn. | Spawns pay for servers their role never uses, bounded by tier. | Every spawn pays every server's boot across the run's six-plus spawns — the widest set multiplies the widest. |
 
