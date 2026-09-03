@@ -311,7 +311,7 @@ before `mcpGrants`/`mcpBlock` emit it (`:267-268`). Its `headers` and
 does not run. Its authority is inherited from the channel that carries
 it: **verified** (§1.2) that content overlays ambient, so a knob afk-runner
 merges into its built content carries option (a)'s full authority. Config
-surface: afk-runner's own `RunnerConfigSchema` is a strict five-key
+surface: afk-runner's own `RunnerConfigSchema` is a strict six-key
 object (`afk-runner/src/config.ts:58`) — a knob is an env-side surface
 that reaches the children only through option (a)'s builder, making (c)
 a delivery-and-validation wrapper over (a), not a rival. Trust edge:
@@ -374,7 +374,7 @@ The comparison scores the four axes on dimensions fixed before anything
 is ranked (design D4): **trust edge** — who can influence the server set;
 **blast radius** — checking servers for reviewer/skeptic vs work servers
 for drafter/decomposer, and how grants differ per level; **config
-surface** — extension of the strict five-key `RunnerConfigSchema`
+surface** — extension of the strict six-key `RunnerConfigSchema`
 (`afk-runner/src/config.ts:49-69`) vs an env knob vs a separate file;
 **grant composition** — how the shape emits per-profile grants and
 composes with the `modelFor` precedent; **cost profile** — which axes pay
@@ -407,7 +407,7 @@ assigns, its boot cost multiplies by the run's six-plus spawns.
 | --- | --- | --- | --- | --- |
 | Trust edge | Runner-level: the mapping keys on code-owned role names (closed enum, `config.ts:11-20`); untrusted text cannot mint a role, so the influencer set is exactly today's operator class. | Identical — stage identity lives in the six code sites; no new influencer. | Identical — depth arrives from the run's own profile (`machine.ts:99`), never from outside text. | Identical — one set, one owner; the narrowest surface to audit. |
 | Blast radius | Sharpest: checking servers for reviewer/skeptic, work servers for drafter/decomposer/atomicity — grants differ per role by construction. | Near-sharp: 1:1 with role except review, where one stage owns reviewer (checking) and resolver (work) — a stage-level set hands both the union. | Coarse: every agent in a depth tier holds the same set; the checking/work distinction collapses within S/M/L. | Maximal: every agent holds every server; the distinction disappears entirely. |
-| Config surface | A per-role map beside the strict five-key schema — a deliberate extension of `z.strictObject` (`config.ts:58`), ~8 keys for the operator to know and the validator to check; or a global list plus narrowing keys. | Same extension cost with 6 keys, one of which (review) carries two roles' worth. | Smallest keyed surface (3 keys) — but the keys cut across the wrong grain. | Smallest possible: one server list — one schema key, or an env knob with no schema change at all. |
+| Config surface | A per-role map beside the strict six-key schema — a deliberate extension of `z.strictObject` (`config.ts:58`), ~8 keys for the operator to know and the validator to check; or a global list plus narrowing keys. | Same extension cost with 6 keys, one of which (review) carries two roles' worth. | Smallest keyed surface (3 keys) — but the keys cut across the wrong grain. | Smallest possible: one server list — one schema key, or an env knob with no schema change at all. |
 | Grant composition (incl. `modelFor`) | Composes directly with the existing hook: an `mcpFor` sits beside `modelFor` at the one seam already holding the role (`agent-layer.ts:174`), emitting the sibling's proven per-profile grant shape (`permissions.ts:76-77`). | Needs a stage→roles mapping in code to emit grants; composes with `modelFor` only where stage maps 1:1 to role. | Orthogonal to `modelFor` — role keeps the model, depth takes the servers, no shared seam. | One grant set; nothing to compose. |
 | Cost profile | Each spawn boots only its role's servers — a checking role never pays a work server's startup. | Same per-spawn economy; review pays the union once per reviewer/resolver spawn. | Spawns pay for servers their role never uses, bounded by tier. | Every spawn pays every server's boot across the run's six-plus spawns — the widest set multiplies the widest. |
 
@@ -743,7 +743,7 @@ experiment. What it would decide (its proposal's job, sketched only):
 
 - *Config surface:* how the server set enters the run — an operator
   knob read and refused at start (the sibling's parse-and-refuse shape,
-  `mcp-servers.ts:58-73`) or keys beside the strict five-key
+  `mcp-servers.ts:58-73`) or keys beside the strict six-key
   `RunnerConfigSchema` (`afk-runner/src/config.ts:58`); either way a
   global base map plus the optional per-role narrowing map, with the
   role vocabulary validated against `AgentRoleSchema`.
