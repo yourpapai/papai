@@ -48,9 +48,10 @@ behaviour could not be verified live carries that unverified label into
 Credentials appear only as placeholder values, and experiments are
 pid-disciplined: children are killed by recorded pid only, never by name.
 
-Status: skeleton with §1.1–§1.3 (ambient-only, content-set, claude route)
-and §4.1 (degrade-never-hang + unattended grants) evidence recorded
-(tasks 2.1–2.4); the analysis sections (§3.1–3.6) are still to land.
+Status: evidence complete (§1.1–§1.3, §4.1 — tasks 2.1–2.4); §1.4's
+injection-surface comparison written (task 3.1); the scoping comparison,
+catalogue, §4 doctrine restatement, ranking, and boundaries (§2–§6) are
+still to land.
 
 ---
 
@@ -81,7 +82,117 @@ could reach that seam's children:
   afk-runner's seam, recorded as a prerequisite finding, not designed
   here.
 
-*(stub — task 3.1 scores these options from the experiment evidence.)*
+### 1.4 The comparison: options (a)–(d) scored
+
+Scored from §1.1–§1.3 and §4.1's live evidence plus the sibling
+workspace's on-record mechanics (cited, never imported — design D1).
+Every claim carries its label. The ranking itself is §5's; this table
+only scores.
+
+**(a) `OPENCODE_CONFIG_CONTENT` built by afk-runner.** The channel is
+**verified** end to end through afk-runner's exact spawn shape: config
+serialized into the inherited environment reaches the `opencode run
+--dir` children, which connect its servers, expose its tools under
+`<server>_<tool>` naming, and round-trip calls (§1.1, §1.2). Authority
+over ambient config is **verified** (§1.2): the content overlays the
+discovered file — its unique entries merge, every same-key conflict
+(provider, mcp entry, permission leaf) resolves to the content, and a
+deny inside the content is final (no discovered file can grant back).
+What it clobbers is therefore exactly the same-key set — afk-runner's
+builder would own the provider and profile blocks outright and must
+deliberately emit everything it wants, while ambient keys it does not
+name survive. Degradation under this channel is **verified** never to
+hang (§4.1), and the grant doctrine is **verified** to sharpen: `--auto`
+waves `ask` through, so the builder must emit `allow` or absent. The
+delivery mechanism is the sibling workspace's proven one — by
+inspection, `opencodeConfigEnv` serializes the one config both execution
+paths read (`opencode-agent/src/openai-config.ts:160-171`, `:288-296`),
+with grants generated as `<server>_*: "allow"` appended after the named
+allows where the later rule wins
+(`opencode-agent/src/permissions.ts:60-67`, `:76-77`). The cost is
+S3-9-shaped: the serialized content contains the provider credentials
+(`openai-config.ts:288-296` states it outright — "This value contains
+the API key — never log it"), and config content is model-readable —
+the follow-up's credential-containment problem, already a named
+follow-up. The work is a config builder in afk-runner: new code, no
+schema change required if the mcp set rides the existing config surface
+as a knob (option (c) composes with this one).
+
+**(b) A repo-local `opencode.json` under the spawn cwd.** Loading is
+**verified** (§1.1): the binary probes `<dir>/opencode.json` after the
+three global user paths and no parent walk-up occurs — the instance
+directory is the `--dir` value. With no content in the environment
+(afk-runner's state today), it is the only delivery that exists, and its
+servers connect and name exactly as option (a)'s do. Its authority is
+**verified** to be the mirror image of (a)'s: against a delivered
+content it loses every same-key conflict and cannot rescue a denied tool
+(§1.2). Trust edge: the file is repo content — reviewable in the pull
+request that carries it, versioned with the tree it configures; but the
+same tree is the one afk-runner's own agents hold edit tools over, and
+the file scopes to the whole checkout (every opencode consumer of that
+cwd, not afk-runner's spawns alone). It cannot carry credentials (a
+committed file is leaked by definition — placeholder-only doctrine) and
+cannot vary per role, stage, or invocation — it is one static set for
+the workspace. Cost: zero code, and zero afk-runner-owned validation —
+the binary's own loader is the only gate, and nothing in afk-runner
+would know the set exists.
+
+**(c) An `AGENT_MCP_SERVERS`-style env knob consumed by afk-runner.** The
+mechanics are on record from the sibling workspace, by inspection: the
+knob is parsed and refused at job start (`parseMcpServers`,
+`opencode-agent/src/mcp-servers.ts:58-73`), server names are constrained
+to the tool-name-prefix-safe alphabet (`mcp-servers.ts:35-44`), the
+declarations are strict local/remote schemas (`mcp-servers.ts:48-55`),
+and the parsed set rides the one settings object both execution paths
+read so they cannot drift (`opencode-agent/src/openai-config.ts:100-123`)
+before `mcpGrants`/`mcpBlock` emit it (`:267-268`). Its `headers` and
+`environment` values join the pipeline's secret set
+(`opencode-agent/src/secrets.ts:106`, consumed by `contain.ts:258` and
+`index.ts:226`) — the scrubbing story the sibling built and afk-runner
+does not run. Its authority is inherited from the channel that carries
+it: **verified** (§1.2) that content overlays ambient, so a knob afk-runner
+merges into its built content carries option (a)'s full authority. Config
+surface: afk-runner's own `RunnerConfigSchema` is a strict five-key
+object (`afk-runner/src/config.ts:58`) — a knob is an env-side surface
+that reaches the children only through option (a)'s builder, making (c)
+a delivery-and-validation wrapper over (a), not a rival. Trust edge:
+whoever sets the job's environment — for afk-runner's CI shape, the
+workflow.
+
+**(d) The claude route's `--mcp-config` doc written non-empty.** The
+seam is **verified** working end to end in review-loop's native profile
+(§1.3): the doc is the entire MCP surface under `--strict-mcp-config`,
+the CLI's own init line reports the connected status, the naming is
+`mcp__<server>__<tool>`, and forced calls round-trip. The prerequisite
+is by inspection and is the option's defining cost: afk-runner threads
+no `backend`/`claude` options through its one spawn seam
+(`afk-runner/src/agent-layer.ts:226-251`;
+`review-loop/src/agent-runner.ts:94-97`) — option (d) is unreachable
+until that threading change lands, and it reaches only the claude
+backends' agents, which afk-runner does not spawn today. Its gating
+surface also differs in kind (claude's doc + allowlist vs opencode's
+permission maps — the D8 gating boundary), so a dual-backend delivery
+would carry two grant vocabularies for one server set.
+
+| Dimension | (a) content built by afk-runner | (b) repo-local file | (c) env knob (via (a)) | (d) claude `--mcp-config` |
+| --- | --- | --- | --- | --- |
+| Delivery verified live | **verified** (§1.2) | **verified** (§1.1) | by inspection (sibling) + rides (a) | **verified** (§1.3) |
+| Authority over ambient | wins every same-key conflict (verified) | loses to any content (verified) | inherits (a)'s (verified channel) | n/a (different binary) |
+| Per-level scoping possible | yes — the builder composes per spawn (by inspection: one builder, `openai-config.ts:160-171`) | no — one static set per checkout | yes — parsed per invocation | yes — per-spawn doc (seam exists, `agent-command.ts:71-79`) |
+| Credential exposure | model-readable content (S3-9, by inspection anchor `openai-config.ts:288-296`) | none possible (committed file) | values join the secret set (by inspection, `secrets.ts:106`) | child-env readable (D6; §1.3's env) |
+| Unattended grant safety | verified: allow-or-absent; `ask` is auto-approved (§4.1) | verified: same rules apply (§4.1) | generated `allow` grants (by inspection, `permissions.ts:60-67`) | allowlist vocabulary differs (by inspection) |
+| Prerequisite work | config builder in afk-runner | none (zero code) | knob parse + schema surface | claude backend threading first |
+| Validation on arrival | afk-runner's zod (repo convention) | the binary's loader only | knob parse refuses at start (by inspection) | the CLI's own errors |
+
+**Scored conclusion.** Options (a) and (c) are one design in two layers —
+the knob is the operator surface, the built content the delivery channel
+— and together they are the only pair that is simultaneously verified
+live on afk-runner's own spawn shape, authoritative over ambient config,
+per-level composable, and validated at job start. Option (b) is real
+today and free, but static, unvalidated, scope-bloating, and powerless
+beside any future content. Option (d) is verified viable but blocked
+behind a backend-threading prerequisite that is itself a change. §5
+ranks from this table.
 
 ### 1.1 Ambient-only: what afk-runner's spawn delivers today (task 2.1)
 
