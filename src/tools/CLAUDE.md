@@ -66,7 +66,12 @@ export function makeExampleTool(provider: Readonly<TaskProvider>): Tool {
   (`src/tools/disclosure/wire.ts`) runs unconditionally in `buildFullToolSet` after
   `applyResultCompaction`. It copies the toolset, injects `search_tools` (ranked schema-less
   briefs via an embedding `ToolRetriever` from `getToolRetriever`, which falls back to lexical
-  ranking internally when embeddings are unavailable or no LLM config resolves) and `load_tool`
+  ranking internally when embeddings are unavailable or no LLM config resolves; brief embedding
+  is burst-bounded — uncached briefs go out in chunked `embedMany` batches (≤32 texts,
+  `p-limit(2)`) with a shared single-flight warm-up per endpoint+model, a 10 s timeout +
+  `maxRetries: 1` on every embedding call, and a 60 s tombstone for failed batches, so a
+  throttling endpoint degrades to lexical ranking in bounded time instead of fanning out one
+  HTTP call per brief) and `load_tool`
   (batch activation), both bound to one turn-scoped `DisclosureSession` (`registry.ts`, never
   cached). `invokeModel` attaches `createDisclosurePrepareStep` (`prepare-step.ts`) so per-step
   `activeTools` = core ∪ meta ∪ loaded, intersected with registered names; after
