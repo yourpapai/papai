@@ -14,5 +14,5 @@
 
 ## 4. Docs and full gates
 
-- [ ] 4.1 Update `docs/architecture/behaviors.md` (recurring task execution now runs under a per-task scheduler provider request scope) and `docs/operations/analytics-runbook.md` (scheduler invocation-mode facts now appear in provider-request data). Verify: `openspec validate scheduler-provider-scope --strict`
-- [ ] 4.2 Run the full gates and fix anything they surface: `bun run test`, `bun run typecheck`, `bun run lint`.
+- [x] 4.1 Update `docs/architecture/behaviors.md` (recurring task execution now runs under a per-task scheduler provider request scope) and `docs/operations/analytics-runbook.md` (scheduler invocation-mode facts now appear in provider-request data). Verify: `openspec validate scheduler-provider-scope --strict`
+- [x] 4.2 Run the full gates and fix anything they surface: `bun run test`, `bun run typecheck`, `bun run lint`.
