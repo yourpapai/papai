@@ -42,6 +42,16 @@ The privacy/security owner signs the Stage A evidence log
   (`ANALYTICS_HMAC_KEYRING`, `ANALYTICS_GOVERNANCE_HMAC_KEYRING`). Missing items
   fail closed.
 
+### Event population note: scheduler provider requests
+
+Recurring-task scheduler executions emit provider-request facts with
+`invocation_mode='scheduler'` and `actor_role='system'` (chat user = the task
+owner). They appear in provider-request dashboards/exports like any other
+provider request but are excluded from session-activity aggregation. When
+analytics is off or the owner route is unresolvable, these executions run
+unobserved by design (explicit sentinel) — recurring task creation itself is
+never blocked by scope resolution.
+
 ## Operator commands (verified against the CLIs)
 
 ### Backfill (governed usage → closed aggregates)

@@ -3,6 +3,9 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
+import { runWithProviderRequestScope, NO_ANALYTICS_SCOPE } from './analytics/provider-request-scope.js'
+import type { ProviderRequestScope } from './analytics/provider-request-scope.js'
+import { resolveSchedulerProviderRequestScope } from './analytics/provider-scope-factory.js'
 import type { ChatProvider } from './chat/types.js'
 import { emitGlobal } from './debug/event-bus.js'
 import { logger } from './logger.js'
@@ -22,11 +25,16 @@ const log = logger.child({ scope: 'scheduler' })
 export interface SchedulerDeps {
   resolve: (contextId: string) => Promise<TaskProvider | null> | TaskProvider | null
   chat?: ChatProvider | null
+  /** Per-task provider request scope; defaults to the scheduler scope resolver. */
+  resolveScope?: (task: RecurringTaskRecord) => ProviderRequestScope
 }
 
 const defaultSchedulerDeps: SchedulerDeps = {
   resolve: (contextId): Promise<TaskProvider | null> => defaultTaskProviderResolver.resolve(contextId),
 }
+
+const defaultResolveScope = (task: RecurringTaskRecord): ProviderRequestScope =>
+  resolveSchedulerProviderRequestScope({ recurringTaskId: task.id, userId: task.userId })
 
 const TICK_INTERVAL_MS = 60 * 1000
 
@@ -48,15 +56,32 @@ const executeRecurringTask = async (task: RecurringTaskRecord, deps: SchedulerDe
     return
   }
 
-  const provider = await deps.resolve(task.userId)
-  if (provider === null) {
-    log.warn({ taskId: task.id, contextId: task.userId }, 'Skipping recurring task: task provider unavailable')
-    return
+  const resolveScope = deps.resolveScope ?? defaultResolveScope
+  let scope: ProviderRequestScope
+  try {
+    scope = resolveScope(task)
+  } catch (scopeError) {
+    // Scope resolution must never block execution (spec: recurring-task-provider-scope).
+    log.warn(
+      { taskId: task.id, error: scopeError instanceof Error ? scopeError.message : String(scopeError) },
+      'Scheduler scope resolution failed; proceeding unobserved',
+    )
+    scope = NO_ANALYTICS_SCOPE
   }
 
   try {
-    const created = await provider.createTask(buildRecurringTaskInput(task))
-    await finalizeCreatedRecurringTask(task, provider, created, chat)
+    // Provider resolution, task creation, and finalization (label application)
+    // all settle inside this one per-task scope lease (design D2).
+    const providerAvailable = await runWithProviderRequestScope(scope, async (): Promise<boolean> => {
+      const provider = await deps.resolve(task.userId)
+      if (provider === null) return false
+      const created = await provider.createTask(buildRecurringTaskInput(task))
+      await finalizeCreatedRecurringTask(task, provider, created, chat)
+      return true
+    })
+    if (!providerAvailable) {
+      log.warn({ taskId: task.id, contextId: task.userId }, 'Skipping recurring task: task provider unavailable')
+    }
   } catch (error) {
     log.error(
       { taskId: task.id, error: error instanceof Error ? error.message : String(error) },
