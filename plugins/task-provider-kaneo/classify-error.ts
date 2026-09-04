@@ -79,9 +79,27 @@ const classifyApiError = (error: KaneoApiError, context?: ClassificationContext)
     return classifyNotFound(error, context)
   }
   if (statusCode === 400) {
+    // Kaneo answers 400 "Workspace ID could not be determined" when the referenced
+    // project does not exist or is not visible to the caller's credentials (pinned
+    // against the e2e image): that is a missing project, not a validation failure.
+    if (isWorkspaceUndeterminedBody(error.responseBody)) {
+      return new KaneoClassifiedError(message, providerError.projectNotFound(context?.projectId ?? 'unknown'))
+    }
     return new KaneoClassifiedError(message, providerError.validationFailed('unknown', message))
   }
   return new KaneoClassifiedError(message, systemError.unexpected(error))
+}
+
+const WORKSPACE_UNDETERMINED_MARKER = 'workspace id could not be determined'
+
+const isWorkspaceUndeterminedBody = (body: unknown): boolean => {
+  const text =
+    typeof body === 'string'
+      ? body
+      : typeof body === 'object' && body !== null
+        ? ((Reflect.get(body, 'error') ?? Reflect.get(body, 'message')) as unknown)
+        : ''
+  return typeof text === 'string' && text.toLowerCase().includes(WORKSPACE_UNDETERMINED_MARKER)
 }
 
 export const classifyKaneoError = (error: unknown, context?: ClassificationContext): KaneoClassifiedError => {

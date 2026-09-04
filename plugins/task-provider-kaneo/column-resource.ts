@@ -33,7 +33,7 @@ export class ColumnResource {
       return columns
     } catch (error) {
       this.log.error({ error: error instanceof Error ? error.message : String(error) }, 'Failed to list columns')
-      throw classifyKaneoError(error)
+      throw classifyKaneoError(error, { projectId })
     }
   }
 
@@ -64,7 +64,7 @@ export class ColumnResource {
         { error: error instanceof Error ? error.message : String(error), projectId },
         'Failed to create column',
       )
-      throw classifyKaneoError(error)
+      throw classifyKaneoError(error, { projectId })
     }
   }
 

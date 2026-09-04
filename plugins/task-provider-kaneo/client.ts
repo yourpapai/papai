@@ -91,10 +91,18 @@ function buildUrl(config: KaneoConfig, path: string, query: Record<string, strin
 }
 
 async function fetchResponseBody(response: Response): Promise<unknown> {
+  // Text first: a failed response.json() consumes the body, which would make the
+  // text fallback below unreadable — plain-text error bodies (e.g. Kaneo's 400
+  // "Workspace ID could not be determined") must survive for classification.
   try {
-    return await response.json()
+    const text = await response.text()
+    try {
+      return JSON.parse(text) as unknown
+    } catch {
+      return text
+    }
   } catch {
-    return response.text().catch(() => 'Unable to read response body')
+    return 'Unable to read response body'
   }
 }
 

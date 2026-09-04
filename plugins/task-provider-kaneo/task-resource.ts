@@ -111,7 +111,7 @@ export class TaskResource {
       return task
     } catch (error) {
       this.log.error({ error: error instanceof Error ? error.message : String(error) }, 'Failed to create task')
-      throw classifyKaneoError(error)
+      throw classifyKaneoError(error, { projectId: params.projectId })
     }
   }
 
