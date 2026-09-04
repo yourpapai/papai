@@ -5,6 +5,1306 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [6.14.2] - 2026-09-04
+
+### Added
+
+- **opencode-agent:** Add AGENT_MCP_SERVERS knob for the agent pipeline
+- **opencode-agent:** Skip_specs decision lane for fix-class issues
+- **coverage:** Add pure lcov scoping and seeding for T0 story coverage
+- **coverage:** Discover in-scope story coverage source files
+- **coverage:** Scope T0 story coverage to product code and seed unloaded files
+- **stories:** Add host-scoped responder mode to the story HTTP dispatcher
+- **stories:** Add a dispatcher transport for the fake YouTrack API
+- **stories:** Reach the real YouTrack provider from the hermetic story lane
+- **analytics:** Add the transactional collection-eligibility grant
+- **analytics:** Grant the collection ref when a subject consents
+- **agent:** Implement issue #306 — step 1/9: 1.1 Extend the `isToolDomain` case in `tests/tools/tool-metadata.test.ts
+- **agent:** Implement issue #306 — step 2/9: 1.2 Add `'diagnostics'` to the `TOOL_DOMAINS` const array in `src/tools/
+- **agent:** Implement issue #306 — step 3/9: 2.1 Add a failing test in `tests/analytics/tool-classification.test.ts`
+- **agent:** Implement issue #306 — step 4/9: 2.2 In `src/analytics/tool-classification.ts`: add `'diagnostics'` to th
+- **agent:** Implement issue #306 — step 5/9: 3.1 Add a fact-schema test (follow the local `tests/analytics/normalizer
+- **agent:** Implement issue #306 — step 6/9: 3.2 Add `'diagnostics'` to the two `domain: z.enum([...])` literals (`To
+- **agent:** Implement issue #306 — step 7/9: 4.1 Following the local pattern, add a tool-preferences test: `parseTool
+- **agent:** Implement issue #306 — step 8/9: 5.1 Update the "richer domains collapse onto …" sentence in `src/tools/A
+- **agent:** Implement issue #306 — step 9/9: 6.1 Run `bun run test:affected` in the loop, then the full `bun run test
+- **agent:** Implement issue #305 — step 1/17: 1.1 Add failing test: `MakeToolsOptions` accepts optional `isBotAdmin?:
+- **agent:** Implement issue #305 — step 2/17: 1.2 Add the two optional fields to `MakeToolsOptions` in `src/tools/type
+- **agent:** Implement issue #305 — step 3/17: 2.1 Add failing tests in `tests/bot-message-handler.test.ts`: authorized
+- **agent:** Implement issue #305 — step 4/17: 2.2 Add failing queue-coalescing test (follow existing `actorRole` cover
+- **agent:** Implement issue #305 — step 5/17: 2.3 Add `isBotAdmin?: boolean` / `platformInstanceId?: string` to `Queue
+- **agent:** Implement issue #305 — step 6/17: 3.1 Add failing tests in `tests/llm-orchestrator-process-args.test.ts` (
+- **agent:** Implement issue #305 — step 7/17: 3.2 Append `isBotAdmin?: boolean`, `platformInstanceId?: string` to `Pro
+- **agent:** Implement issue #305 — step 8/17: 3.3 Add failing tests in `tests/llm-orchestrator-tools.test.ts` (uses `b
+- **agent:** Implement issue #305 — step 9/17: 3.4 Add `isBotAdmin?: boolean` / `platformInstanceId?: string` to `Invoc
+- **agent:** Implement issue #305 — step 10/17: 4.1 Create failing `tests/tools/diagnostics.test.ts` gate matrix: `makeT
+- **agent:** Implement issue #305 — step 11/17: 4.2 Add failing payload tests to `tests/tools/diagnostics.test.ts`: resu
+- **agent:** Implement issue #305 — step 12/17: 4.3 Create `src/tools/diagnostics.ts`: `makeRunDiagnosticsTool(platformI
+- **agent:** Implement issue #305 — step 13/17: 4.4 Add failing test in `tests/tools/diagnostics.test.ts` (or the prefs
+- **agent:** Implement issue #305 — step 14/17: 5.1 Add failing tests: `getToolMetadata('run_diagnostics')` returns `rea
+- **agent:** Implement issue #305 — step 15/17: 5.2 Add `diagnostics` to `TOOL_DOMAINS` and register `run_diagnostics: r
+- **agent:** Implement issue #305 — step 16/17: 6.1 Update `src/tools/CLAUDE.md` (extend the `MakeToolsOptions` exposure
+- **agent:** Implement issue #305 — step 17/17: 6.2 Run the full suite and all checks: `bun run test`, then `bun check:f
+- **agent:** Implement issue #314 — step 1/8: 1.1 In `tests/review-loop/git-identity.test.ts`, make the negative-path
+- **agent:** Implement issue #314 — step 2/8: 2.1 Add failing cases to `tests/scripts/test/mode.test.ts`: `selectMode`
+- **agent:** Implement issue #314 — step 3/8: 2.2 Implement in `scripts/test/mode.ts`: add `LOAD_DEMOTION_RATIO = 0.75
+- **agent:** Implement issue #314 — step 4/8: 3.1 Add failing cases to `tests/scripts/test/run.test.ts`: child argv ge
+- **agent:** Implement issue #314 — step 5/8: 3.2 Implement in `scripts/test/run.ts`: thread the plan from `selectMode
+- **agent:** Implement issue #314 — step 6/8: 3.3 Rewire `scripts/test/run-cli.ts`: feed `os.loadavg()[0]` and keep `o
+- **agent:** Implement issue #314 — step 7/8: 4.1 Update `AGENTS.md` ("Running and inspecting checks" section), `tests
+- **agent:** Implement issue #314 — step 8/8: 5.1 Run the full gates: `bun run test` (green on an idle host; summary s
+- **agent:** Implement issue #320 — step 1/10: 1.1 Rewrite `tests/debug/state-collector-lifecycle.test.ts` for the new
+- **agent:** Implement issue #320 — step 2/10: 1.2 Extend `tests/debug/state-collector.test.ts` with persistent-capture
+- **agent:** Implement issue #320 — step 3/10: 2.1 Add `resetLlmBuffers()` export to `src/debug/llm-trace-collector.ts`
+- **agent:** Implement issue #320 — step 4/10: 2.2 Rework `src/debug/state-collector.ts`: unfiltered `onEvent` capture
+- **agent:** Implement issue #320 — step 5/10: 3.1 Update `tests/runtime/production-deps.test.ts`: capture the subscrib
+- **agent:** Implement issue #320 — step 6/10: 3.2 Call `startEventCollector()` once inside `createProductionRuntimeDep
+- **agent:** Implement issue #320 — step 7/10: 4.1 Run the affected suite around the debug/runtime surfaces to catch fl
+- **agent:** Implement issue #320 — step 8/10: 4.2 Mutation ratchet on touched files (`src/debug/state-collector.ts`, `
+- **agent:** Implement issue #320 — step 9/10: 4.3 Update affected `docs/architecture/` pages (the debug/settings serve
+- **agent:** Implement issue #320 — step 10/10: 4.4 Full gate: complete `bun run test`, `bun run typecheck`, `bun run li
+- **agent:** Reconcile agent-branch pushes with a remote that advanced mid-run
+- **agent:** Reconcile before the review push's protected-path revert
+- **agent:** Implement issue #304 — step 1/24: 1.1 Extend `tests/i18n/parity.test.ts` (and dictionary shape tests) to r
+- **agent:** Implement issue #304 — step 2/24: 1.2 Add the `liveStatus` subtree to `src/i18n/types.ts` + `src/i18n/loca
+- **agent:** Implement issue #304 — step 3/24: 1.3 Fill the `liveStatus` subtree in `src/i18n/locales/ru.ts` (`💭 Думаю
+- **agent:** Implement issue #304 — step 4/24: 1.4 Add the `contextView` subtree to types + `en.ts`: `sections.<id>` fo
+- **agent:** Implement issue #304 — step 5/24: 1.5 Fill the `contextView` subtree in `ru.ts` (`Контекст`, `токенов`, `ф
+- **agent:** Implement issue #304 — step 6/24: 1.6 Fallback guard: add a test that blanks/omits one ru `liveStatus` key
+- **agent:** Implement issue #304 — step 7/24: 2.1 Test-first: `formatToolStatus` takes `locale`; ru renders catalog la
+- **agent:** Implement issue #304 — step 8/24: 2.2 Implement: REGISTRY entries swap `label: string` for the dictionary
+- **agent:** Implement issue #304 — step 9/24: 2.3 Test-first: `createStatusEngine` uses an injected `idleText` for `la
+- **agent:** Implement issue #304 — step 10/24: 2.4 Implement: add `idleText` to `StatusEngineDeps`, remove the exported
+- **agent:** Implement issue #304 — step 11/24: 2.5 Test-first: `LiveStatusReporterOptions.locale` (default `'en'`) driv
+- **agent:** Implement issue #304 — step 12/24: 2.6 Implement: reporter resolves `t('liveStatus.thinking', locale)` for
+- **agent:** Implement issue #304 — step 13/24: 2.7 Test-first + implement: `invokeWithLiveStatus` resolves `getContextL
+- **agent:** Implement issue #304 — step 14/24: 3.1 Test-first: `ContextSection` carries a stable `id`; `context-grid.ts
+- **agent:** Implement issue #304 — step 15/24: 3.2 Implement: add `id` to `ContextSection` (`context-types.ts`) and re-
+- **agent:** Implement issue #304 — step 16/24: 3.3 Test-first: collector emits section ids with labels via `t('contextV
+- **agent:** Implement issue #304 — step 17/24: 3.4 Implement: `collectContext` resolves labels/details through the cata
+- **agent:** Implement issue #304 — step 18/24: 3.5 Test-first + implement: `src/commands/context.ts` sets `snapshot.loc
+- **agent:** Implement issue #304 — step 19/24: 3.6 Test-first: all four renderers localize chrome (`Контекст`, `токенов
+- **agent:** Implement issue #304 — step 20/24: 3.7 Implement renderer chrome localization in `src/chat/{telegram,discor
+- **agent:** Implement issue #304 — step 21/24: 4.1 Run the full test suite and read the persisted report: `bun run test
+- **agent:** Implement issue #304 — step 22/24: 4.2 Run typecheck and lint: `bun run typecheck && bun run lint`
+- **agent:** Implement issue #304 — step 23/24: 4.3 Run the remaining checks (knip, format) via the wrapped gate: `bun c
+- **agent:** Implement issue #304 — step 24/24: 4.4 Update affected docs — sweep `docs/architecture/*.md` (behaviors.md
+- **sdd-runner:** Session ledger, sessionID capture seam, per-attempt transcripts
+- **sdd-runner:** Session resume behind the existing verbs
+- **sdd-runner:** Calm stop seam honored at round/stage boundaries
+- **hooks:** Tdd-steering-nudge — soften TDD block to advisory nudge
+- **review-loop:** Batch verify with theme spans and single build/inspect per round
+- **sdd-runner:** Ink TUI run + gate screens replace the prompter path
+- **sdd-runner:** TUI signals, restore, narrow mode, render-mode selection
+- **sdd-runner:** Five-key config and single-mode autonomy
+- **sdd-runner:** CLI cutover to sdd [<target>] + sdd stop
+- **review-loop:** Wire batch verification — aggregated build/inspect, stacked merge, budget deferral
+- **agent:** Fail fast on provider-stalled turns
+- **opencode-agent:** Add /sync to the command vocabulary and dispatch
+- **opencode-agent:** Git merge operations for base-merging
+- **opencode-agent:** The /sync side operation
+- **opencode-agent:** Thread maintainer steering notes into resumed prompts
+- **agent:** Refuse dependency-drifted branches at ensureBranch
+- **tools:** Give resolve_chat_participant a stable capability id
+- **agent:** Implement issue #308 — step 1/14: 1.1 Extend `tests/debug/log-buffer.test.ts` with failing assertions for
+- **agent:** Implement issue #308 — step 2/14: 1.2 Implement the helper in `src/debug/log-buffer.ts` (no new module).
+- **agent:** Implement issue #308 — step 3/14: 2.1 Extend `tests/debug/llm-trace-collector.test.ts` with failing
+- **agent:** Implement issue #308 — step 4/14: 2.2 Add `chatUserId` to `buildEndTrace`/`buildErrorTrace` in
+- **agent:** Implement issue #308 — step 5/14: 2.3 Add failing assertions for a trace shaping helper (same file):
+- **agent:** Implement issue #308 — step 6/14: 3.1 Write failing per-session tests (new
+- **agent:** Implement issue #308 — step 7/14: 3.2 Edit `src/debug/state-collector.ts`: delete `adminUserId` /
+- **agent:** Implement issue #308 — step 8/14: 3.3 Sweep `src/` for pino sites that log user-controlled content without
+- **agent:** Implement issue #308 — step 9/14: 4.1 Re-attribute the fixtures in `tests/debug/logs-route-content.test.ts
+- **agent:** Implement issue #308 — step 10/14: 4.2 Add failing route tests: a second admin's session gets own-attribute
+- **agent:** Implement issue #308 — step 11/14: 4.3 Edit `src/debug/server.ts`: `isAuthorizedRequest` returns the
+- **agent:** Implement issue #308 — step 12/14: 5.1 Write a new ADR at the next free slot (`docs/adr/04xx-…`, 0426+ at
+- **agent:** Implement issue #308 — step 13/14: 5.2 Extend the anonymity-contract section in
+- **agent:** Implement issue #308 — step 14/14: 6.1 Run the full suite and all checks: `bun run test`,
+- **sdd-runner:** Live-view wiring, bus exclusivity, Ink run-screen session
+- **sdd-runner:** Mount the running screen on start, resume, and gate-resume tails
+- **agent:** Implement issue #319 — step 1/6: 1.1 Add a test to `tests/debug/log-buffer.test.ts` that imports the real
+- **agent:** Implement issue #319 — step 2/6: 2.1 In `src/logger.ts`, add `{ level: logLevel, stream: logBufferStream
+- **agent:** Implement issue #319 — step 3/6: 3.1 In `src/debug/server.ts`, delete `logMultistream.add({ stream: logBu
+- **agent:** Implement issue #319 — step 4/6: 4.1 Update the stale `@public -- ... attached via logMultistream.add()`
+- **agent:** Implement issue #319 — step 5/6: 5.1 Run every existing suite that exercises start/stop and the /logs rou
+- **agent:** Implement issue #319 — step 6/6: 6.1 Run one full suite plus the complete check pipeline: `bun run test &
+- **agent:** Implement issue #333 — step 1/8: 1.1 Plan schema, structural validation, deterministic topo sort. Red-fir
+- **agent:** Implement issue #333 — step 2/8: 1.2 Child-file materialization through an injected fs seam. Red-first: e
+- **agent:** Implement issue #333 — step 3/8: 2.1 `planner` role and `PLAN_REPLAN_PASSES`. Red-first in `tests/sdd-run
+- **agent:** Implement issue #333 — step 4/8: 2.2 Optional `capabilities` on the depth-classification sidecar. Red-fir
+- **agent:** Implement issue #333 — step 5/8: 3.1 Three L2 event variants and the `'plan'` gate mode. Red-first in `te
+- **agent:** Implement issue #333 — step 6/8: 3.2 Additive `plan`/`children` state fields and the parent resume branch
+- **agent:** Implement issue #333 — step 7/8: 3.3 Replay `children` fold. Red-first in `tests/sdd-runner/replay.test.t
+- **agent:** Implement issue #333 — step 8/8: 4.1 Full gates and docs. Run one full `bun run test` (never two full sui
+- **sdd-runner:** Add the D4 plan digest helper to the part-1 data layer
+- **agent:** Implement issue #303 — step 1/16: 1.1 Red test: capacity constants of the turn/notification/tool-failure b
+- **agent:** Implement issue #303 — step 2/16: 1.2 Export `RECENT_TURNS_CAPACITY`, `RECENT_TOOL_FAILURES_CAPACITY` from
+- **agent:** Implement issue #303 — step 3/16: 2.1 Red test `tests/tools/diagnostics-logs.test.ts` with injected fake b
+- **agent:** Implement issue #303 — step 4/16: 2.2 Implement `src/tools/diagnostics-logs.ts` (`makeReadRecentLogsTool`,
+- **agent:** Implement issue #303 — step 5/16: 3.1 Red test `tests/tools/diagnostics-llm-traces.test.ts`: own traces (`
+- **agent:** Implement issue #303 — step 6/16: 3.2 Implement `src/tools/diagnostics-llm-traces.ts` (`makeReadLlmTracesT
+- **agent:** Implement issue #303 — step 7/16: 4.1 Red test `tests/tools/diagnostics-turns.test.ts`: listings exclude t
+- **agent:** Implement issue #303 — step 8/16: 4.2 Implement `src/tools/diagnostics-turns.ts` (`makeReadRecentTurnsTool
+- **agent:** Implement issue #303 — step 9/16: 5.1 Red test `tests/tools/diagnostics-tool-failures.test.ts`: entries fi
+- **agent:** Implement issue #303 — step 10/16: 5.2 Implement `src/tools/diagnostics-tool-failures.ts` (`makeReadRecentT
+- **agent:** Implement issue #303 — step 11/16: 6.1 Red: extend `tests/tools/diagnostics.test.ts` — family absent when `
+- **agent:** Implement issue #303 — step 12/16: 6.2 Extend `maybeAddDiagnosticsTools` in `src/tools/diagnostics.ts` to a
+- **agent:** Implement issue #303 — step 13/16: 6.3 Red test for prefs resolution: `deny` removes each reader from the r
+- **agent:** Implement issue #303 — step 14/16: 6.4 Register the four names in `TOOL_METADATA` (`src/tools/tool-metadata
+- **agent:** Implement issue #303 — step 15/16: 7.1 Update `src/tools/CLAUDE.md` and `docs/architecture/tools.md` to sur
+- **agent:** Implement issue #303 — step 16/16: 7.2 Full gates: `bun run test`, `bun run typecheck`, `bun run lint`, `bu
+- **agent:** Implement issue #340 — step 1/17: 1.1 Create `tests/plugins/task-provider-github/manifest.test.ts` asserti
+- **agent:** Implement issue #340 — step 2/17: 1.2 Create `tests/plugins/task-provider-github/activation.test.ts` (mirr
+- **agent:** Implement issue #340 — step 3/17: 1.3 Create `tests/plugins/task-provider-github/constants.test.ts` assert
+- **agent:** Implement issue #340 — step 4/17: 2.1 Create `tests/plugins/task-provider-github/validate-config.test.ts`
+- **agent:** Implement issue #340 — step 5/17: 3.1 Create `tests/plugins/task-provider-github/schemas/user.test.ts` and
+- **agent:** Implement issue #340 — step 6/17: 3.2 Create `tests/plugins/task-provider-github/schemas/issue.test.ts` as
+- **agent:** Implement issue #340 — step 7/17: 4.1 Create `tests/plugins/task-provider-github/client.test.ts` covering:
+- **agent:** Implement issue #340 — step 8/17: 4.2 Extend `client.test.ts` with pagination and rate-limit cases: the pa
+- **agent:** Implement issue #340 — step 9/17: 5.1 Create `tests/plugins/task-provider-github/classify-error.test.ts` w
+- **agent:** Implement issue #340 — step 10/17: 6.1 Create `tests/plugins/task-provider-github/mappers.test.ts` assertin
+- **agent:** Implement issue #340 — step 11/17: 7.1 Create `tests/plugins/task-provider-github/operations/projects.test.
+- **agent:** Implement issue #340 — step 12/17: 7.2 Create `tests/plugins/task-provider-github/operations/tasks.test.ts`
+- **agent:** Implement issue #340 — step 13/17: 8.1 Create `tests/plugins/task-provider-github/url-builder.test.ts` asse
+- **agent:** Implement issue #340 — step 14/17: 8.2 Create `tests/plugins/task-provider-github/prompt-addendum.test.ts`
+- **agent:** Implement issue #340 — step 15/17: 8.3 Create `tests/plugins/task-provider-github/provider.test.ts` asserti
+- **agent:** Implement issue #340 — step 16/17: 9.1 Run the new suite end-to-end and confirm green: `bun test tests/plug
+- **agent:** Implement issue #340 — step 17/17: 9.2 Update affected documentation: add the GitHub provider to the provid
+- **agent:** Implement issue #334 — step 1/21: 1.1 Test-first: extend `tests/i18n/parity.test.ts` (+ `tests/i18n/locale
+- **agent:** Implement issue #334 — step 2/21: 1.2 Add `emptyReleaseNote` to the `announcements` subtree in `src/i18n/t
+- **agent:** Implement issue #334 — step 3/21: 2.1 Test-first: extend `tests/db/announcement-schema.test.ts` (+ new `te
+- **agent:** Implement issue #334 — step 4/21: 2.2 Implement `src/db/migrations/080_release_announcement_bodies.ts` (06
+- **agent:** Implement issue #334 — step 5/21: 2.3 Test-first: `tests/announcements.test.ts` store cases — `updateHuman
+- **agent:** Implement issue #334 — step 6/21: 2.4 Implement the store changes in `src/announcements/store.ts` (`update
+- **agent:** Implement issue #334 — step 7/21: 2.5 Commit checkpoint: land the DB/migration/store step alone so `test:m
+- **agent:** Implement issue #334 — step 8/21: 3.1 Test-first: `tests/announcements.test.ts` humanize cases — one class
+- **agent:** Implement issue #334 — step 9/21: 3.2 Implement `src/announcements/humanize.ts`: `humanizeChangelog(rawSec
+- **agent:** Implement issue #334 — step 10/21: 4.1 Test-first: `tests/announcements/broadcast.test.ts` — new `broadcast
+- **agent:** Implement issue #334 — step 11/21: 4.2 Implement `src/announcements/broadcast.ts`: pure exported `selectAnn
+- **agent:** Implement issue #334 — step 12/21: 4.3 Test-first: `tests/announcements/announce-new-version.test.ts` — sta
+- **agent:** Implement issue #334 — step 13/21: 4.4 Implement `src/announcements.ts` (`announceNewVersion`): map-returni
+- **agent:** Implement issue #334 — step 14/21: 5.1 Test-first: `tests/debug/settings/admin/release-notes-routes.test.ts
+- **agent:** Implement issue #334 — step 15/21: 5.2 Implement `src/debug/settings/admin/release-notes-routes.ts` per des
+- **agent:** Implement issue #334 — step 16/21: 5.3 Test-first: `tests/client/settings/admin-release-notes-section.test.
+- **agent:** Implement issue #334 — step 17/21: 5.4 Implement the client: update `ReleaseNotesResponseSchema` (+ regener
+- **agent:** Implement issue #334 — step 18/21: 6.1 Run the full test suite once and read the persisted report (`bun run
+- **agent:** Implement issue #334 — step 19/21: 6.2 Run typecheck and lint: `bun run typecheck && bun run lint`
+- **agent:** Implement issue #334 — step 20/21: 6.3 Run the remaining checks (knip, format, license headers) via the wra
+- **agent:** Implement issue #334 — step 21/21: 6.4 Update `docs/architecture/behaviors.md` — the `release-announcements
+- **opencode-agent:** Carry red-run id on the ci trigger; add Actions jobs/log endpoints
+- **sdd-runner:** Session screen, slug ids, inline creation, liveness-aware stop
+- **opencode-agent:** Diagnose the red run itself in CI fix; remove AGENT_CHECKS
+- **sdd-runner:** Session screen loop with in-screen creation form
+- **sdd-runner:** Delete sessions from the screen behind a guarded confirmation
+- **opencode-agent:** Register /fix command with gating and transition pins
+- **opencode-agent:** Refuse a spent CI-fix budget before applying /fix
+- **opencode-agent:** Discover a command-bought round's failures from head check runs
+- **opencode-agent:** Door-aware wording in the CI-fix report
+- **opencode-agent:** Admit /fix in the workflow arm and grant checks:read
+- **agent:** Implement issue #343 — step 1/15: 1.1 Write failing `tests/plugins/task-provider-github/schemas/comment.te
+- **agent:** Implement issue #343 — step 2/15: 1.2 Write failing `tests/plugins/task-provider-github/schemas/label.test
+- **agent:** Implement issue #343 — step 3/15: 1.3 Implement `plugins/task-provider-github/schemas/comment.ts` (`GitHub
+- **agent:** Implement issue #343 — step 4/15: 2.1 Write failing cases in `tests/plugins/task-provider-github/mappers.t
+- **agent:** Implement issue #343 — step 5/15: 2.2 Add the comment and label mappers to `plugins/task-provider-github/m
+- **agent:** Implement issue #343 — step 6/15: 3.1 Write failing `tests/plugins/task-provider-github/operations/comment
+- **agent:** Implement issue #343 — step 7/15: 3.2 Implement `plugins/task-provider-github/operations/comments.ts` (`gi
+- **agent:** Implement issue #343 — step 8/15: 4.1 Write failing `tests/plugins/task-provider-github/operations/labels.
+- **agent:** Implement issue #343 — step 9/15: 4.2 Implement `plugins/task-provider-github/operations/labels.ts` (repo-
+- **agent:** Implement issue #343 — step 10/15: 5.1 Update `tests/plugins/task-provider-github/manifest.test.ts` to pin
+- **agent:** Implement issue #343 — step 11/15: 5.2 Grow `GITHUB_CAPABILITIES` (`plugins/task-provider-github/constants.
+- **agent:** Implement issue #343 — step 12/15: 6.1 Update `tests/plugins/task-provider-github/provider.test.ts`: capabi
+- **agent:** Implement issue #343 — step 13/15: 6.2 Implement the methods on `plugins/task-provider-github/provider.ts`,
+- **agent:** Implement issue #343 — step 14/15: 7.1 Update `plugins/task-provider-github/README.md`: replace the "commen
+- **agent:** Implement issue #343 — step 15/15: 8.1 Run the full gate: `bun test` (full suite), `bun run typecheck`, `bu
+- **agent:** Implement issue #347 — step 1/16: 1.1 Add failing cases to `tests/plugins/task-provider-github/schemas/eve
+- **agent:** Implement issue #347 — step 2/16: 1.2 Implement `plugins/task-provider-github/schemas/event.ts` (`GitHubIs
+- **agent:** Implement issue #347 — step 3/16: 1.3 Add failing cases to `tests/plugins/task-provider-github/schemas/use
+- **agent:** Implement issue #347 — step 4/16: 2.1 Add failing pure-function cases to `tests/plugins/task-provider-gith
+- **agent:** Implement issue #347 — step 5/16: 2.2 Implement `buildGitHubIssueSearchQuery` in `plugins/task-provider-gi
+- **agent:** Implement issue #347 — step 6/16: 3.1 Write failing `tests/plugins/task-provider-github/identity-resolver.
+- **agent:** Implement issue #347 — step 7/16: 3.2 Implement `plugins/task-provider-github/identity-resolver.ts`: `crea
+- **agent:** Implement issue #347 — step 8/16: 4.1 Write failing `tests/plugins/task-provider-github/operations/activit
+- **agent:** Implement issue #347 — step 9/16: 4.2 Implement `plugins/task-provider-github/operations/activities.ts` (`
+- **agent:** Implement issue #347 — step 10/16: 5.1 Write failing `tests/plugins/task-provider-github/operations/count.t
+- **agent:** Implement issue #347 — step 11/16: 5.2 Implement `plugins/task-provider-github/operations/count.ts` (`githu
+- **agent:** Implement issue #347 — step 12/16: 6.1 Update `tests/plugins/task-provider-github/manifest.test.ts` and `co
+- **agent:** Implement issue #347 — step 13/16: 6.2 Append `activities.read` and `tasks.count` to `GITHUB_CAPABILITIES`
+- **agent:** Implement issue #347 — step 14/16: 6.3 Update `tests/plugins/task-provider-github/provider.test.ts` first:
+- **agent:** Implement issue #347 — step 15/16: 7.1 Update `plugins/task-provider-github/README.md`: capabilities paragr
+- **agent:** Implement issue #347 — step 16/16: 7.2 Full gate: `bun run test`, then `bun run typecheck`, `bun run lint`,
+- **agent:** Implement issue #354 — step 1/20: 1.1 Write failing migration test `tests/db/migrations/081_alert_task_ins
+- **opencode-agent:** Claude CLI contract — line decoders and argv builder
+- **opencode-agent:** AGENT_BACKEND route, credential guard, scoped config
+- **opencode-agent:** Claude turn codes and the CLI connect layer
+- **opencode-agent:** The claude session adapter behind the seam
+- **opencode-agent:** Claude codes in the turn bypass list, neutral dead-backend wording
+- **opencode-agent:** Neutral AgentSession seam and the claude route wiring
+- **opencode-agent:** The claude OAuth credential file writer
+- **opencode-agent:** Spelling-dependent claude credential carrier, OAuth via apiKeyHelper
+- **opencode-agent:** Decode the claude init line's credential source
+- **opencode-agent:** Refuse the claude OAuth spelling at startup, citing the recording
+- **opencode-agent:** Profile-aware claude argv composition and the empty-MCP writer
+- **opencode-agent:** The credential spelling crosses to the native profile
+- **opencode-agent:** Decode the subscription rate-limit signature
+- **agent:** Implement issue #354 — step 2/20: 1.2 Extend `tests/db/migration-registration.test.ts` (081 is now last) a
+- **agent:** Implement issue #354 — step 3/20: 1.3 Add nullable `taskInstanceId` column (FK → `taskInstances.id`, `onDe
+- **agent:** Implement issue #354 — step 4/20: 1.4 Create `src/db/migrations/081_alert_task_instance_pin.ts` (`columnEx
+- **agent:** Implement issue #354 — step 5/20: 2.1 Extend `tests/deferred-prompts/alerts.test.ts` with failing tests: `
+- **agent:** Implement issue #354 — step 6/20: 2.2 In `src/deferred-prompts/types.ts` add `taskInstanceId: string | nul
+- **agent:** Implement issue #354 — step 7/20: 3.1 Add failing test coverage for alert creation pinning: alert created
+- **agent:** Implement issue #354 — step 8/20: 3.2 In `src/deferred-prompts/tool-handlers.ts` (`createAlert`/`executeCr
+- **agent:** Implement issue #354 — step 9/20: 4.1 Extend `tests/deferred-prompts/poller-alerts.test.ts` with failing t
+- **agent:** Implement issue #354 — step 10/20: 4.2 Add `resolveForInstance(contextId, taskInstanceId)` to `TaskProvider
+- **agent:** Implement issue #354 — step 11/20: 4.3 Widen `BuildProviderFn` in `src/deferred-prompts/proactive-llm-helpe
+- **agent:** Implement issue #354 — step 12/20: 4.4 In `src/deferred-prompts/poller-alerts.ts` group `pollAlertsOnce` by
+- **agent:** Implement issue #354 — step 13/20: 4.5 Wire `startPollers`' `buildProviderFn` in `src/runtime/production-ba
+- **agent:** Implement issue #354 — step 14/20: 5.1 Extend `tests/debug/settings/context-task-instance-routes.test.ts` w
+- **agent:** Implement issue #354 — step 15/20: 5.2 In `src/debug/settings/context-task-instance-routes.ts` `handlePatch
+- **agent:** Implement issue #354 — step 16/20: 5.3 Add failing delete-path test: deleting a task instance cancels all i
+- **agent:** Implement issue #354 — step 17/20: 5.4 In `src/debug/settings/admin/instances-routes.ts` `handleTaskInstanc
+- **agent:** Implement issue #354 — step 18/20: 6.1 Run the full suite: `bun run test` (then `bun run test:failures` if
+- **agent:** Implement issue #354 — step 19/20: 6.2 Run `bun run typecheck && bun run lint` (no lint-disable/type-ignore
+- **agent:** Implement issue #354 — step 20/20: 6.3 Update affected docs (`docs/architecture/behaviors.md` alert/task-in
+- **afk-runner:** C1 foundation — workspace, substrate copy, golden corpus
+- **agent:** Implement issue #363 — step 1/10: 1.1 Add root `vite.config.ts`: `svelte({ preprocess: vitePreprocess() })
+- **agent:** Implement issue #363 — step 2/10: 2.1 Extend `tests/scripts/build-client.test.ts` first with CSS-layering
+- **agent:** Implement issue #363 — step 3/10: 2.2 Rewrite `scripts/build-client.ts` to drive Vite's programmatic `buil
+- **agent:** Implement issue #363 — step 4/10: 2.3 Confirm `public/` retains no stray Vite-named assets (only the 12 co
+- **agent:** Implement issue #363 — step 5/10: 3.1 Relocate `scripts/svelte-plugin.ts` to `tests/utils/svelte-plugin.ts
+- **agent:** Implement issue #363 — step 6/10: 4.1 Add the dev-only HTML-rewrite middleware (`apply: 'serve'`) to `vite
+- **agent:** Implement issue #363 — step 7/10: 4.2 Add the `dev:client` script (`vite`) to `package.json`. Verify: `bun
+- **agent:** Implement issue #363 — step 8/10: 5.1 With the root config present, test dropping the `svelte()` splice/dy
+- **agent:** Implement issue #363 — step 9/10: 6.1 Update `docs/architecture/commands.md` (`build:client` internals now
+- **agent:** Implement issue #363 — step 10/10: 6.2 Run the full gates: `bun run test` (full suite, not `test:affected`)
+- **afk-runner:** C2 graph kernel — machine-as-data over xstate pure transition
+- **afk-runner:** C3 face 1 — full derived-state parity via root-level assigns
+- **afk-runner:** C3 face 2 — generic drive loop + append boundary
+- **afk-runner:** C3 task 3.1 — slimmed Tier 2 substrate copies
+- **afk-runner:** C3 face 3 — think-half work re-host + memo demotion + resume by replay
+- **afk-runner:** C3 face 4 — CLI wiring + live-shaped integration
+- **agent:** Implement issue #346 — step 1/18: 1.1 Optional `oversize` verdict on the depth surface. Red-first in `test
+- **agent:** Implement issue #346 — step 2/18: 1.2 Optional `runId`/`usage` on the child events. Red-first in `tests/sd
+- **agent:** Implement issue #346 — step 3/18: 2.1 `runIntake` returns a union with the oversize oracle and scaffold-af
+- **agent:** Implement issue #346 — step 4/18: 2.2 `runPlanner` with the structural replan loop. Red-first in `tests/sd
+- **agent:** Implement issue #346 — step 5/18: 3.1 `gate-model.ts` accepts child rows. Red-first in `tests/sdd-runner/g
+- **agent:** Implement issue #346 — step 6/18: 3.2 `gate-answers.ts` renders the identical grammar. Red-first in `tests
+- **agent:** Implement issue #346 — step 7/18: 3.3 `gate-render.ts` widens to plan mode. Red-first in `tests/sdd-runner
+- **agent:** Implement issue #346 — step 8/18: 4.1 `evaluatePlanGate`: R4 only. Red-first in `tests/sdd-runner/gate-pre
+- **agent:** Implement issue #346 — step 9/18: 4.2 `presentGateAt` accepts mode `'plan'`. Red-first in `tests/sdd-runne
+- **agent:** Implement issue #346 — step 10/18: 5.1 New `sdd-runner/src/children.ts` — `runPlanBranch`. Red-first in new
+- **agent:** Implement issue #346 — step 11/18: 5.2 `runChildren` sequential topo loop with event bookkeeping. Red-first
+- **agent:** Implement issue #346 — step 12/18: 5.3 Failure and completion semantics. Red-first in `tests/sdd-runner/chi
+- **agent:** Implement issue #346 — step 13/18: 5.4 Aggregate budget ledger fails closed. Red-first in `tests/sdd-runner
+- **agent:** Implement issue #346 — step 14/18: 5.5 Parent calm-stop is subtree-scoped. Red-first in `tests/sdd-runner/c
+- **agent:** Implement issue #346 — step 15/18: 6.1 `runStart` plan branch and parent resume interception. Red-first in
+- **agent:** Implement issue #346 — step 16/18: 6.2 Plan-gate resume in `runGateResume`. Red-first in `tests/sdd-runner/
+- **agent:** Implement issue #346 — step 17/18: 6.3 `settlePlanVeto` — one re-plan per veto round, unbounded rounds. Red
+- **agent:** Implement issue #346 — step 18/18: 7.1 Full gates, docs, and artifact reconciliation. Run one full `bun run
+- **agent:** Implement issue #368 — step 1/13: 1.1 `descendantGateOf` discovery. Red-first in `tests/sdd-runner/run-ind
+- **agent:** Implement issue #368 — step 2/13: 1.2 `continue`/resume descent into a pending child. Red-first in `tests/
+- **agent:** Implement issue #368 — step 3/13: 2.1 Mode-bearing listings and parent→child sole-candidate routing. Red-f
+- **agent:** Implement issue #368 — step 4/13: 3.1 `needs_split` report field and decomposer prompt. Red-first in `test
+- **agent:** Implement issue #368 — step 5/13: 3.2 Optional `changeName` on plan children + `RunChildRun` pass-through.
+- **agent:** Implement issue #368 — step 6/13: 3.3 Tail diversion through `runPlanner` + `runPlanBranch`. Red-first in
+- **agent:** Implement issue #368 — step 7/13: 3.4 Continuation start for the `changeName`-carrying child. Red-first in
+- **agent:** Implement issue #368 — step 8/13: 4.1 Renderer tree-event lines. Red-first in `tests/sdd-runner/renderer.t
+- **agent:** Implement issue #368 — step 9/13: 4.2 Run-view children block. Red-first in `tests/sdd-runner/run-view.tes
+- **agent:** Implement issue #368 — step 10/13: 5.1 Children rows, subtree totals, no parent task counts. Red-first in `
+- **agent:** Implement issue #368 — step 11/13: 6.1 Shared expected content fixes the self-check gap. Red-first in `test
+- **agent:** Implement issue #368 — step 12/13: 6.2 Child-row toggle semantics. Red-first in `tests/sdd-runner/tui-gate.
+- **agent:** Implement issue #368 — step 13/13: 7.1 Docs, full verification, commit. Update `docs/architecture/sdd-pipel
+- **agent:** Implement issue #364 — step 1/10: 1.1 Add failing tests to `tests/deferred-prompts/types.test.ts`: `task.i
+- **agent:** Implement issue #364 — step 2/10: 1.2 Implement in `src/deferred-prompts/types.ts`: add `'task.id'` to `CO
+- **agent:** Implement issue #364 — step 3/10: 2.1 Add failing tests to `tests/deferred-prompts/alerts.test.ts` `evalua
+- **agent:** Implement issue #364 — step 4/10: 2.2 Implement in `src/deferred-prompts/condition-eval.ts`: `getFieldValu
+- **agent:** Implement issue #364 — step 5/10: 3.1 Add failing tests to `tests/deferred-prompts/fetch-tasks.test.ts`: `
+- **agent:** Implement issue #364 — step 6/10: 3.2 Implement `fetchWatchedTasks(provider, ids, scope)` in `src/deferred
+- **agent:** Implement issue #364 — step 7/10: 4.1 Add failing tests to `tests/deferred-prompts/poller-alerts.test.ts`
+- **agent:** Implement issue #364 — step 8/10: 4.2 Implement in `src/deferred-prompts/poller-alerts.ts` per design D3/D
+- **agent:** Implement issue #364 — step 9/10: 5.1 Update `src/tools/create-alert.ts` condition/tool descriptions to me
+- **agent:** Implement issue #364 — step 10/10: 6.1 Run the full suite and gates: `bun run test`, then `bun run typechec
+- **agent:** Implement issue #360 — step 1/15: 1.1 Run `bun install` (container starts without `node_modules`). Verify:
+- **agent:** Implement issue #360 — step 2/15: 1.2 Record tool versions and machine shape (vCPU count) into design.md `
+- **agent:** Implement issue #360 — step 3/15: 1.3 Time the three configurations (median of 3 runs each): `bun run lint
+- **agent:** Implement issue #360 — step 4/15: 2.1 Create a scratch `git worktree add` checkout so planted errors never
+- **agent:** Implement issue #360 — step 5/15: 2.2 Plant the six probes (design.md D2 table) one class at a time in a s
+- **agent:** Implement issue #360 — step 6/15: 2.3 Enumerate `.oxlintignore` vs `tsconfig.json` include/exclude and rec
+- **agent:** Implement issue #360 — step 7/15: 2.4 Decide the branch against design.md D1 bars (R1 / R2 / N) and write
+- **agent:** Implement issue #360 — step 8/15: 3.1 Test-first: update `tests/scripts/check.test.ts` — full-mode log ass
+- **agent:** Implement issue #360 — step 9/15: 3.2 Remove `typecheck` from the checks array in `scripts/check.sh:335` a
+- **agent:** Implement issue #360 — step 10/15: 4.1 Test-first: add/extend a `tests/scripts/check.test.ts` (or nearest e
+- **agent:** Implement issue #360 — step 11/15: 4.2 Set `options.typeCheck` (and `typeAware`) to `false` in `.oxlintrc.j
+- **agent:** Implement issue #360 — step 12/15: 5.1 Change no gate, no test, no config; confirm the matrix and rationale
+- **agent:** Implement issue #360 — step 13/15: 6.1 Update `AGENTS.md` (timing table `lint` 35 s / `typecheck` 24 s rows
+- **agent:** Implement issue #360 — step 14/15: 6.2 End-to-end staged-path check on a clean tree. Verify: `./scripts/che
+- **agent:** Implement issue #360 — step 15/15: 6.3 Full gates. Verify: `bun run test` exits 0, `bun run typecheck` exit
+- **review-loop:** Render needs-human manual-change content in the run summary
+- **opencode-agent:** Surface the reverted protected-path diff in the review report
+- **agent:** Implement issue #369 — step 1/15: 1.1 Write failing migration test `tests/db/migrations/082_alert_activity
+- **agent:** Implement issue #369 — step 2/15: 1.2 Create `src/db/migrations/082_alert_activity_cursor.ts` (idempotent
+- **agent:** Implement issue #369 — step 3/15: 2.1 Write failing tests in `tests/deferred-prompts/types.test.ts`: activ
+- **agent:** Implement issue #369 — step 4/15: 2.2 Implement `activityLeafSchema` (`kind: 'activity'`, required `taskId
+- **agent:** Implement issue #369 — step 5/15: 2.3 Write failing walker tests (condition-eval suite): `extractActivityT
+- **agent:** Implement issue #369 — step 6/15: 2.4 Implement the walkers: `extractActivityTaskIds`/`isPureActivityCondi
+- **agent:** Implement issue #369 — step 7/15: 3.1 Write failing tests in `tests/deferred-prompts/alerts.test.ts`: `las
+- **agent:** Implement issue #369 — step 8/15: 3.2 Implement the round-trip, the `updateAlertActivityState` helper (sib
+- **agent:** Implement issue #369 — step 9/15: 4.1 Write failing poller tests in `tests/deferred-prompts/poller-alerts.
+- **agent:** Implement issue #369 — step 10/15: 4.2 Create `src/deferred-prompts/poller-alerts-activity.ts`: instance-le
+- **agent:** Implement issue #369 — step 11/15: 4.3 Wire the path into `src/deferred-prompts/poller-alerts.ts`: extend t
+- **agent:** Implement issue #369 — step 12/15: 5.1 Write failing tool tests in `tests/deferred-prompts/tools.test.ts` (
+- **agent:** Implement issue #369 — step 13/15: 5.2 Plumb the assembly-time boolean flag (`provider.capabilities.has('ac
+- **agent:** Implement issue #369 — step 14/15: 6.1 Update affected `docs/architecture/` pages: `tools.md` (activity con
+- **agent:** Implement issue #369 — step 15/15: 6.2 Run the full gate: `bun run test`, `bun run typecheck`, `bun run lin
+- **review-loop,opencode-agent:** Run review-loop agent roles on the Claude Code CLI
+- **agent:** Implement issue #371 — step 1/11: 1.1 Scaffold `tests/plugins/task-provider-github/graphql-client.test.ts`
+- **agent:** Implement issue #371 — step 2/11: 1.2 Add the failing `GITHUB_DEFAULT_GRAPHQL_URL` assertion to `tests/plu
+- **agent:** Implement issue #371 — step 3/11: 1.3 Implement `resolveGraphqlEndpoint(baseUrl)` in new `plugins/task-pro
+- **agent:** Implement issue #371 — step 4/11: 2.1 Add failing `githubGraphql` tests to `tests/plugins/task-provider-gi
+- **agent:** Implement issue #371 — step 5/11: 2.2 Implement `githubGraphql(config, query, variables, operation = 'read
+- **agent:** Implement issue #371 — step 6/11: 3.1 Add the failing GraphQL typing table to `tests/plugins/task-provider
+- **agent:** Implement issue #371 — step 7/11: 3.2 Extend `classifyGitHubError` in `plugins/task-provider-github/classi
+- **agent:** Implement issue #371 — step 8/11: 4.1 Add the scoped knip ignore `'plugins/task-provider-github/graphql-cl
+- **agent:** Implement issue #371 — step 9/11: 4.2 Add the developer-facing "GraphQL API support" section to `plugins/t
+- **agent:** Implement issue #371 — step 10/11: 5.1 Run the plugin suite and static gates, fixing anything surfaced: `bu
+- **agent:** Implement issue #371 — step 11/11: 5.2 Full-suite and release gates per the proposal's Verification section
+- **test-audit:** Benchmark harness core for consolidation speed evidence
+- **test-audit:** Benchmark CLI wiring + test:benchmark script
+- **test-audit:** Population projection joining benchmark costs with audit counts
+- **sdd-runner:** Stream-observability harness + factory-identity fixes (fancy-ui 1.x)
+- **sdd-runner:** Presentation modules tui-tokens, tui-panels, tui-width (fancy-ui 2.x-4.x)
+- **sdd-runner:** Tui-chrome — key-hints footer + help overlay reducer (fancy-ui 5.x)
+- **sdd-runner:** Presentation layer on gate + running screens (fancy-ui 6.1-6.2)
+- **sdd-runner:** Presentation on session screens + ack shell (fancy-ui 6.3-6.4)
+- **sdd-runner:** Static/live render split with spawn ordinals (fancy-ui 7.x)
+- **agent:** Implement issue #376 — step 1/13: 1.1 Cross-check every requirement in `specs/task-subscriptions/spec.md`
+- **agent:** Implement issue #376 — step 2/13: 2.1 Extend the `create_alert` block in `docs/architecture/tools.md` (~li
+- **agent:** Implement issue #376 — step 3/13: 2.2 In the same reference, document `tool_prefs` three-state behavior on
+- **agent:** Implement issue #376 — step 4/13: 2.3 Verify the three alert bullets in `docs/architecture/behaviors.md` (
+- **agent:** Implement issue #376 — step 5/13: 2.4 Check `docs/architecture/overview.md` module-map/request-flow lines
+- **agent:** Implement issue #376 — step 6/13: 3.1 Ensure client bundles exist (`bun run test` does not self-build): `b
+- **agent:** Implement issue #376 — step 7/13: 3.2 If any check below surfaces a defect in prior sessions' code: write
+- **agent:** Implement issue #376 — step 8/13: 3.3 Full suite, reading persisted artifacts for follow-ups instead of re
+- **agent:** Implement issue #376 — step 9/13: 3.4 `bun run typecheck`
+- **agent:** Implement issue #376 — step 10/13: 3.5 `bun run lint`
+- **agent:** Implement issue #376 — step 11/13: 3.6 `bun run format:check`
+- **agent:** Implement issue #376 — step 12/13: 3.7 `bun run check:full` (a failure names the log file under `reports/ch
+- **agent:** Implement issue #376 — step 13/13: 3.8 Final sweep: confirm the affected `docs/architecture/` pages (tasks
+- **sdd-runner:** Extract costOfUsage from repriceEvent
+- **opencode-agent:** Decode OpenCode's per-bucket token split
+- **opencode-agent:** Add the run cost ladder
+- **opencode-agent:** Record the rate-limit line without credentials
+- **opencode-agent:** Report what a run spent through the session seam
+- **opencode-agent:** Accumulate cost across an issue's jobs
+- **opencode-agent:** Render cost and subscription standing in Run detail
+- **scripts:** Add figma:sync — mirror Storybook story baselines into Figma boards
+- **scripts:** Add figma codegen registry core with validation
+- **scripts:** Add figma:connect validate/plan CLI
+- **scripts:** Add figma:verify pixel-compare loop
+- **scripts:** Register the five editable screens with section entries
+- **scripts:** Scope the figma registry to its file
+- **scripts:** Register 28 UI kit components in figma registry
+- **sdd-runner:** Review-loop concern memory — fingerprint merge, digest, thrash gate, consistency scan
+- **sdd-runner:** Unmetered config semantics — budget: null and optional metered flag (metered-budget 1/5)
+- **sdd-runner:** R4 metered carve-out — unmetered runs skip the cost-unknown veto (metered-budget 2/5)
+- **sdd-runner:** Deadline-waiter settles emit auto_decision events (metered-budget 3/5)
+- **sdd-runner:** Expiry ladder parity — waiter consumes the same metered-aware ladder (metered-budget 4/5)
+- **sdd-runner:** Signal-grounded oversize verdict — runner computes, agent observes (oversize-signals 1-2/5)
+- **sdd-runner:** Evented oversize routing — depth event carries signals and forced route (oversize-signals 3/5)
+- **sdd-runner:** --plan operator override forces the plan branch (oversize-signals 4/5)
+- **sdd-runner:** Read-only analysis IO seam — AnalyzeFs/git guard, tolerant run loading (artifact-analysis 1/5)
+- **sdd-runner:** Per-run analysis metrics — trajectory, gate forensics, lifecycle, consistency (artifact-analysis 2/5)
+- **sdd-runner:** Ground-truth join — openspec/git stranded-complete and merged-unimplemented (artifact-analysis 3/5)
+- **sdd-runner:** Analyze CLI verb — corpus report renderer, json mode, routing (artifact-analysis 4/5)
+- **sdd-runner:** Attribute r2 eligibility blocking causes per cap-hit state
+- **sdd-runner:** Render the r2 blocking-cause breakdown in report and JSON
+- **sdd-runner:** Split raised from open findings (tasks 1.1-2.2)
+- **sdd-runner:** Carry both count sets through the event log (task 3.1)
+- **sdd-runner:** Wire the split through the loop and cap-hit routing (4.1-5.2)
+- **sdd-runner:** Finish cap-hit resume and the ladder (tasks 5.3, 6.1-6.3)
+- **sdd-runner:** Carry reviewer gaps into gate rows, sanitized at the writer
+- **mutation:** Add cost estimation and shard division for the mutation gate
+- **mutation:** Add the shard plan command and coverage-map handoff
+- **mutation:** Add the shard measurement command
+- **mutation:** Combine shard results into the whole-branch verdict
+- **opencode-agent:** Define the token ceiling once, on the session seam
+- **mutation:** Baseline records carry score + counts, ratchet classifies dilution
+- **mutation:** Gate verdict carries dilution warnings, regression names kills
+- **mutation-improve:** Record-level baseline bump fed by the measurement path
+- **mutation-improve:** SELECT prompt describes the mixed-shape baseline map
+- **mutation:** Narrow the gateable roots to product code
+- **agent:** Implement issue #388 — step 1/18: 1.1 Red-first `tests/opencode-agent/config.test.ts`: `AGENT_EFFORT=high`
+- **agent:** Implement issue #388 — step 2/18: 1.2 Implement the resolution in `opencode-agent/src/config.ts:101-105` —
+- **agent:** Implement issue #388 — step 3/18: 2.1 Red-first `tests/opencode-agent/openai-config.test.ts`: the `propose
+- **agent:** Implement issue #388 — step 4/18: 2.2 Add `proposeEffort` to `ModelProfiles` (`opencode-agent/src/openai-c
+- **agent:** Implement issue #388 — step 5/18: 3.1 Red-first `tests/opencode-agent/claude-adapter.test.ts`: a `propose`
+- **agent:** Implement issue #388 — step 6/18: 3.2 Add `proposeEffort` to `ClaudeModelKnobs` and return it from `profil
+- **agent:** Implement issue #388 — step 7/18: 4.1 Red-first `tests/review-loop/agent-command.test.ts`: the claude bran
+- **agent:** Implement issue #388 — step 8/18: 4.2 Red-first for the loop-side validation: a role config with a malform
+- **agent:** Implement issue #388 — step 9/18: 4.3 Add the optional `effort` string to `AgentConfigSchema` (`review-loo
+- **agent:** Implement issue #388 — step 10/18: 4.4 Add `effort?: string` to `AgentCommandOptions` and append `'--effort
+- **agent:** Implement issue #388 — step 11/18: 4.5 Thread `effort` through `RunAgentOptions` and `attemptRun` (`review-
+- **agent:** Implement issue #388 — step 12/18: 4.6 Extend `tests/opencode-agent/claude-doctrine.test.ts`'s tail-equalit
+- **agent:** Implement issue #388 — step 13/18: 5.1 Red-first `tests/opencode-agent/review-runner.test.ts`: the role `ag
+- **agent:** Implement issue #388 — step 14/18: 5.2 Set `effort: settings.openai.profiles?.buildEffort ?? null` on the c
+- **agent:** Implement issue #388 — step 15/18: 6.1 Update `opencode-agent/README.md`: the env table (`:1655-1656`) gain
+- **agent:** Implement issue #388 — step 16/18: 6.2 Add one line on the shared variable and its precedence to `opencode-
+- **agent:** Implement issue #388 — step 17/18: 6.3 Record the workflow hand-off (it cannot be applied from this pipelin
+- **agent:** Implement issue #388 — step 18/18: 6.4 One full `bun run test`, `bun run typecheck`, `bun run lint` — all g
+- **agent:** Implement issue #393 — step 1/15: 1.1 Write failing tests in `tests/opencode-agent/claude-env-knob.test.ts
+- **agent:** Implement issue #393 — step 2/15: 1.2 Create `opencode-agent/src/claude-env-knob.ts`: `parseClaudeEnv` (bl
+- **agent:** Implement issue #393 — step 3/15: 1.3 Lint and format the new module. Verify: `bun run lint` && `bun run f
+- **agent:** Implement issue #393 — step 4/15: 2.1 Write failing tests in `tests/opencode-agent/config.test.ts`: `loadC
+- **agent:** Implement issue #393 — step 5/15: 2.2 Add `claudeEnv: Record<string, string> | null` to `PipelineConfig` i
+- **agent:** Implement issue #393 — step 6/15: 3.1 Write failing tests in `tests/opencode-agent/claude-connect.test.ts`
+- **agent:** Implement issue #393 — step 7/15: 3.2 Implement in `claude-connect.ts`: optional `customEnv: Record<string
+- **agent:** Implement issue #393 — step 8/15: 4.1 Write failing tests: in `tests/opencode-agent/claude-adapter.test.ts
+- **agent:** Implement issue #393 — step 9/15: 4.2 Plumb in `contain.ts` (`claudeSessionOptions` gains the field) and `
+- **agent:** Implement issue #393 — step 10/15: 5.1 Write failing tests: in `tests/opencode-agent/config.test.ts`, `pipe
+- **agent:** Implement issue #393 — step 11/15: 5.2 Implement: `claudeEnvSecrets` collector in `secrets.ts` appended in
+- **agent:** Implement issue #393 — step 12/15: 6.1 Document the knob in `opencode-agent/README.md`'s claude-route secti
+- **agent:** Implement issue #393 — step 13/15: 6.2 Surface the maintainer hand-edit — do **not** edit `.github/workflow
+- **agent:** Implement issue #393 — step 14/15: 7.1 Run the mutation ratchet over the touched files. Verify: `bun run te
+- **agent:** Implement issue #393 — step 15/15: 7.2 Run the full suite, typecheck and lint; confirm affected docs: `docs
+- **agent:** Implement issue #387 — step 1/23: 1.1 Add failing assertions to `tests/opencode-agent/claude-contract.test
+- **agent:** Implement issue #387 — step 2/23: 1.2 Add failing no-regression assertions to the same file: `success-turn
+- **agent:** Implement issue #387 — step 3/23: 1.3 Add failing tolerance assertions to the same file over hand-built `r
+- **agent:** Implement issue #387 — step 4/23: 1.4 Extend `opencode-agent/src/claude-contract.ts`: add the optional, en
+- **agent:** Implement issue #387 — step 5/23: 1.5 Record the decisions in the file's own doctrine comments — why `mode
+- **agent:** Implement issue #387 — step 6/23: 2.1 Add failing assertions to `tests/opencode-agent/claude-adapter.test.
+- **agent:** Implement issue #387 — step 7/23: 2.2 Add failing assertions to the same file that the `unpriced` path is
+- **agent:** Implement issue #387 — step 8/23: 2.3 Confirm `opencode-agent/src/claude-spend.ts` needs no arithmetic cha
+- **agent:** Implement issue #387 — step 9/23: 2.4 Add a failing assertion for the progress log line (`tests/opencode-a
+- **agent:** Implement issue #387 — step 10/23: 2.5 Extend `opencode-agent/src/claude-progress.ts` to log the split on t
+- **agent:** Implement issue #387 — step 11/23: 3.1 Add failing assertions to `tests/opencode-agent/adapters.test.ts` fo
+- **agent:** Implement issue #387 — step 12/23: 3.2 Add failing assertions to the same file for summing `SessionUsage` v
+- **agent:** Implement issue #387 — step 13/23: 3.3 Implement the children decoder and the usage sum in `opencode-agent/
+- **agent:** Implement issue #387 — step 14/23: 4.1 Add failing assertions to `tests/opencode-agent/adapters.test.ts` wi
+- **agent:** Implement issue #387 — step 15/23: 4.2 Add failing degradation assertions to the same file: a `session.chil
+- **agent:** Implement issue #387 — step 16/23: 4.3 Thread a `Logger` into `connectSdk` from the adapter's existing `opt
+- **agent:** Implement issue #387 — step 17/23: 4.4 Implement the breadth-first walk in `opencode-agent/src/opencode-con
+- **agent:** Implement issue #387 — step 18/23: 4.5 Confirm the unrelated seams are untouched — `alive`'s probe, `abort`
+- **agent:** Implement issue #387 — step 19/23: 5.1 Confirm the downstream ladder is unmoved: no change to rung ordering
+- **agent:** Implement issue #387 — step 20/23: 5.2 Confirm no cross-workspace drift gate trips — `review-loop/src/claud
+- **agent:** Implement issue #387 — step 21/23: 5.3 Confirm the mutation gate still passes with the new arithmetic pinne
+- **agent:** Implement issue #387 — step 22/23: 5.4 Update the affected prose: `opencode-agent/CLAUDE.md` (a run's accou
+- **agent:** Implement issue #387 — step 23/23: 5.5 Run the full gates. Verify: `bun test`, `bun run typecheck`, `bun ru
+- **recurrence:** Parse rrules under RFC 5545 strict mode
+- **agent:** Implement issue #397 — step 1/11: 1.1 Write failing `tests/deferred-prompts/proof-store.test.ts` (imports
+- **agent:** Implement issue #397 — step 2/11: 1.2 Implement `src/deferred-prompts/proof-store.ts` per design D5: appen
+- **agent:** Implement issue #397 — step 4/11: 2.2 Implement `src/deferred-prompts/proof-checks.ts` (D6/D7/D8): registr
+- **agent:** Implement issue #397 — step 5/11: 2.3 Write failing delivery-record tests (same file): the poller seam app
+- **agent:** Implement issue #397 — step 6/11: 2.4 Add the marker-gated pure-record line to `src/deferred-prompts/polle
+- **agent:** Implement issue #397 — step 7/11: 3.1 Write failing `tests/tools/proof-checks.test.ts` (imports both new t
+- **agent:** Implement issue #397 — step 8/11: 3.2 Implement `src/tools/proof-check-run.ts` and `src/tools/proof-checks
+- **agent:** Implement issue #397 — step 9/11: 3.3 Register in `src/tools/tool-metadata.ts`: `run_proof_check` → `write
+- **agent:** Implement issue #397 — step 10/11: 4.1 Add one bullet each, marked disposable (to be removed with the modul
+- **agent:** Implement issue #397 — step 11/11: 4.2 Final gate: run full `bun test`, `bun run typecheck`, and `bun run l
+- **agent:** Implement issue #403 — step 1/14: 1.1 Create `docs/architecture/afk-runner-mcp-research.md` as a skeleton:
+- **agent:** Implement issue #403 — step 2/14: 1.2 Build the throwaway experiment rig in a temp dir (not committed): mi
+- **agent:** Implement issue #403 — step 3/14: 2.1 Run the merge-vs-override experiment, **ambient-only** configuration
+- **agent:** Implement issue #403 — step 4/14: 2.2 Run merge-vs-override, **content-set** configuration: discovered fil
+- **agent:** Implement issue #403 — step 5/14: 2.3 Drive the claude native-profile spawn shape (`--strict-mcp-config --
+- **agent:** Implement issue #403 — step 6/14: 2.4 Re-ground the degrade-never-hang and unattended-grant claims through
+- **agent:** Implement issue #403 — step 7/14: 3.1 Write the injection-surface comparison: options (a) `OPENCODE_CONFIG
+- **agent:** Implement issue #403 — step 8/14: 3.2 Write the scoping comparison: per-role vs per-stage vs per-depth vs
+- **agent:** Implement issue #403 — step 9/14: 3.3 Write the server catalogue: structural code index, papai-hosted remo
+- **agent:** Implement issue #403 — step 10/14: 3.4 Write the credentials/security/degradation section: S3-9 model-reada
+- **agent:** Implement issue #403 — step 11/14: 3.5 Write the ranked recommendation, the named follow-ups (credential co
+- **agent:** Implement issue #403 — step 12/14: 3.6 Fill the D8 boundary statements in full: gating (opencode permission
+- **agent:** Implement issue #403 — step 13/14: 4.1 Add the one-line pointer in `docs/architecture/afk-runner.md` and th
+- **agent:** Implement issue #403 — step 14/14: 4.2 Final: run full `bun test`, `bun run typecheck`, `bun run lint`, and
+
+### Changed
+
+- **coverage:** Name the story-scope discovery concurrency limit
+- **stories:** Move the fake YouTrack server into the frozen story harness
+- **deferred:** Isolate poller scheduler lifecycle
+- **telegram:** Drop unused facade re-exports
+- **test:** Make LOAD_DEMOTION_RATIO module-private in scripts/test/mode.ts
+- **test:** Read only new tail bytes per poll via positioned readSync on one fd
+- **debug:** Drop unused resetTurnBuffers re-export from state-collector
+- **live-status:** Resolve thinking text once in reporter
+- **commands:** Resolve /context locale once and drop redundant snapshot.locale reassignment
+- **tests:** Drop obsolete TDD-transition aliases in locale test suites
+- **chat:** Extract shared renderTableContext from mattermost/kontur-talk renderers
+- **debug:** Drop redundant collectorStarted flag; event-bus Set idempotency suffices
+- **debug:** Remove production-dead LogRingBuffer.search/countMatching and applyFilter
+- **debug:** Inline searchParam helper as nullish coalescing in handleLogs
+- **debug:** Reuse shared jsonResponse helper in log-routes
+- **debug:** Replace local jsonResponse duplicate in server.ts with shared helper
+- **tools:** Dedupe runProbe into shared exported helper in diagnostics.ts
+- **tools:** Share one tailStats/BufferStats derivation across diagnostics readers
+- **tools:** Shape only the returned tail in read_llm_traces instead of the whole trace buffer
+- **announcements:** Run per-locale write passes via sequential promise-chain reduce, drop modul
+- **announcements:** Drop dead ?? rawSection fallback via non-null overload on selectAnnouncemen
+- **opencode-agent:** Retire the claude helper carrier, keep the recorded seams
+- **providers:** Dedupe resolve instance gate by delegating to resolveForInstance
+- **ts:** Migrate the AST scanners to TypeScript 7 and drop typescript6
+- **ts-ast:** Parse all three AST scanners in-process via oxc-parser
+- **afk-runner:** Extract R3 blast-radius triage to assumption-blast.ts — classifyAssumptions with its ClassifiableAssumption/ClassifiedAssumption/ClassifyContext types moves out of auto-policy.ts verbatim (pure move, gate-prelude rewired, the R3 describe moved to assumption-blast.test.ts); auto-policy keeps the ladder only; affected suites 50/50
+- **sdd-runner:** Inline always-true collectPlanDecision and drop dead abandoned branch in plan-
+- **sdd-runner:** Hoist gate-resume dispatch into gate-resume-entry above orchestrator, removing
+- **sdd-runner:** Reuse rowsOf for plan-gate C<n> row mapping
+- **sdd-runner:** Drop constant-false clause in isInterrupted
+- **sdd-runner:** Drop DEFAULT_FS duplicate in children.ts, rely on plan.ts default parameter
+- **sdd-runner:** Drop unused exports on MAX_VALIDATION_ATTEMPTS and gateRowText
+- **sdd-runner:** Delegate presentReplannedGate to runPlanBranch via version/skipPolicy options
+- **sdd-runner:** Remove dead applyConfirmAll export and its test
+- **sdd-runner:** Dedupe AgentUsage fold into EMPTY_USAGE + plusUsage
+- **sdd-runner:** Reuse RunChildRun type in ChildFlightSeams instead of restating the signature
+- **sdd-runner:** Use exported ResolveCostFn instead of Parameters<> lookup in child-settle.ts
+- **deferred-prompts:** Make HistoryRequest module-local and drop obsolete knip exports-ignore
+- **deferred-prompts:** Make activity-leaf taskId required and drop dead undefined guards
+- **deferred-prompts:** Dedupe not-found classification into shared classifyNotFound helper
+- **opencode-agent:** Fold killSeamsOf/teardownSeamsOf conditional spreads into direct assignmen
+- **tools:** Derive run_proof_check enum from PROOF_CHECKS registry
+- **tools:** Narrow read_proof_results store contract to load-only
+
+### Documentation
+
+- **spec:** Design for scoping and seeding the T0 story coverage denominator
+- **plan:** Implementation plan for the T0 story coverage denominator
+- **plan:** Await the rejects assertions in the discovery tests
+- **specs:** Design real YouTrack provider coverage in the T0 story lane
+- **coverage:** Specify debug HTTP story phase
+- **plans:** Plan real YouTrack provider coverage in the T0 story lane
+- **specs:** Design a bidirectional story catalog census
+- **plans:** Plan debug and settings HTTP story coverage
+- **specs:** Correct the census orphan count to 19
+- **plans:** Plan the bidirectional story catalog census
+- **plans:** Make the census exemption contract falsifiable and share the T2/T3 lane scan
+- **tests:** Document the bidirectional catalog census
+- **plans:** Correct the census plan's counts for the Tier 3 bypass it found
+- **stories:** Design uncatalogued catalog foundation
+- **stories:** Classify uncatalogued adapter coverage
+- **stories:** Plan uncatalogued catalog foundation
+- **stories:** Design Phase 3 pure helper coverage
+- **stories:** Plan Phase 3 pure helper coverage
+- **stories:** Design Tier-0 runtime flows
+- **stories:** Plan Tier-0 runtime flows
+- **stories:** Correct runtime flow verification
+- **stories:** Design staged attachments and BYOK
+- **stories:** Plan staged attachments and BYOK
+- **stories:** Design announcement fanout slice
+- **stories:** Plan announcement fanout slice
+- **stories:** Correct fanout story command
+- **stories:** Design Tier 3 platform adapter lane
+- **stories:** Plan Tier 3 platform adapter lane
+- **stories:** Design real Kaneo provider lane
+- **stories:** Plan real Kaneo provider lane
+- **stories:** Narrow Kaneo transport scope
+- **stories:** Admit real Kaneo instance hosts
+- **stories:** Correct Kaneo error classification
+- **stories:** Complete Phase 2 coverage scope
+- **stories:** Plan Phase 2 HTTP coverage
+- **sdd:** Add task-3 report
+- **stories:** Use --fixture flag in phase 2 plan commands
+- **stories:** Specify Phase 3 completion
+- **stories:** Plan Phase 3 completion
+- **plugins:** Document instance-scoped provider hosts
+- **stories:** Specify Phase 4 chat adapter coverage
+- **stories:** Name Phase 4 refactor policy
+- **stories:** Plan Phase 4 chat coverage
+- **stories:** Document adapter transport boundary
+- **platform:** Design Tier 3 callback routing coverage
+- **platform:** Plan Tier 3 callback routing
+- **stories:** Correct callback scenario status to executable Tier 3
+- **coverage:** Add global refactor roadmap
+- **coverage:** Split remaining coverage plans
+- Reconcile aggregate delivery coverage plan
+- Track global refactor coverage plan and current task-4 report
+- Record why analytics derive coverage tasks 2-4 were stopped
+- **openspec:** Adopt this branch's pending plans as OpenSpec changes
+- **openspec:** Hand the T0 floor climb to its own change
+- **openspec:** Correct which inputs retire the story baseline
+- **stories:** Record the Phase 0 qualification baseline
+- **commands:** Point the compat procedure at the recorded baseline
+- **analytics:** Record the Stage C consent-grant operator step
+- **openspec:** Align the eligibility-grant spec with the shipped lane vocabulary
+- **openspec:** Refresh the floor-climb plan for the landed eligibility grant
+- **openspec:** Record the measured floor-climb budget
+- **stories:** Re-record the refactor qualification baseline
+- **openspec:** Close out the story-coverage floor climb
+- **openspec:** Draft artifacts for diagnostics-tool-domain
+- **stories:** Re-record the qualification baseline on the master merge
+- **analytics:** Record stage C export and key backup/restore drills, v6.14.1 fix verification
+- **openspec:** Propose tool-call-duration-integer — round fractional duration_ms at source + normalize migration
+- **openspec:** Draft artifacts for admin-gated-diagnostics-tools
+- **tools:** Map run_diagnostics to the diagnostics analytics domain after master merge
+- **tools:** Correct /context diagnostics claim for the degraded cached fallback
+- **openspec:** Draft artifacts for lighter-unit-tests-under-load
+- **analytics:** Record the tool-lane invalid_value root cause in stage C evidence
+- **openspec:** Draft artifacts for event-derived-buffers
+- **agent:** The reconciling push rule in CLAUDE.md
+- **openspec:** Draft artifacts for localize-live-status-and-context
+- **sdd-runner:** Pipeline doc rewritten for the routing surface
+- **opencode-agent:** /sync and steering-note documentation
+- **refactor:** Re-record the qualification baseline at d17459ee5
+- **refactor:** Set the bar for closing a coverage dimension
+- **refactor:** Name the refactor and attach seams to behaviors
+- **openspec:** Propose participant-resolution-stories
+- **refactor:** Close chat-participant-resolution on the roadmap
+- **refactor:** Re-record the qualification baseline at 7e7794644
+- **openspec:** Draft artifacts for diagnosis-surface-visibility-policy
+- **sdd-pipeline:** Gate front-ends and live rendering match the wired TUI
+- **openspec:** Draft artifacts for attach-log-buffer-at-startup
+- **openspec:** Draft artifacts for sdd-runner-decomposition
+- **openspec:** Draft artifacts for self-diagnosis-tools
+- **openspec:** Draft artifacts for github-issues-task-provider
+- **task-provider-github:** State host allowlist as declared, not request-time enforced (KNOWN GAP #15)
+- **openspec:** Draft artifacts for localize-release-announcements
+- **opencode-agent:** Teach CLAUDE.md and README the /fix door
+- **openspec:** Draft artifacts for github-provider-comments-labels
+- **openspec:** Draft artifacts for github-provider-identity-history-count
+- **openspec:** Draft artifacts for pin-alerts-to-task-instances
+- **openspec:** Propose claude CLI as a selectable model backend
+- **openspec:** Check off the recorder authoring task (1.1)
+- **opencode-agent:** The claude backend's operator surface
+- **openspec:** Check off the verification sweep (10.2)
+- **opencode-agent:** Resolve the claude OAuth caveat to the recorded outcome
+- **opencode-agent:** The two claude profiles and their trade-offs
+- **opencode-agent:** Record the 5.2 deferral and the bare corpus' standing
+- **opencode-agent:** The setup checklist for switching to the claude backend
+- **mutation:** Document Stryker 10 toolchain and runner patch
+- **readme:** Note Stryker 10 toolchain in mutation testing section
+- **agent:** Drift guard is content-aware — fields, defaults, #360
+- **openspec:** Add afk-runner change — graph kernel V1 (C1–C2) with grounded corpus plan
+- **openspec:** Draft artifacts for vite-client-build
+- In-process parsing reality across CLAUDE.md, tests guide, mutation README
+- **openspec:** Afk-runner C2 exploration — corpus-grounded kernel decisions
+- **afk-runner:** C1–C2 close-out — architecture doc + verification sweep
+- **afk-runner:** C3 close-out — engine loop live, D1-D7 pointers for C4-C7
+- **afk-runner:** C4 delivered — gate lifecycle, seam, waiter, ladder
+- **openspec:** Propose cross-run-accounting + log-fidelity — U9 R3 portfolio accounting as a passive afk-runner runs verb; round_open owedness invariant + resume-event producer for the C8 log-fidelity holes
+- **openspec:** Capture the mirror-wave gaps — operator-paper-cuts proposed, open-vs-raised and run-analysis extended
+- **openspec:** Develop afk-runner-spec-home — four umbrella specs, design, tasks, doc cross-refs
+- **openspec:** Land the queued mirror-wave proposals and missing change scaffolds
+- **openspec:** Develop afk-runner-open-vs-raised — pipeline delta splits raised from open (openness predicate, three-valued verdict, verification round, per-round hash snapshots, sanitized gap rows) and autonomy delta points R1/R2 and a new counts integrity cross-check at the open set; design carries the three resolved seams (verify routing in runReviewWork with the fold-derived one-round bound and metered guard, fresh gate-integrity.ts with master's synthesized POLICY-INTEGRITY blocker, metered-budget rebase constraints); 17 red-first tasks across 8 sections; openspec validate --strict green
+- **openspec:** Draft artifacts for sdd-runner-decomposition-2nd
+- **openspec:** Draft artifacts for sdd-runner-decomposition-3rd
+- **openspec:** Draft artifacts for alert-task-watch
+- **openspec:** Draft artifacts for dedupe-lint-typecheck
+- Record the protected-paths rule and the push-point doctrine
+- Record the protected-paths rule in the review-loop fix contract
+- **opencode-agent:** Drop stale typecheck leg from check:full fan-out in review-pool rationale
+- **review-loop,opencode-agent:** Self-contained suggested fixes; guard reports reverted diffs
+- **openspec:** Draft artifacts for alert-activity-condition
+- **tools:** Correct update-path activity gating: only mixedActivityTreeError applies, capability gate is create-only
+- **analytics:** Extend Stage C evidence daily log 2026-08-20..27
+- **openspec:** Draft artifacts for github-provider-graphql-api
+- **openspec:** Record tests-consolidation 5.4 gate evidence post-rebase
+- **openspec:** Record speed-evidence benchmark + projection, go/no-go reading
+- **openspec:** Complete test-consolidation-speed-evidence wrap-up
+- List test:benchmark in the test-tooling command surfaces
+- **research:** Measured survey of test-suite speedup methods
+- **openspec:** Propose three speedup changes from the 2026-08-26 survey
+- **tests:** State the bun env-propagation version dependence
+- **sdd-pipeline:** Presentation layer in Live rendering / Gate decisions / Commands (fancy-ui 9.1)
+- **openspec:** Draft artifacts for task-provider-subscriptions
+- **openspec:** Propose USD run accounting and Claude limit reporting
+- **openspec:** Require remaining-quota percentages, pin the CLI floor
+- **opencode-agent:** Record the accounting surface and the pin floor
+- **skill:** Add figma-codegen agent skill with CLAUDE.md routing
+- Add figma-codegen fallback usage guide
+- **openspec:** Sync figma-codegen capability specs to main
+- **skill:** Codify figma push and idempotence scripts
+- **figma:** Treat backdrop plates as canvas furniture, not codegen input
+- **analytics:** Extend Stage C evidence daily log 2026-08-28
+- **openspec:** Sdd-spec-repair — verify-only pass, 8/8 tasks
+- **sdd-runner:** Metered-budget — unmetered keys, waiter audit events, expiry parity (metered-budget 5/5)
+- **sdd-runner:** Oversize routing — signal-grounded verdict, --plan override, evented decisions (oversize-signals 5/5)
+- **sdd-runner:** Analysis section, within-round dup metric, acceptance record (artifact-analysis 5/5)
+- **openspec:** Sdd-oversize-estimator-signals proposal, design, and intake-routing spec
+- **openspec:** Propose sdd-runner-open-vs-raised
+- **sdd-pipeline:** Record wave-4 known limitations, correct two claims
+- **openspec:** Propose sharding the mutation PR gate across a sized matrix
+- **mutation:** Document the sharded gate topology
+- **openspec:** Propose claude-route-pricing-reference
+- **opencode-agent:** Scope LLM_PROVIDER to the route that reads it
+- **openspec:** Propose token-ceiling-excludes-cache-reads
+- **opencode-agent:** Record what the token ceiling counts
+- **mutation:** Record shape, regression-vs-dilution verdict, lazy migration (ADR-0427)
+- **readme:** Mutation ratchet section reflects record shape and dilution verdict
+- **claude:** Testing notes reflect record shape and regression-vs-dilution verdict
+- **openspec:** Propose narrow-mutation-gate-scope
+- **openspec:** Propose fix-write-policy-suppression-guard
+- **openspec:** Draft artifacts for opencode-agent-shared-effort-tier
+- **openspec:** Draft artifacts for claude-route-custom-env
+- **openspec:** Draft artifacts for agent-run-accounting-subagent-spend
+- **opencode-agent:** Fold orphaned duplicate JSDoc into decodeSessionUsages doc comment
+- **analytics:** Extend Stage C evidence daily log 2026-08-29..09-01
+- **openspec:** Capture telegram rich-message inbound and outbound-rollout changes
+- **openspec:** Draft artifacts for deferred-prompt-proof-checks
+- **openspec:** Draft artifacts for afk-runner-mcp-integration-research
+- **afk-runner:** Correct strict RunnerConfigSchema key count from five to six
+- **afk-runner-mcp-research:** Anchor name-alphabet rule at mcp-servers.ts:33
+- **afk-runner:** Count seven spawn sites and relabel the review lens site
+- **afk-runner:** Qualify file-channel grant-safety label in §1.4 option table
+- **afk-runner:** Correct agent-noise-schemas anchor end line to 72
+- **afk-runner-mcp:** Correct design context to seven spawn sites
+- **afk-runner-mcp-research:** Fix two CLAUDE.md line anchors shifted by the docs-table row
+
+### Fixed
+
+- **coverage:** Bound story-scope discovery concurrency with p-limit
+- **stories:** Correct youtrack-real title/comment and hoist hostOf in strict-http
+- **stories:** Stop scanner flagging curried test-modifier callees as violations
+- **smoke:** Recognize bun:test's it() alias so a bypass under it is loud
+- **kaneo:** Inject client transport
+- **kaneo:** Route plugin requests through runtime transport
+- **story:** Capture story-coverage-report in sandbox snapshot
+- **story:** Derive baseline runtime directories from schema-allowed roots
+- **tests:** Repair YouTrack fake reset and manifest expectation after master merge
+- **mutation:** Pin disableTypeChecks false so the sandbox stays byte-faithful
+- **analytics:** Collapse the duplicated eligibility grant after the merge
+- **diagnostics:** Probe BYOK-aware llm_config via the turn's config context
+- **tools:** Expose run_diagnostics when mode is omitted on the orchestrator descriptor path
+- **tools:** Default run_diagnostics task-instance probe to the contexts assigned instance
+- **tools:** Default run_diagnostics descriptor-cache probe to the contexts cached descriptors
+- **diagnostics:** Report llm_config from the main role source so mixed resolutions with central main
+- **message-edit:** Forward isBotAdmin and platformInstanceId in W2 regen processMessage call
+- **diagnostics:** Log probe field and errorClass on probe failure
+- **context:** Resolve degraded /context tool fallback via per-context latest cached descriptors
+- **test:** Close the report-log fd when Bun.spawn throws in captureChild
+- **test-wrapper:** Decode mirrored log tail as a UTF-8 stream across poll boundaries
+- **test:** Skip tail poll when the log read fails so a vanished log cannot kill the test wrapper
+- **usage:** Clamp tool:execute_end duration to a non-negative integer
+- **debug:** Skip llm:full broadcast encode when no SSE clients are connected
+- **i18n:** Use Russian paucal forms for /context fact/message counts 2-4
+- **commands:** Reuse hoisted locale binding in /context error reply
+- **i18n:** Localize /context table column headers via contextView.sectionColumnHeader/tokensColumnHe
+- **review-loop:** Split aggregated inspector helper to satisfy max-lines
+- **sdd-runner:** Handle possibly undefined GateAnswers in tui gate test
+- **sdd-runner:** Deterministic scripted key feed in TUI gate session
+- **runtime:** Read DEBUG_SERVER at web start/route call time, not deps creation time
+- **debug:** Cancel armed stats debounce timer in resetCollectorForTest
+- **debug:** Stamp llm trace userId from chatUserId payload so admin visibility gates can match
+- **debug:** Cap state:init LLM trace tail at the 1024 most recent admin traces
+- **review-loop:** /logs and /logs/stats egress do an O(entries x turns) attribution scan per request
+- **debug:** Strip foreign trace identity fields (userId, chatUserId) in anonymity shaping
+- **debug:** Attribute chatUserId at missed user-content log sites (chat-history search, reply previe
+- **reply-context:** Attribute reply-context debug log to parent author so foreign previews strip
+- **telegram:** Attribute reply/quote log previews to the parent message author
+- **debug:** Attribute chatUserId in extractIdentityClaim debug logs
+- **debug:** Attribute chatUserId in resolveChatParticipant logs
+- **scheduler:** Attribute chatUserId in recurring-instance-created log so owners keep their titles
+- **debug:** Fail closed on malformed log:entry SSE egress
+- **sdd-runner:** Operator guidance names the routing verb; drop legacy scripts
+- **agent:** Check out the change branch before /ask reads the folder
+- **opencode-agent:** Make the drift refusal's remedy reachable from where it parks
+- **opencode-agent:** Stop the provider proxy cutting quiet model streams
+- **opencode-agent:** Blame the provider for a stall only when it said so
+- **sdd-runner:** Break events<->event-log and run-state<->run-index import cycles
+- **sdd-runner:** Remove stale child files when a replan changes the child set
+- **github-provider:** Rate-limit detection must not key on x-ratelimit-reset presence
+- **github-provider:** Bound issue-search pagination to the limit/offset window and GitHubs 1000-resu
+- **analytics:** Attribute GitHub provider requests to the github provider bucket
+- **github-provider:** Honor assigneeId filter in listTasks and searchTasks
+- **github-provider:** Accept state_reason duplicate in issue schema
+- **announcements:** Broadcast guard rejects only when no recipient can resolve a body
+- **settings:** Gate release-notes broadcast on any-locale body, not active tab
+- **sdd-runner:** Route gate boxes by declared membership; enforce A-prefix assumption ids
+- **github-provider:** Stop denying comment support in prompt addendum
+- **github:** Send new_name in update-label body so label rename takes effect
+- **github-provider:** Validate label color locally before create/update requests
+- **github-provider:** Paginate issue-labels GET through githubPaginate
+- **agent:** Repair CI for issue #343
+- **github-provider:** Log countTasks projectId-mismatch guard at warn level
+- **knip:** Revert accidental comment edit in knip.config.ts to master wording
+- **github-provider:** Accept null display names in collaborator payloads so identity resolution does
+- **github-provider:** Compare task-history start/end bounds as instants, not ISO strings
+- **sdd-runner:** Keep pasted H1 documents intact in the create form
+- **opencode-agent:** Name the claude helper settings file via --settings under --bare
+- **opencode-agent:** Point the recorder's helper proof legs at the booted config dir
+- **opencode-agent:** Materialize the recorder's helper proof dir through the adapter's writer
+- **opencode-agent:** The recorded rate-limit line shape and refusal phrasings
+- **docker:** Copy patches/ into install stages
+- **mutation:** Scope kaneo auto-provision wrapper out of mutation targets
+- **story:** Stage patchedDependencies patch files in the dependency cache
+- **deferred:** Resolve fired pinned alerts dispatch provider from the pinned instance
+- **alerts:** Match config-context thread deliveries with a case-sensitive prefix range instead of LI
+- **alerts:** Correct false never comes back rationale in unresolvable-pin auto-cancel comment
+- **settings:** Cancel old-instance-pinned alerts on group task-instance switch
+- **agent:** Make the dependency-drift guard content-aware
+- **agent:** Coerce AGENT_JOB_TIMEOUT_MINUTES through fromJSON
+- **review-loop:** Drop dead SveltePluginOptions.dev flexibility
+- **client-dev:** Relax page CSP meta in dev HTML rewrite so Vite-injected component styles load
+- **agent:** Repair CI for issue #363
+- **stories:** Let the hermetic I/O guard admit the TypeScript 7 parser process
+- **afk-runner:** Drop needless async on drive entry point
+- **review-loop:** Nested-run seams discard spendBaselineUsd — the childs R4 guard never sees tree sp
+- **sdd-runner:** Forward onRunDirReady through the nested-run starters so an in-flight parent calm-s
+- **sdd-runner:** Re-observe gate-settled running child on parent resume instead of re-spawning it
+- **sdd-runner:** Scope deriveResumeDecision status tolerance to plan parents
+- **sdd-runner:** Make the deadline waiter plan-gate aware (C-row hand-edits, steer skip, expiry stay
+- **sdd-runner:** Make subtree calm-stop honored by nested runs — child stop seam in runStart, record
+- **sdd-runner:** Fail the D10 tree budget ledger closed on unpriceable usage — reprice parent done e
+- **sdd-runner:** Settle a dead plan parent as stopped, not aborted, in sdd stop
+- **sdd-runner:** Route gate-pending runs to the gate flow regardless of status so a calm-stopped run
+- **sdd-runner:** Remove stale duplicate JSDoc on rowsOf
+- **sdd-runner:** Price failed child_done from the child log so parent resume passes the budget guard
+- **sdd-runner:** Reword stale pre-part-3 plan-gate comments to the landed D12 dispatch truth
+- **sdd-runner:** Require expected plan-gate child rows checked for approval
+- **sdd-runner:** Record child_spawned and running status before the nested flight so a mid-child cra
+- **sdd-runner:** Skip deriveResumeDecision status call for folder-less depth-null runs
+- **sdd-runner:** Refuse to parse an unanswered plan gate file as an all-children veto
+- **sdd-runner:** Make children-loop resume idempotent against the event log
+- **sdd-runner:** Recover an interrupted plan-gate replan instead of stranding the pending gate
+- **sdd-runner:** Ref-count the TUI run screen so nested child runs keep the parent screen mounted
+- **sdd-runner:** Align plan-gate veto instruction with the unanswered-gate guard
+- **sdd-runner:** Fold grandchild spend into child_done usage so the D10 tree ledger sees the full su
+- **sdd-runner:** Price unloadable-child failed settlement from the spawned run dir so the parent sta
+- **sdd-runner:** Deadline waiter recognizes plan-gate full-veto and ABORT hand-edits
+- **sdd-runner:** Include spendBaselineUsd in the D10 children-loop budget guard and nested-run basel
+- **sdd-runner:** Consume the calm-stop marker when the plan branch halts at the plan gate
+- **sdd-runner:** Recover interrupted replans across the persist/re-present window and instruction-on
+- **sdd-runner:** Surface a live child run on parent resume instead of re-spawning over its session i
+- **sdd-runner:** Re-present the plan gate on plan-parent resume when no answered plan gate is record
+- **sdd-runner:** Adopt an operator-completed child flight on parent resume instead of re-spawning a
+- **sdd-runner:** Stage planner drafts at plan-draft.json so a bound-exhausted replan cannot wedge th
+- **sdd-runner:** Correct finalizeGate status in runPlanGateResume doc comment
+- **sdd-runner:** Fail closed in runChildren when state.plan is absent
+- **review-loop:** Adopted operator-completed child flight keeps a stale child_done (outcome failed,
+- **sdd-runner:** Recover an oversize run crashed between plan sidecar promotion and the state.plan p
+- **sdd-runner:** Guard missing state.plan before reading the plan sidecar in runChildren
+- **alerts:** Route mixed-instance pure watches through the shared per-task compare instead of matche
+- **deferred-prompts:** Delete nulled snapshot field rows so pure watches stop re-firing on unchanged
+- **deferred-prompts:** Partition alert polls on the full active set so cooldown cannot flip pure-wat
+- **deferred-prompts:** Skip not-found watched tasks via duck-typed appError classification
+- **alerts:** Use instance-fetched enriched tasks for every context of a mixed instance so cross-cont
+- **deferred-prompts:** Stop spurious watch fires on lightweight-to-rich snapshot era transitions by
+- **deferred-prompts:** Partition pure-watch fetch mode over routable context groups only
+- **deferred-prompts:** Report only changed watched tasks in pure-watch alert summary
+- **sdd-runner:** Wire the plan gate into the interactive TUI session
+- **sdd-runner:** Wire pricing resolver into run report subtree and child costs
+- **sdd-runner:** Persist continuation child depth/stage before the tails first flight
+- **sdd-runner:** Make continuation depths no-taskFile fallback reachable
+- **sdd-runner:** Re-pin the adopted change child after a plan-gate veto replan
+- **sdd-runner:** Present diverted split-plan gate at the tails gate version
+- **sdd-runner:** Persist the resolved task text into the run dir on every start path
+- **sdd-runner:** Resume crashed continuation children at their persisted tail entry instead of a ful
+- **sdd-runner:** Emit the inherited depth event at continuation start so the report classifies the c
+- **sdd-runner:** Resume interrupted decompose-split diversion via the plan-branch recovery
+- **sdd-runner:** Build the report pricing resolver only for plan parents, not single-run reports
+- **agent:** Repair CI for issue #368
+- **review-loop:** Carry the protected-paths rule in fix and review prompts
+- **agent:** Record the head the remote accepted as the review push point
+- **agent:** Read the review push checkpoint before the push, not after
+- **alerts:** Skip not-found task history requests instead of aborting the instance poll cycle
+- **deferred-prompts:** Keep activity alert cursor monotonic when the history window shrinks
+- **deferred-prompts:** Anchor alert history fetches to the oldest task cursor
+- **deferred-prompts:** Drop start anchor from alert history fetch, restoring the categories-only cal
+- **deferred-prompts:** Reject empty activity categories in alert condition schema
+- **alerts:** Strip external-data boundary sequences from rendered alert conditions
+- **deferred-prompts:** Log configContextId in activity capability-loss warn
+- **agent:** Repair CI for issue #369
+- **task-provider-github:** Make GraphQL envelope data key optional under Zod v4
+- **task-provider-github:** Log error-level on GraphQL envelope validation failure
+- **agent:** Repair CI for issue #371
+- **tests:** Await the gate-resume-tail persistence assertion
+- **tests:** Force ink color from the preload, not per-suite imports
+- **sdd-runner:** Clear run-view mutation ratchet — remove dead done-slot row, pin presentation output
+- **openspec:** Conform task-provider-subscriptions proposal to rules.proposal
+- **sdd-runner:** Close four operator-facing paper cuts
+- **sdd-runner:** Hoist inline import type that broke semgrep --strict parse
+- **mutation:** Honour an explicit zero single-shard threshold
+- **ci:** Pass the shard index through env, not an inlined expression
+- **mutation:** Report the emitted shard count in the plan log
+- **opencode-agent:** Price the claude route under the Anthropic catalogue
+- **opencode-agent:** Stop charging the claude ceiling for cache reads
+- **opencode-agent:** Count cache writes on the OpenCode ceiling too
+- **opencode-agent:** Tell "spent nothing" apart from "could not be priced"
+- **opencode-agent:** Reset a carried total measured on the old scale
+- **hooks:** Restore the inline-suppression guard, and run its lane in CI
+- **check:** Stop staged mode clearing the full run's report dir
+- **opencode-agent:** Strip AGENT_CLAUDE_ENV from the claude child env and refuse it as a knob name
+- **opencode-agent:** Refuse AGENT_CLAUDE_ENV __proto__ entries that cannot survive the child-env fol
+- **opencode-agent:** Restore countedTokens ceiling in sdk-usage split and repin stale claude/SDK tes
+- **opencode-agent:** Bound the degraded usage re-read with the walk deadline
+- **opencode-agent:** Warn when the session tree walk hits its depth or node cap
+- **opencode-agent:** Report an all-bent session-children listing as unrecognised so the tree walk de
+- **opencode-agent:** Degrade an all-bent modelUsage record to no split instead of the empty split
+- **hooks:** Isolate TDD nudge tests to avoid mock pollution
+- **lint:** Resolve oxlint 1.80 no-redeclare and no-unused-vars findings
+- **hooks:** Isolate the module registry per file in the test:hooks lane
+- **deferred-prompts:** Refuse sync proof checks while the single-flight lock is held
+- **proof-store:** Skip delivery records silently when loading the proof JSONL
+- **deferred-prompts:** Guarantee sync proof-check cancel and record when observation or cancel throw
+- **deferred-prompts:** Derive proof-check fire_at from the effective window
+- **deferred-prompts:** Correlate proof-run trace nearest the observed execution
+- **tools:** Log run_proof_check tool entry at debug level per logging convention
+- **deferred-prompts:** Emit llm trace events from proactive generation and correlate proof traces fr
+- **deferred-prompts:** Cap proof store on run records, not raw lines
+- **debug:** Scope pending LLM traces by turn id so concurrent proactive generation cannot steal an i
+- **deferred-prompts:** Evict proof-run delivery records after finalize and drop fired timer handles
+- **deferred-prompts:** Reject run_proof_check variants outside the check registry
+- **deferred-prompts:** Keep derived proof-check fire_at strictly future after minute flooring
+- **deferred-prompts:** Emit llm:tool_result from proactive tool executions
+- **deferred-prompts:** Floor proof-check wait_seconds at the lane default so fire_at lands inside th
+- **deferred-prompts:** Keep post-finalize proof deliveries JSONL-only so they never re-enter the del
+- **deferred-prompts:** Attribute proactive llm events to the prompt owner instead of the group conte
+- **deferred-prompts:** Stop proof-check probe prompt from contradicting the with_tool_probe delivery
+- **proof-checks:** Anchor bug2 on the trace-captured consumed-stream time tag vs fire_at
+- **deferred-prompts:** Degrade bug3 alert variant to inconclusive when the alert was never evaluated
+- **deferred-prompts:** Refuse proof-check cleanup with busy while an async run is in flight
+- **analytics:** Copy orphan censor intervals on rekey
+
+### Miscellaneous
+
+- **sdd:** Untrack transient task-3 report
+- Complete truncated BUSL license headers
+- **openspec:** Close out analytics-collection-eligibility-grant
+- **mutation:** Ratchet baseline
+- **openspec:** Scaffold diagnostics-tool-domain
+- **mutation:** Ratchet baseline
+- **openspec:** Scaffold admin-gated-diagnostics-tools
+- **mutation:** Ratchet baseline
+- **openspec:** Scaffold lighter-unit-tests-under-load
+- **scripts:** Add loc-history growth report — tokei -C per commit with interactive chart
+- **openspec:** Scaffold event-derived-buffers
+- **openspec:** Record full-suite verification for ledger-dimension-tiers
+- **openspec:** Scaffold localize-live-status-and-context
+- **mutation:** Ratchet baseline
+- **mutation:** Ratchet baseline
+- **mutation:** Ratchet baseline
+- **openspec:** Scaffold diagnosis-surface-visibility-policy
+- **mutation:** Ratchet baseline
+- **openspec:** Scaffold attach-log-buffer-at-startup
+- Merge origin/master to sync dependency manifests
+- **agent:** Sync with master
+- **mutation:** Ratchet baseline
+- **mutation:** Ratchet baseline
+- **agent:** Sync with master
+- **mutation:** Ratchet baseline
+- **openspec:** Scaffold sdd-runner-decomposition
+- **openspec:** Scaffold self-diagnosis-tools
+- **mutation:** Ratchet baseline
+- **openspec:** Scaffold github-issues-task-provider
+- **knip:** Drop task-provider-github accommodations now the change is complete
+- **openspec:** Scaffold localize-release-announcements
+- **mutation:** Ratchet baseline
+- **mutation:** Ratchet baseline
+- **mutation:** Ratchet baseline
+- **openspec:** Complete ci-fix-red-run-analysis task list
+- **openspec:** Complete sdd-create-prompt-stdin-fix task list
+- **check:** Remove redundant per-workspace proxy checks
+- **openspec:** Plan sdd-runner-decomposition (parent/child run tree)
+- **sdd-runner:** Seed sdd-runner-decomposition-2nd change stub
+- **mutation:** Ratchet baseline
+- **openspec:** Scaffold github-provider-comments-labels
+- **mutation:** Ratchet baseline
+- **openspec:** Scaffold github-provider-identity-history-count
+- **mutation:** Ratchet baseline
+- **openspec:** Scaffold pin-alerts-to-task-instances
+- **opencode-agent:** Claude-apikeyhelper-credential-route full sweep green
+- **opencode-agent:** Claude-native-oauth-profile full sweep green
+- **openspec:** Scaffold stryker-10-migration change
+- **openspec:** Smoke gate under Stryker 10 clean
+- **mutation:** Reseed baseline under Stryker 10
+- **openspec:** Mark 5.1 docs task done
+- **openspec:** Mark stryker-10-migration apply complete (11/12; 5.2 rides)
+- **mutation:** Ratchet baseline
+- Upgrade bun toolchain to 1.4.0
+- **mutation:** Ratchet baseline
+- **knip:** Drop stale alerts.ts exports ignore now that production callers landed
+- **mutation:** Ratchet baseline
+- **openspec:** Tick verification task for fix-drift-guard-scripts-only
+- **openspec:** Scaffold vite-client-build
+- Drop story-run artifacts committed by mistake
+- **mutation:** Ratchet baseline
+- **openspec:** Archive nine stale sdd-runner changes unsynced — retirement owns their delta targets
+- **openspec:** Archive afk-runner-spec-home — the four umbrella specs (afk-runner-autonomy/cli/output/pipeline) land in openspec/specs/ and the change folder moves to archive/2026-08-31-afk-runner-spec-home
+- **openspec:** Adopt sdd-runner-decomposition-2nd
+- **openspec:** Scaffold sdd-runner-decomposition-3rd
+- **mutation:** Ratchet baseline
+- **openspec:** Scaffold alert-task-watch
+- **mutation:** Ratchet baseline
+- **openspec:** Scaffold dedupe-lint-typecheck
+- **agent:** Revert changes this pipeline cannot push
+- **openspec:** Tick review-loop-protected-paths verification task
+- **openspec:** Un-tick untaken mutually-exclusive branch tasks in dedupe-lint-typecheck
+- **mutation:** Ratchet baseline
+- **openspec:** Tick verification tasks for protected-path-manual-fix-visibility
+- **mutation:** Ratchet baseline
+- **openspec:** Scaffold alert-activity-condition
+- **mutation:** Ratchet baseline
+- **openspec:** Scaffold github-provider-graphql-api
+- **knip:** Document the max-lines gate that forced the svelteCompiler extraction
+- **mutation:** Ratchet baseline
+- **mutation:** Ratchet baseline
+- **openspec:** Mark sdd-runner-fancy-ui 9.2 complete — full gate green
+- **mutation:** Ratchet baseline
+- **openspec:** Scaffold task-provider-subscriptions
+- **mutation:** Ratchet baseline
+- **openspec:** Complete figma-codegen-fallback verification
+- **openspec:** Complete figma-codegen-hardening verification
+- **openspec:** Figma-ui-kit-backdrops baseline audit + plate fills
+- **openspec:** Figma-ui-kit-backdrops plates created + visual pass
+- **openspec:** Complete figma-ui-kit-backdrops verification
+- **openspec:** Figma-ui-kit-fill-fidelity baseline audit + fix inventory
+- **openspec:** Figma-ui-kit-fill-fidelity component definitions fixed
+- **openspec:** Figma-ui-kit-fill-fidelity screens fixed (all 5 clean)
+- **openspec:** Complete figma-ui-kit-fill-fidelity verification
+- **mutation:** Ratchet baseline
+- **openspec:** Archive stop-dead-runs — synced liveness-aware stop into sdd-runner-cli spec
+- **sdd-runner:** Switch model to synthetic GLM-5.3-Flash route
+- **openspec:** Add sdd-analyze-r2-blocking-cause proposal
+- **mutation:** Ratchet baseline
+- **openspec:** Close sdd-analyze-r2-blocking-cause tasks
+- **mutation:** Ratchet baseline
+- **openspec:** Archive seven shipped sdd-runner changes into the main specs
+- **openspec:** Repair the sdd-runner-output purpose after the archive merge
+- **openspec:** Resync open-vs-raised and review-loop-memory with the merged code
+- **mutation:** Ratchet baseline
+- **openspec:** Record the verification outcome for the pricing reference
+- **openspec:** Check off section 7 verification tasks
+- **openspec:** Close narrow-mutation-gate-scope verification
+- **openspec:** Close fix-write-policy-suppression-guard verification
+- **openspec:** Archive afk-runner-operator-surface-robustness — deltas merged into current truth: afk-runner-gate-settle-robustness's settle-containment requirement gains the steer-path clause and the thrown-steer-settle scenario (F-C1), afk-runner-gate gains the integrity-substituted blocker rendering requirement (F-C2); F-C3 (the foreground waiter's expiry ports) implemented the already-spec'd deadline-expiry requirement so it carried no delta; openspec validate green over the archive's surfaces (3 pre-existing --strict failures live in master's queue changes — context-vault-indexer-daemon, story-coverage-floor-climb vs the sweep-created spec home, git-fixture-template — untouched by rule)
+- **openspec:** Archive escalation-retry-session-continuation — delta merged into current truth: afk-runner-recovery's retry-budget requirement gains the F-A4 continuation contract (a stage re-entry through the spawn seam continues the ledger's latest in-flight killed entry's opencode session — the cross-process continuation path — and spawns fresh with no killed entry) with its two scenarios (retry continues the killed session, no killed entry spawns fresh); validate --strict failure count unchanged at the 3 pre-existing master-queue entries
+- **openspec:** Archive v2-live-proof — the C8 cycle's deltas merged into current truth: afk-runner-live-proof's five v1 requirements rewritten cycle-shaped (runs per cycle with both budget regimes, the cycle-two induced drill set with opportunistic classification and the F-A4 adjudication drill, discipline criteria covering the wider induced-fault surface with the not-arisen provision, the corpus lane's era-flag semantics, the reflection's n-count preamble and named measurement targets) plus two added requirements — autonomy audit trail live (metered refusal with no auto_decision, unmetered verify round, replay-distinguishable waiter settlements) and concern memory/integrity live (third-strike thrash, C<n> cross-artifact finding) — the three shapes C9's seed still carries; validate --strict failure count unchanged at the 3 pre-existing master-queue entries
+- **openspec:** Archive log-fidelity — new capability home openspec/specs/afk-runner-log-fidelity/ created from the delta's Purpose + three requirements: round-open emission owedness (append only when folded round state changes — same-round resume, extend re-entry, escalation retry re-run without re-opening; cap amendment still emits; historical duplicate tolerance preserved), work-shaped events never suppressed, and resume-invocation event production (exactly one classified resume{path, stage, session?} per invocation, ordered after owed recovery, folds tolerating it); validate --strict failure count unchanged at the 3 pre-existing master-queue entries
+- **openspec:** Archive sdd-runner-cutover — delta merged into current truth: afk-runner-gate's foreground-waiter requirement becomes attach-policy-shaped (start parks and exits naming the gate file and the resume command; resume stays alive attending, deadline-armed waits ride the attached waiter) with its two added scenarios; this closes the five-change archive sweep — afk-runner-{pipeline,autonomy,cli,output,kernel} umbrella homes and the satellite capability homes all carry the cycles' delivered truth; validate --strict failure count unchanged at the 3 pre-existing master-queue entries
+- **openspec:** Scaffold opencode-agent-shared-effort-tier
+- **agent:** Sync with master
+- **openspec:** Scaffold claude-route-custom-env
+- **openspec:** Scaffold agent-run-accounting-subagent-spend
+- **agent:** Sync with master
+- **agent:** Sync with master
+- **mutation:** Ratchet baseline
+- **openspec:** Scaffold deferred-prompt-proof-checks
+- **agent:** Salvage partial work on issue #397
+- **knip:** Remove stale proof-store/proof-checks entry markers
+- **deferred-prompts:** Drop unused store.load from ProofCheckDeps contract
+- Gitignore proof-checks.jsonl and its trim temp files
+- **mutation:** Ratchet baseline
+- **mutation:** Ratchet baseline
+- **openspec:** Scaffold afk-runner-mcp-integration-research
+- **mutation:** Ratchet baseline
+
+### Styling
+
+- Format review-loop/CLAUDE.md
+
+### Testing
+
+- **review-loop:** Force identity-less commit refusal via user.useConfigOnly
+- **story:** Add unit coverage for gateStoryCoverage wiring
+- **stories:** Cover YouTrack custom-field mapping through the runtime
+- **stories:** Cover YouTrack error translation end to end
+- **stories:** Cover provider capability gating for member provisioning
+- **stories:** Run the YouTrack conformance sweep inside the hermetic lane
+- **stories:** Rename youtrack-conformance-projects to match what it proves
+- **stories:** Ratchet the T0 coverage floor after real-YouTrack coverage
+- **stories:** Sync coverage-totals expectations with the tier-0 YouTrack catalog counts
+- **story:** Cover debug HTTP route boundaries
+- **story:** Cover invalid auth exchange body
+- **stories:** Cover settings HTTP API surfaces end to end
+- **stories:** Add a bidirectional story census core
+- **stories:** Add the supporting-story exemption list and tier wiring
+- **smoke:** Scan lane scenario files for story title markers
+- **stories:** Catalog the ten stories whose titles already declared an id
+- **stories:** Catalog the nine remaining uncataloged stories
+- **stories:** Assert the Tier 0 and Tier 1 catalog census
+- **smoke,platform:** Assert the Tier 2 and Tier 3 catalog census
+- **stories:** Cover settings API secrecy and isolation
+- **story:** Fix settings API isolation coverage
+- **story:** Cover admin settings HTTP workflows
+- **story:** Strengthen admin settings rejection coverage
+- **story:** Load debug schema contracts
+- **coverage:** Ratchet debug story coverage
+- **story:** Use synthetic settings plugin fixture
+- **story:** Activate synthetic settings plugin fixture
+- **stories:** Sync settings plugin scenario catalog
+- **stories:** Catalog missing Tier 0 scenarios
+- **stories:** Catalog uncatalogued runtime cluster
+- **stories:** Pin Phase 3 audit assignments
+- **stories:** Reconcile catalog coverage totals
+- **stories:** Specify pure helper story coverage
+- **stories:** Cover Phase 3 pure helper behavior
+- **stories:** Cover queue runtime flows
+- **stories:** Cover cache and usage runtime flows
+- **stories:** Cover plugin denial gating
+- **stories:** Fix frozen plugin denial catalog contract
+- **stories:** Strengthen final review coverage
+- **stories:** Specify staged attachment and BYOK coverage
+- **stories:** Cover staged attachment persistence
+- **stories:** Cover BYOK credential persistence
+- **stories:** Strengthen BYOK and attachment assertions
+- **stories:** Script proactive delivery outcomes
+- **stories:** Expose announcement fanout fixtures
+- **stories:** Cover announcement delivery fanout
+- **stories:** Promote announcement delivery fanout
+- **platform:** Add adapter fake seams
+- **platform:** Add deterministic adapter fakes
+- **platform:** Harden adapter fake cleanup
+- **platform:** Emit valid fake Discord buttons
+- **platform:** Cover Discord interaction adapters
+- **platform:** Drain fake Discord events deterministically
+- **platform:** Cover Kontur and Telegram adapters
+- **platform:** Register adapter scenarios
+- **stories:** Align tier 3 coverage projections
+- **platform:** Address final adapter review
+- **platform:** Harden injected adapter fakes
+- **stories:** Add fake Kaneo core API
+- **stories:** Complete fake Kaneo parity routes
+- **stories:** Register real Kaneo provider worlds
+- **stories:** Run Kaneo parity through real plugin
+- **stories:** Cover real Kaneo chat loops
+- **stories:** Update eligibility manifest expectation
+- **stories:** Cover debug route families
+- **stories:** Cover operator data routes
+- **stories:** Invoke debug schema parsers
+- **stories:** Strengthen dashboard asset and diagnostic assertions
+- **stories:** Sync coverage-totals snapshot to Phase 2 catalog
+- **coverage:** Gate required lane source files
+- **stories:** Cover Phase 3 stats contracts
+- **stories:** Cover Phase 3 adapter boundaries
+- **platform:** Gate Phase 3 adapter coverage
+- **operational:** Cover deferred poller lifecycle
+- **coverage:** Ratchet Phase 3 floors
+- **stories:** Sync coverage-totals snapshot to Phase 3 catalog
+- **stories:** Cover pure chat adapter surfaces
+- **stories:** Cover audio transcription host
+- **stories:** Catalog Phase 4 chat coverage
+- **platform:** Add Telegram callback fake
+- **platform:** Cover Discord callback routing
+- **platform:** Cover Telegram callback routing
+- **catalog:** Close Tier 3 callback scenarios
+- **catalog:** Claim analytics settings story
+- **stories:** Report uncovered T0 files
+- **stories:** Cover status list/update/reorder tool boundary
+- **stories:** Cover YouTrack workflow-validation error classification
+- **stories:** Cover Telegram reply-fn chain without transport
+- **stories:** Cover real YouTrack status lifecycle through the chat tool loop
+- **stories:** Cover real scheduler recurring-task execution
+- **stories:** Cover governed analytics turn through the real analytics runtime
+- **stories:** Scope the analytics story timeout to the declaring scenario
+- **stories:** Cover real YouTrack sprint lifecycle through the chat tool loop
+- **stories:** Identify documented behavior inventory
+- **stories:** Expect frozen story-coverage-report input in manifest fixture
+- **stories:** Add behavior coverage ledger
+- **stories:** Cover settings-driven aggregate release
+- **stories:** Cover aggregate release denial matrix
+- **stories:** Cover captured aggregate delivery
+- **stories:** Cover aggregate delivery kill switch and retry
+- **stories:** Add governed-pseudonymous analytics runtime mode
+- **review-loop:** Reproduce the identityless runner deterministically
+- **plugins:** Pin the manifest validator's diagnostic surface
+- **coverage:** Re-record the T0 story floor against the tree it measures
+- **analytics:** Pin the identityless collection denial
+- **analytics:** Prove the granted collection-eligibility path is reachable
+- **platform:** Serve seeded parents and one-shot send failures in the Discord fake
+- **platform:** Prove Discord reply-to-bot dispatch and live-status lifecycle
+- **smoke:** Capture thread roots and post mutations in the fake Mattermost server
+- **platform:** Prove Mattermost thread-root replies and live-status mutations
+- **platform:** Register the five new adapter scenarios in both catalogs
+- **stories:** Re-tally the catalog ledger after the tier 3 additions
+- **stories:** Cover Kaneo column and label operations
+- **stories:** Cover YouTrack collaboration, worklog and query operations
+- **stories:** Cover the analytics governance stores through consent
+- **stories:** Derive sessions and feature days from consented events
+- **stories:** Drive the admin settings operations surfaces
+- **usage:** Pin execute_end integer durations and migration 079 normalization
+- **debug:** Adopt resetCollectorForTest as the persistent-capture baseline reset
+- **stories:** Key behavior-ledger evidence by coverage dimension
+- **commands:** Drop obsolete sectionWithId TDD-transition helper in context-grid tests
+- **live-status:** Kill surviving tool-status-labels mutants to clear mutation ratchet
+- **review-loop:** Pin spans/severity/aggregated-inspect contracts to clear mutation ratchet
+- **opencode-agent:** Give merge fixtures a repo-local git identity
+- **stories:** Seed chat user labels in the story harness
+- **stories:** Prove chat participant resolution at Tier 0
+- **debug:** Reset the persistent event collector between tests
+- **recurring:** Kill surviving mutants so the mutation ratchet holds
+- **sdd-runner:** Kill mutation-ratchet regressions on the TUI-wiring files
+- **sdd-runner:** Delete orphan duplicate event-log.test.ts left by cycle-break refactor
+- **sdd-runner:** Add mapped event-schemas.test.ts (direct schema coverage, TDD-hook compliance)
+- **sdd-runner:** Kill plan-gate mutants behind mutation ratchet regressions
+- **announcements:** Assert directly on humanizeChangelog result map, drop stale unknown bindings
+- **announcements:** Deduplicate per-locale humanize scenarios, keep default-locale coverage in dedi
+- **announcements:** Pin the exact ru write prompt to kill string mutants in humanize
+- **sdd-runner:** Kill agent-layer mutants behind mutation ratchet regression
+- **opencode-agent:** Pin /fix riding the pull-request door's guardrails
+- **opencode-agent:** Pin the raise-the-ceiling remedy; complete verification
+- **sdd-runner:** Stamp the sole-completed routing fixture newest
+- **sdd-runner:** Kill the mutants the session-screen wiring introduced
+- **opencode-agent:** The claude-live recorder and its run scripts
+- **opencode-agent:** Pin the claude workflow gates
+- **opencode-agent:** The claude-live recorder's OAuth apiKeyHelper leg
+- **opencode-agent:** The recorder names why a corpus turn rejected
+- **opencode-agent:** The recorder's OAuth legs become the standing zero-spend negative
+- **opencode-agent:** The recorder's native legs — census, dummy-401, proof, WebFetch
+- **opencode-agent:** The credentialed native recording — five_hour proven
+- **stories:** Restore the hermetic I/O guard to zero spawn allowances
+- **mutation:** Pin the Stryker tsconfig sentinel; nightly TS canary
+- Consolidate fragmented pilot suites via grouped assertion matrices
+- **research:** Exclude research PoC self-checks from default discovery
+- **review-loop:** Git fixture template helper + worker-pool pilot
+- **opencode-agent:** Shared fake-git double, orchestrator adoption
+- Make two bun-1.4.0-sensitive tests version-tolerant
+- **sdd-runner:** Pinned invariants — decision parity, NO_COLOR equality, non-TTY freeze (fancy-ui 8.x)
+- **sdd-runner:** Raise mutation coverage across gate, settle, event, and analyze paths
+- **sdd-runner:** Broaden schema, waiter, and tail coverage
+- **sdd-runner:** Kill surviving mutants below the ratchet floor
+- **opencode-agent:** Pin the pricing-reference regression at the ladder
+- **mutation:** Pin record-aware seed snapshot (scores.json rich, mixed-baseline merge)
+- **review-loop:** Pin duplicated effort-tier shape check equal in claude doctrine test
+- **review-loop:** Pin batch-fixer effort threading on the spawn argv
+- Reword stale red-first narration now that effort fields sit on their interfaces
+
+### Afk-oxlint-retighten
+
+- .oxlintrc.json restored to pre-afk surface — setup witnesses replaced by annotated guard inference, 17 test parse sites schema-validated (lint green at repo defaults, full suite 17630 pass, machine.ts mutation 0.8417 vs 0.8382 control)
+
+### Build
+
+- **stories:** Freeze story-scope as a captured coverage input
+- **mutation:** Install Stryker 10 next to patched bun runner
+- **deps:** Drop the typescript6 override and typecheck with TypeScript 7
+- **deps:** Move typescript to devDependencies — the runtime parses via oxc
+- **afk-runner:** Follow master's tsgo→tsc switchover
+
+### Ci
+
+- Bump the github-actions group with 2 updates
+- **agent:** Backend-gated claude CLI install and credential forwarding
+- **mutation:** Pin Node 22 host and add one-shot baseline reseed job
+- **mutation:** Remove one-shot reseed job after baseline landed
+- Drop stale typecheck mention from Checks-job timeout comment
+- Upload reports/checks logs from the Checks job
+- **mutation:** Run the gate as plan, sized matrix, gate
+- Bump github/codeql-action/upload-sarif in the github-actions group
+
+### Deps
+
+- Bump the bun-dependencies group to latest (ai 7.0.79, @ai-sdk/openai-compatible 3.0.37)
+- Bump the bun-dependencies group with 13 updates
+
+### Format
+
+- Afk-runner tail-on-graph 2 fixtures
+
+### Gate-settle-robustness
+
+- Settle seam total over operator input — D1–D7 delivered (gate-level APPROVE/VETO directives + zero-signal rejection, pre-flighted render⇄parse roundtrips, contained settle failures as sibling-artifact feedback with a digest guard, attempt-scoped pid-carried claims with expiry-claim retired, mid-presentation crash resume + already-answered guard, whole-gate veto redirects as first-class veto-updater input, gate-level steer grammar with consume-with-warning hygiene; typecheck green, full suite 17686 pass 0 fail)
+
+### Opencode-priced-model-route
+
+- Execution artifacts land (design, 9/9 tasks, verification record) — opened at 4246f9010 (proposal + skip_specs) and executed 2026-09-02 as a machine-config-only edit: the machine opencode config's zai-coding-plan provider gains models-only cost blocks at official API rates, the red probe (step_finish cost 0) and green probes (opencode-alone cost > 0, runner-seam analyze costKnown true) recorded in notes.md with rates+source+date; repository untouched by design — re-arms the C9 numeric-ceiling refusal drill
+
+### Openspec
+
+- Capture in-process-ast-scanning change (proposal, specs, design, tasks)
+- Merge-day runbook for the story-baseline handoff
+- Gate-as-state change artifacts (C4 proposal, spec, design, tasks)
+
+### Sdd-runner-cutover
+
+- Operator entry surface flips to afk-runner — sdd-runner:start repoints to bun afk-runner/src/cli.ts (the one-line revert), /sdd:auto wrappers invoke afk-runner:start -- start, the start verb parks and exits at a gate with a pointer line (gate file + resume <runId>; the foreground waiter rides resume only, D2), the bare-arg miss error names the replacement verbs, TDD hook scope gains afk-runner/src/, aggregate() refactored into rowOf/accountRun at the same behavior; docs (afk-runner.md R4 row + R4→R5 alias-split note, sdd-pipeline.md frozen banners, commands.md scope, CLAUDE.md routing) and openspec/changes/sdd-runner-cutover artifacts; cli suite 11 green
+
+### V2-live-proof
+
+- Docs-table format fix — the AGENTS.md docs-row edit (symlink to CLAUDE.md) had landed unstaged through the symlink and broken oxfmt's table alignment; the formatter realigns the table (content unchanged, column padding only) and format:check goes green
 ## [Unreleased]
 
 ### Removed
