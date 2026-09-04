@@ -16,5 +16,5 @@
 
 ## 4. Docs and full gates
 
-- [ ] 4.1 Update `docs/architecture/behaviors.md` recurring bullet: permanent (project-not-found) failures consume the scheduled attempt and notify the owner; transient failures retry next tick. Verify: `openspec validate kaneo-stale-project-failure-handling --strict`
-- [ ] 4.2 Run the full gates and fix anything they surface: `bun run test`, `bun run typecheck`, `bun run lint`.
+- [x] 4.1 Update `docs/architecture/behaviors.md` recurring bullet: permanent (project-not-found) failures consume the scheduled attempt and notify the owner; transient failures retry next tick. Verify: `openspec validate kaneo-stale-project-failure-handling --strict`
+- [x] 4.2 Run the full gates and fix anything they surface: `bun run test`, `bun run typecheck`, `bun run lint`.
