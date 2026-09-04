@@ -4,7 +4,7 @@
 // See LICENSE in the project root for details.
 
 import { createOpenAICompatible, type OpenAICompatibleProvider } from '@ai-sdk/openai-compatible'
-import { embed } from 'ai'
+import { embed, embedMany } from 'ai'
 
 import { resolveLlmConfig } from './llm-providers/resolver.js'
 import { logger } from './logger.js'
@@ -12,6 +12,13 @@ import { recordUsage } from './usage/recorder.js'
 import type { ContextType } from './usage/types.js'
 
 const log = logger.child({ scope: 'embeddings' })
+
+/**
+ * Bounds every embedding HTTP call: a throttling or queueing endpoint must
+ * fail fast into the lexical/neutral fallbacks instead of hanging a turn.
+ */
+export const EMBED_TIMEOUT_MS = 10_000
+export const EMBED_MAX_RETRIES = 1
 
 let cachedProvider: { key: string; provider: OpenAICompatibleProvider } | null = null
 
@@ -113,6 +120,8 @@ export async function getEmbedding(
     const result = await deps.embed({
       model: provider.embeddingModel(model),
       value: text,
+      maxRetries: EMBED_MAX_RETRIES,
+      abortSignal: AbortSignal.timeout(EMBED_TIMEOUT_MS),
     })
     if (context !== undefined) recordEmbeddingSuccess(context, model, startedAt, result)
     log.info({ model, dimension: result.embedding.length }, 'Embedding generated')
@@ -136,6 +145,85 @@ export async function tryGetEmbedding(
   } catch (error) {
     log.warn({ error: error instanceof Error ? error.message : String(error), model }, 'Embedding generation failed')
     return null
+  }
+}
+
+export interface EmbedManyDeps {
+  embedMany: typeof embedMany
+  getProvider: (apiKey: string, baseUrl: string) => OpenAICompatibleProvider
+}
+
+const defaultEmbedManyDeps: EmbedManyDeps = {
+  embedMany: (...args) => embedMany(...args),
+  getProvider,
+}
+
+type EmbedManyResult = { embeddings: number[][]; usage?: { tokens: number } }
+
+const extractBatchInputTokens = (result: EmbedManyResult): number | null => {
+  const tokens = result.usage?.tokens
+  return typeof tokens === 'number' ? tokens : null
+}
+
+const recordBatchUsage = (
+  context: EmbeddingCallContext,
+  model: string,
+  startedAt: number,
+  inputTokens: number | null,
+  error: string | null,
+): void => {
+  recordUsage({
+    occurredAt: startedAt,
+    turnId: null,
+    storageContextId: context.storageContextId,
+    contextType: context.contextType,
+    chatUserId: context.chatUserId,
+    model,
+    modelRole: 'embedding',
+    inputTokens,
+    outputTokens: null,
+    stepCount: 0,
+    toolCallCount: 0,
+    messageCount: 0,
+    finishReason: null,
+    durationMs: Date.now() - startedAt,
+    responseId: null,
+    error,
+  })
+}
+
+/**
+ * Embeds a batch of texts in one bounded HTTP call. Throws on failure (after
+ * recording the usage row when a context is supplied), so callers decide their
+ * own degradation; the shared call bounds (`EMBED_TIMEOUT_MS`,
+ * `EMBED_MAX_RETRIES`) apply.
+ */
+export async function embedManyTexts(
+  texts: readonly string[],
+  apiKey: string,
+  baseUrl: string,
+  model: string,
+  context?: EmbeddingCallContext,
+  deps: EmbedManyDeps = defaultEmbedManyDeps,
+): Promise<number[][]> {
+  log.debug({ count: texts.length, model }, 'embedManyTexts called')
+  const provider = deps.getProvider(apiKey, baseUrl)
+  const startedAt = Date.now()
+  try {
+    const result = await deps.embedMany({
+      model: provider.embeddingModel(model),
+      values: [...texts],
+      maxRetries: EMBED_MAX_RETRIES,
+      abortSignal: AbortSignal.timeout(EMBED_TIMEOUT_MS),
+    })
+    if (context !== undefined) recordBatchUsage(context, model, startedAt, extractBatchInputTokens(result), null)
+    log.info({ model, count: result.embeddings.length }, 'Batch embeddings generated')
+    return result.embeddings
+  } catch (error) {
+    if (context !== undefined) {
+      recordBatchUsage(context, model, startedAt, null, error instanceof Error ? error.message : String(error))
+    }
+    throw error
   }
 }
 
