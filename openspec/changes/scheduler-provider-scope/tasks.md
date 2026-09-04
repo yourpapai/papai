@@ -10,7 +10,7 @@
 
 ## 3. Regression proof
 
-- [ ] 3.1 Add a regression test reproducing the production failure shape: with a scope-requiring provider (fail-closed client seam) and the default wiring, a due recurring task creates its instance with no `provider_scope_missing` failure; detached-past-execution I/O still fails closed. Verify: `bun test tests/scheduler.test.ts`
+- [x] 3.1 Add a regression test reproducing the production failure shape: with a scope-requiring provider (fail-closed client seam) and the default wiring, a due recurring task creates its instance with no `provider_scope_missing` failure; detached-past-execution I/O still fails closed. Verify: `bun test tests/scheduler.test.ts`
 
 ## 4. Docs and full gates
 

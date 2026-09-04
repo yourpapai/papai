@@ -14,6 +14,7 @@ import {
   getProviderRequestScope,
   NO_ANALYTICS_SCOPE,
   type ProviderRequestScope,
+  ProviderScopeMissingError,
   requireProviderRequestScope,
   runWithoutProviderRequestScope,
 } from '../src/analytics/provider-request-scope.js'
@@ -562,6 +563,48 @@ describe('scheduler', () => {
         .query<{ last_run: string | null }, []>(`SELECT last_run FROM recurring_tasks WHERE id = '${taskId}'`)
         .get()
       expect(row!.last_run).not.toBeNull()
+    })
+
+    test('default wiring creates the instance with a fail-closed provider (production regression)', async () => {
+      // Reproduces the production failure shape: every provider HTTP boundary calls
+      // requireProviderRequestScope() (e.g. kaneoFetch); without scheduler wiring every
+      // due task died with provider_scope_missing before any request was sent.
+      createTaskImpl = (): Promise<MockTask> => {
+        requireProviderRequestScope()
+        return defaultCreateTask()
+      }
+      const taskId = createDueTask()
+
+      await runWithoutProviderRequestScope(() => awaitTick())
+
+      const row = testSqlite
+        .query<{ last_run: string | null }, []>(`SELECT last_run FROM recurring_tasks WHERE id = '${taskId}'`)
+        .get()
+      expect(row!.last_run).not.toBeNull()
+      const occurrences = testSqlite.query<{ id: string }, []>('SELECT id FROM recurring_task_occurrences').all()
+      expect(occurrences).toHaveLength(1)
+    })
+
+    test('provider I/O detached past the execution fails closed', async () => {
+      let detachedCall: (() => Promise<MockTask>) | null = null
+      createTaskImpl = (): Promise<MockTask> => {
+        requireProviderRequestScope()
+        detachedCall = (): Promise<MockTask> => {
+          requireProviderRequestScope()
+          return defaultCreateTask()
+        }
+        return defaultCreateTask()
+      }
+      createDueTask()
+
+      await awaitTick()
+      assert.ok(detachedCall !== null, 'detachedCall captured during execution')
+
+      // Ambient scope suppressed: work detached past the settled lease fails closed
+      // rather than attributing to the finished task.
+      await expect(
+        runWithoutProviderRequestScope(() => Promise.resolve().then(() => detachedCall!())),
+      ).rejects.toBeInstanceOf(ProviderScopeMissingError)
     })
 
     const chatUserIdOf = (scope: ProviderRequestScope | null): string =>
