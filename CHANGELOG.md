@@ -5,6 +5,24 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [6.14.4] - 2026-09-04
+
+### Added
+
+- **recurring:** Record failed executions without retry storms
+- **scheduler:** Consume permanent recurring failures and notify the owner
+
+### Documentation
+
+- Recurring permanent-failure handling behavior
+
+### Fixed
+
+- **kaneo:** Classify workspace-marker 400 as project-not-found
+
+### Miscellaneous
+
+- **mutation:** Ratchet baseline
 ## [6.14.3] - 2026-09-04
 
 ### Added
