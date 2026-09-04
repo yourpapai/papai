@@ -615,6 +615,12 @@
     "timeout": 0,
     "scored": 136
   },
+  "src/analytics/rekey/copy-children.ts": {
+    "score": 0.8969072164948454,
+    "killed": 87,
+    "timeout": 0,
+    "scored": 97
+  },
   "src/coding-sessions/configure.ts": 0.6666666666666666,
   "src/config.ts": 0.6535433070866141,
   "src/conversation.ts": 0.6231884057971014,
