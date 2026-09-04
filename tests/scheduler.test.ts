@@ -9,11 +9,21 @@ import assert from 'node:assert/strict'
 
 import { drizzle } from 'drizzle-orm/bun-sqlite'
 
+import {
+  createActorProviderRequestScope,
+  getProviderRequestScope,
+  NO_ANALYTICS_SCOPE,
+  type ProviderRequestScope,
+  requireProviderRequestScope,
+  runWithoutProviderRequestScope,
+} from '../src/analytics/provider-request-scope.js'
+import { buildSchedulerProviderRequestScope } from '../src/analytics/provider-scope-factory.js'
 import { setCachedConfig } from '../src/cache.js'
 import type { ChatProvider } from '../src/chat/types.js'
 import { dmTarget, type DeferredDeliveryTarget } from '../src/chat/types.js'
 import * as schema from '../src/db/schema.js'
 import { setContextSettings } from '../src/instances/context-store.js'
+import { insertPlatformInstance } from '../src/instances/platform-store.js'
 import type { TaskCapability, Task, TaskProvider } from '../src/providers/types.js'
 import { createRecurringTask, getDueRecurringTasks } from '../src/recurring.js'
 import type { SchedulerDeps } from '../src/scheduler.js'
@@ -98,6 +108,25 @@ describe('scheduler', () => {
         context_id TEXT PRIMARY KEY,
         task_instance_id TEXT NOT NULL,
         platform_instance_id TEXT NOT NULL
+      )
+    `)
+    testSqlite.run(`
+      CREATE TABLE IF NOT EXISTS platform_instances (
+        id TEXT PRIMARY KEY,
+        type TEXT NOT NULL,
+        config TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'pending',
+        open_dm_access INTEGER NOT NULL DEFAULT 0,
+        created_at TEXT NOT NULL DEFAULT (datetime('now'))
+      )
+    `)
+    testSqlite.run(`
+      CREATE TABLE IF NOT EXISTS task_instances (
+        id TEXT PRIMARY KEY,
+        type TEXT NOT NULL,
+        config TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'pending',
+        created_at TEXT NOT NULL DEFAULT (datetime('now'))
       )
     `)
   }
@@ -198,6 +227,7 @@ describe('scheduler', () => {
 
     setupDb()
     setTestDrizzleDb(testDb)
+    insertPlatformInstance({ id: 'telegram-default', type: 'telegram', config: { token: 't' }, status: 'active' })
     seedUser()
   })
 
@@ -421,6 +451,141 @@ describe('scheduler', () => {
         .query<{ last_run: string | null }, []>(`SELECT last_run FROM recurring_tasks WHERE id = '${taskId}'`)
         .get()
       expect(row!.last_run).toBeNull()
+    })
+  })
+
+  describe('tick() — provider request scope', () => {
+    const schedulerScopeFor = (chatUserId: string): ProviderRequestScope =>
+      createActorProviderRequestScope({
+        requestContext: {
+          source: {
+            platform: 'telegram',
+            platformInstanceId: 'telegram-default',
+            chatUserId,
+            nativeContextId: chatUserId,
+            storageContextId: chatUserId,
+            configContextId: chatUserId,
+            contextType: 'dm',
+            actorRole: 'system',
+            taskInstanceId: null,
+            taskProvider: 'none',
+            invocationMode: 'scheduler',
+            rawTurnId: null,
+          },
+          sourceEventId: `test:${chatUserId}`,
+        },
+        observeProviderRequest: () => {},
+      })
+
+    test('provider resolution, createTask, and label application run inside the per-task scope', async () => {
+      mockCapabilities = new Set<TaskCapability>(['labels.assign'])
+      const scope = schedulerScopeFor(USER_ID)
+      const seen: Array<ProviderRequestScope | null> = []
+      let resolvedInsideScope = false
+
+      const scopedDeps: SchedulerDeps = {
+        resolve: (): TaskProvider => {
+          resolvedInsideScope = getProviderRequestScope() === scope
+          return createMockProvider({
+            capabilities: mockCapabilities,
+            createTask: (params): Promise<Task> => {
+              seen.push(getProviderRequestScope())
+              return createTaskImpl(params)
+            },
+            addTaskLabel: (taskId, labelId): Promise<{ taskId: string; labelId: string }> => {
+              seen.push(getProviderRequestScope())
+              return addTaskLabelImpl(taskId, labelId)
+            },
+          })
+        },
+        resolveScope: () => scope,
+      }
+
+      createDueTask({ labels: ['label-1'] })
+      await tick(scopedDeps)
+
+      expect(resolvedInsideScope).toBe(true)
+      expect(seen).toHaveLength(2)
+      expect(seen.every((captured) => captured === scope)).toBe(true)
+    })
+
+    test('default resolver provides NO_ANALYTICS_SCOPE when no analytics runtime is active', async () => {
+      const captured: Array<ProviderRequestScope | null> = []
+      createTaskImpl = (): Promise<MockTask> => {
+        captured.push(getProviderRequestScope())
+        return defaultCreateTask()
+      }
+      const taskId = createDueTask()
+
+      await runWithoutProviderRequestScope(() => awaitTick())
+
+      expect(captured).toHaveLength(1)
+      expect(captured[0]).toBe(NO_ANALYTICS_SCOPE)
+      const row = testSqlite
+        .query<{ last_run: string | null }, []>(`SELECT last_run FROM recurring_tasks WHERE id = '${taskId}'`)
+        .get()
+      expect(row!.last_run).not.toBeNull()
+    })
+
+    test('execution succeeds with a fail-closed provider when the resolver returns NO_ANALYTICS_SCOPE', async () => {
+      createTaskImpl = (): Promise<MockTask> => {
+        requireProviderRequestScope()
+        return defaultCreateTask()
+      }
+      const taskId = createDueTask()
+
+      // Suppress the test-preload ambient scope so the omitted-frame failure is observable.
+      await runWithoutProviderRequestScope(() => tick({ ...schedulerDeps, resolveScope: () => NO_ANALYTICS_SCOPE }))
+
+      const row = testSqlite
+        .query<{ last_run: string | null }, []>(`SELECT last_run FROM recurring_tasks WHERE id = '${taskId}'`)
+        .get()
+      expect(row!.last_run).not.toBeNull()
+      const occurrences = testSqlite.query<{ id: string }, []>('SELECT id FROM recurring_task_occurrences').all()
+      expect(occurrences).toHaveLength(1)
+    })
+
+    test('execution proceeds unobserved when scope resolution throws', async () => {
+      const taskId = createDueTask()
+
+      await runWithoutProviderRequestScope(() =>
+        tick({
+          ...schedulerDeps,
+          resolveScope: (): ProviderRequestScope => {
+            throw new Error('scope infrastructure broken')
+          },
+        }),
+      )
+
+      expect(createTaskCallCount).toBe(1)
+      const row = testSqlite
+        .query<{ last_run: string | null }, []>(`SELECT last_run FROM recurring_tasks WHERE id = '${taskId}'`)
+        .get()
+      expect(row!.last_run).not.toBeNull()
+    })
+
+    const chatUserIdOf = (scope: ProviderRequestScope | null): string =>
+      scope !== null && scope.kind === 'actor' ? (scope.requestContext.source.chatUserId ?? 'null-chat-user') : 'none'
+
+    test('each due task executes under its own owner-attributed scope', async () => {
+      const USER_2 = 'user-2'
+      seedUser(USER_2)
+      createDueTask({ title: 'Task 1' })
+      createDueTask({ userId: USER_2, title: 'Task 2' })
+
+      const chatUserIds: string[] = []
+      createTaskImpl = (): Promise<MockTask> => {
+        chatUserIds.push(chatUserIdOf(getProviderRequestScope()))
+        return defaultCreateTask()
+      }
+
+      await tick({
+        ...schedulerDeps,
+        resolveScope: (task) =>
+          buildSchedulerProviderRequestScope({ recurringTaskId: task.id, userId: task.userId }, () => {}),
+      })
+
+      expect(new Set(chatUserIds)).toEqual(new Set([USER_ID, USER_2]))
     })
   })
 

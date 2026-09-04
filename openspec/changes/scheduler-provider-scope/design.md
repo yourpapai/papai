@@ -48,7 +48,7 @@ No new tool surface — gating and `tool_prefs` are untouched. No new persisted 
 
 ## Risks / Trade-offs
 
-- [Malformed source would make the validating constructor throw into the scheduler] → the builder only feeds fields it derived or looked up, and returns the sentinel on any unresolvable piece; factory tests pin every sentinel path.
+- [Malformed source would make the validating constructor throw into the scheduler] → the builder only feeds fields it derived or looked up, and returns the sentinel on any unresolvable piece; factory tests pin every sentinel path. Infrastructure throws (e.g. a missing lookup table) are additionally caught at the scheduler's resolution call site and degrade to `NO_ANALYTICS_SCOPE` with a warn — the spec requires scope resolution to never block execution; a malformed injected scope still fails closed inside `runWithProviderRequestScope`, mirroring the tool wrapper.
 - [Legacy unscoped owner ids fall back to unobserved execution] → functional but invisible to analytics; consistent with the proactive fallback doctrine and bounded by the same route parser the notification path uses.
 - [`provider-scope-factory.ts` (216 lines) and `scheduler.ts` (209 lines) approach `max-lines` limits] → additions are small; if a limit trips, extract per the design signal (e.g. scheduler scope wiring into `scheduler-recurring.ts`).
 - [Occurrences missed while the scheduler was broken are lost] → accepted Non-goal; users can regenerate instances via `resume_recurring_task`.

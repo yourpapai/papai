@@ -5,8 +5,8 @@
 
 ## 2. Scheduler wiring
 
-- [ ] 2.1 Add failing tests to `tests/scheduler.test.ts`: `executeRecurringTask` runs provider resolution, `createTask`, and finalization inside one per-task scope from `deps.resolveScope` (default resolver used when not injected); execution still succeeds when the resolver returns `NO_ANALYTICS_SCOPE`; attribution asserted per task for a multi-owner tick. Verify: `bun test tests/scheduler.test.ts`
-- [ ] 2.2 Wire the optional `resolveScope` into `SchedulerDeps` and wrap the execution body in `runWithProviderRequestScope` in `src/scheduler.ts` per design D2/D3; leave `createMissedTasks` unchanged. Verify: `bun test tests/scheduler.test.ts tests/scheduler-recurring.test.ts tests/scheduler-integration.test.ts`
+- [x] 2.1 Add failing tests to `tests/scheduler.test.ts`: `executeRecurringTask` runs provider resolution, `createTask`, and finalization inside one per-task scope from `deps.resolveScope` (default resolver used when not injected); execution still succeeds when the resolver returns `NO_ANALYTICS_SCOPE`; attribution asserted per task for a multi-owner tick. Verify: `bun test tests/scheduler.test.ts`
+- [x] 2.2 Wire the optional `resolveScope` into `SchedulerDeps` and wrap the execution body in `runWithProviderRequestScope` in `src/scheduler.ts` per design D2/D3; leave `createMissedTasks` unchanged. Verify: `bun test tests/scheduler.test.ts tests/scheduler-recurring.test.ts tests/scheduler-integration.test.ts`
 
 ## 3. Regression proof
 
