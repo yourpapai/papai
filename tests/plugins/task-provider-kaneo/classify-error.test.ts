@@ -201,6 +201,55 @@ describe('classifyKaneoError', () => {
     })
   })
 
+  describe('workspace-marker 400 classification', () => {
+    test('returns projectNotFound for 400 with workspace-marker JSON body on a project resource', () => {
+      const error = new KaneoApiError(
+        'Kaneo API GET request failed with status 400',
+        400,
+        { error: 'Workspace ID could not be determined' },
+        'project',
+      )
+      const result = classifyKaneoError(error, { projectId: 'sutuhvgbp2rczkh16u68ckqd' })
+      expect(result.appError.code).toBe('project-not-found')
+      expect(result.appError).toHaveProperty('projectId', 'sutuhvgbp2rczkh16u68ckqd')
+    })
+
+    test('returns projectNotFound for 400 with plain-string marker body and no context', () => {
+      const error = new KaneoApiError(
+        'Kaneo API GET request failed with status 400',
+        400,
+        'Workspace ID could not be determined',
+        'project',
+      )
+      const result = classifyKaneoError(error)
+      expect(result.appError.code).toBe('project-not-found')
+      expect(result.appError).toHaveProperty('projectId', 'unknown')
+    })
+
+    test('matches the marker case-insensitively', () => {
+      const error = new KaneoApiError(
+        'Kaneo API GET request failed with status 400',
+        400,
+        { error: 'workspace id could not be determined' },
+        'project',
+      )
+      const result = classifyKaneoError(error, { projectId: 'proj-1' })
+      expect(result.appError.code).toBe('project-not-found')
+    })
+
+    test('keeps validationFailed for 400 with an unrelated body on the same resource', () => {
+      const error = new KaneoApiError('Bad request', 400, { error: 'Invalid input' }, 'project')
+      const result = classifyKaneoError(error, { projectId: 'proj-1' })
+      expect(result.appError.code).toBe('validation-failed')
+    })
+
+    test('keeps validationFailed for a 400 whose body merely mentions workspace', () => {
+      const error = new KaneoApiError('Bad request', 400, { error: 'workspace name is required' }, 'project')
+      const result = classifyKaneoError(error, { projectId: 'proj-1' })
+      expect(result.appError.code).toBe('validation-failed')
+    })
+  })
+
   describe('network error detection', () => {
     test('detects TypeError with fetch failed message', () => {
       const error = new TypeError('fetch failed')

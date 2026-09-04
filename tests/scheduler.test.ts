@@ -23,6 +23,7 @@ import { setCachedConfig } from '../src/cache.js'
 import type { ChatProvider } from '../src/chat/types.js'
 import { dmTarget, type DeferredDeliveryTarget } from '../src/chat/types.js'
 import * as schema from '../src/db/schema.js'
+import { providerError, systemError } from '../src/errors.js'
 import { setContextSettings } from '../src/instances/context-store.js'
 import { insertPlatformInstance } from '../src/instances/platform-store.js'
 import type { TaskCapability, Task, TaskProvider } from '../src/providers/types.js'
@@ -629,6 +630,94 @@ describe('scheduler', () => {
       })
 
       expect(new Set(chatUserIds)).toEqual(new Set([USER_ID, USER_2]))
+    })
+  })
+
+  describe('tick() — permanent failure handling', () => {
+    const failingProviderDeps = (
+      classifyError: () =>
+        | ReturnType<typeof providerError.projectNotFound>
+        | ReturnType<typeof systemError.networkError>,
+      chat?: ChatProvider,
+    ): SchedulerDeps => ({
+      ...(chat === undefined ? {} : { chat }),
+      resolve: (): TaskProvider =>
+        createMockProvider({
+          createTask: (params): Promise<Task> => {
+            createTaskCallCount++
+            return createTaskImpl(params)
+          },
+          classifyError,
+        }),
+    })
+
+    test('permanent failure consumes the scheduled slot and notifies the owner', async () => {
+      createTaskImpl = (): Promise<MockTask> =>
+        Promise.reject(new Error('Kaneo API GET request failed with status 400'))
+      const taskId = createDueTask()
+
+      await tick(failingProviderDeps(() => providerError.projectNotFound('sutuhvgbp2rczkh16u68ckqd'), mockChatProvider))
+
+      const row = testSqlite
+        .query<{ last_run: string | null; next_run: string | null }, []>(
+          `SELECT last_run, next_run FROM recurring_tasks WHERE id = '${taskId}'`,
+        )
+        .get()
+      expect(row!.last_run).not.toBeNull()
+      expect(row!.next_run).not.toBeNull()
+      expect(new Date(row!.next_run!).getTime()).toBeGreaterThan(Date.now())
+      expect(getDueRecurringTasks().some((due) => due.id === taskId)).toBe(false)
+      const occurrences = testSqlite.query<{ id: string }, []>('SELECT id FROM recurring_task_occurrences').all()
+      expect(occurrences).toHaveLength(0)
+
+      expect(sendMessageCalls.length).toBeGreaterThanOrEqual(1)
+      expect(sendMessageCalls[0]!.text).toContain('Recurring Test')
+      expect(sendMessageCalls[0]!.text).toContain('Update or disable')
+    })
+
+    test('transient failure keeps retry-next-tick behavior without notification', async () => {
+      createTaskImpl = (): Promise<MockTask> => Promise.reject(new Error('fetch failed'))
+      const taskId = createDueTask()
+
+      await tick(failingProviderDeps(() => systemError.networkError('fetch failed'), mockChatProvider))
+
+      const row = testSqlite
+        .query<{ last_run: string | null }, []>(`SELECT last_run FROM recurring_tasks WHERE id = '${taskId}'`)
+        .get()
+      expect(row!.last_run).toBeNull()
+      expect(getDueRecurringTasks().some((due) => due.id === taskId)).toBe(true)
+      expect(sendMessageCalls).toHaveLength(0)
+    })
+
+    test('notification send failure does not block the schedule advance', async () => {
+      createTaskImpl = (): Promise<MockTask> =>
+        Promise.reject(new Error('Kaneo API GET request failed with status 400'))
+      sendMessageImpl = (): Promise<void> => Promise.reject(new Error('notification failed'))
+      const taskId = createDueTask()
+
+      await tick(failingProviderDeps(() => providerError.projectNotFound('sutuhvgbp2rczkh16u68ckqd'), mockChatProvider))
+
+      const row = testSqlite
+        .query<{ last_run: string | null; next_run: string | null }, []>(
+          `SELECT last_run, next_run FROM recurring_tasks WHERE id = '${taskId}'`,
+        )
+        .get()
+      expect(row!.last_run).not.toBeNull()
+      expect(new Date(row!.next_run!).getTime()).toBeGreaterThan(Date.now())
+    })
+
+    test('advances the schedule when no chat route is available', async () => {
+      createTaskImpl = (): Promise<MockTask> =>
+        Promise.reject(new Error('Kaneo API GET request failed with status 400'))
+      const taskId = createDueTask()
+
+      await tick(failingProviderDeps(() => providerError.projectNotFound('sutuhvgbp2rczkh16u68ckqd')))
+
+      const row = testSqlite
+        .query<{ last_run: string | null }, []>(`SELECT last_run FROM recurring_tasks WHERE id = '${taskId}'`)
+        .get()
+      expect(row!.last_run).not.toBeNull()
+      expect(sendMessageCalls).toHaveLength(0)
     })
   })
 

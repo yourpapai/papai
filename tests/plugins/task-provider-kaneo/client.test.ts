@@ -239,6 +239,28 @@ describe('kaneoFetch', () => {
     }
   })
 
+  test('preserves plain-text error bodies for classification', async () => {
+    // Kaneo serves some error bodies as plain text (e.g. 400 "Workspace ID could not
+    // be determined"); reading json() first consumes the body, so the text fallback
+    // must not collapse to the unreadable-body sentinel.
+    setMockFetch(() =>
+      Promise.resolve(
+        new Response('Workspace ID could not be determined', {
+          status: 400,
+          headers: { 'Content-Type': 'text/plain' },
+        }),
+      ),
+    )
+
+    try {
+      await kaneoFetch(mockConfig, 'GET', '/column/proj-1', undefined, undefined, KaneoTaskResponseSchema)
+    } catch (error) {
+      assert(error instanceof KaneoApiError)
+      expect(error.statusCode).toBe(400)
+      expect(error.responseBody).toBe('Workspace ID could not be determined')
+    }
+  })
+
   test('throws when fetch itself throws (network failure)', async () => {
     setMockFetch(() => {
       throw new TypeError('Failed to fetch')
