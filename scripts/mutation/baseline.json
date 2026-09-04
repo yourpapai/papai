@@ -483,7 +483,18 @@
   "plugins/task-provider-kaneo/add-task-relation.ts": 0,
   "plugins/task-provider-kaneo/api-error.ts": 0,
   "plugins/task-provider-kaneo/classify-error.ts": 0.9103448275862069,
-  "plugins/task-provider-kaneo/column-resource.ts": 0.12941176470588237,
+  "plugins/task-provider-kaneo/client.ts": {
+    "score": 0.6639344262295082,
+    "killed": 81,
+    "timeout": 0,
+    "scored": 122
+  },
+  "plugins/task-provider-kaneo/column-resource.ts": {
+    "score": 0.16091954022988506,
+    "killed": 14,
+    "timeout": 0,
+    "scored": 87
+  },
   "plugins/task-provider-kaneo/comment-resource.ts": 0.4807692307692308,
   "plugins/task-provider-kaneo/create-column.ts": 0.1111111111111111,
   "plugins/task-provider-kaneo/create-label.ts": 0,
@@ -534,7 +545,12 @@
   "plugins/task-provider-kaneo/schemas/update-project.ts": 1,
   "plugins/task-provider-kaneo/search-tasks.ts": 0.8163265306122449,
   "plugins/task-provider-kaneo/task-relations.ts": 0.47058823529411764,
-  "plugins/task-provider-kaneo/task-resource.ts": 0.4489795918367347,
+  "plugins/task-provider-kaneo/task-resource.ts": {
+    "score": 0.4517766497461929,
+    "killed": 89,
+    "timeout": 0,
+    "scored": 197
+  },
   "plugins/task-provider-kaneo/task-status.ts": 0.875,
   "plugins/task-provider-kaneo/task-update-helpers.ts": 0.4246575342465753,
   "plugins/task-provider-kaneo/update-column.ts": 0.09523809523809523,
@@ -735,7 +751,18 @@
     "timeout": 0,
     "scored": 121
   },
-  "src/recurring.ts": 0.6271186440677966,
+  "src/recurring-run-state.ts": {
+    "score": 0.375,
+    "killed": 12,
+    "timeout": 0,
+    "scored": 32
+  },
+  "src/recurring.ts": {
+    "score": 0.634703196347032,
+    "killed": 139,
+    "timeout": 0,
+    "scored": 219
+  },
   "src/runtime/production-background.ts": 0.9423076923076923,
   "src/runtime/production-extensions.ts": 0,
   "src/scheduler-recurring.ts": {
@@ -745,10 +772,10 @@
     "scored": 112
   },
   "src/scheduler.ts": {
-    "score": 0.5401459854014599,
-    "killed": 74,
+    "score": 0.5704697986577181,
+    "killed": 85,
     "timeout": 0,
-    "scored": 137
+    "scored": 149
   },
   "src/tools/add-comment-reaction.ts": 0.4666666666666667,
   "src/tools/add-comment.ts": 0.5384615384615384,
