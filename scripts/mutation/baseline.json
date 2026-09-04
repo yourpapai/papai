@@ -615,6 +615,12 @@
     "timeout": 0,
     "scored": 136
   },
+  "src/analytics/provider-scope-factory.ts": {
+    "score": 0.6571428571428571,
+    "killed": 69,
+    "timeout": 0,
+    "scored": 105
+  },
   "src/analytics/rekey/copy-children.ts": {
     "score": 0.8969072164948454,
     "killed": 87,
@@ -732,6 +738,18 @@
   "src/recurring.ts": 0.6271186440677966,
   "src/runtime/production-background.ts": 0.9423076923076923,
   "src/runtime/production-extensions.ts": 0,
+  "src/scheduler-recurring.ts": {
+    "score": 0.5089285714285714,
+    "killed": 57,
+    "timeout": 0,
+    "scored": 112
+  },
+  "src/scheduler.ts": {
+    "score": 0.5401459854014599,
+    "killed": 74,
+    "timeout": 0,
+    "scored": 137
+  },
   "src/tools/add-comment-reaction.ts": 0.4666666666666667,
   "src/tools/add-comment.ts": 0.5384615384615384,
   "src/tools/add-project-member.ts": 0.5,
