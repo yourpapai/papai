@@ -714,10 +714,10 @@
   "src/errors.ts": 0.9875776397515528,
   "src/history.ts": 0.9891304347826086,
   "src/llm-orchestrator-events.ts": {
-    "score": 0.5507246376811594,
+    "score": 0.6031746031746031,
     "killed": 38,
     "timeout": 0,
-    "scored": 69
+    "scored": 63
   },
   "src/llm-orchestrator-tool-events.ts": {
     "score": 0.7156862745098039,
@@ -829,7 +829,12 @@
   },
   "src/tools/disclosure/core.ts": 1,
   "src/tools/disclosure/embedding-tool-retriever.ts": 0.8309859154929577,
-  "src/tools/disclosure/load-tool.ts": 0.47619047619047616,
+  "src/tools/disclosure/load-tool.ts": {
+    "score": 0.6896551724137931,
+    "killed": 20,
+    "timeout": 0,
+    "scored": 29
+  },
   "src/tools/disclosure/prepare-step.ts": 0.8679245283018868,
   "src/tools/disclosure/registry.ts": 0.9142857142857143,
   "src/tools/disclosure/search-tools.ts": 0.6041666666666666,
