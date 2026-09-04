@@ -14,8 +14,10 @@ import {
 } from '../../src/analytics/provider-request-scope.js'
 import {
   buildProactiveProviderRequestScope,
+  buildSchedulerProviderRequestScope,
   resolveNormalTurnProviderScope,
   resolveProactiveProviderRequestScope,
+  resolveSchedulerProviderRequestScope,
   type ProactiveScopeInput,
 } from '../../src/analytics/provider-scope-factory.js'
 import type { AnalyticsObserver } from '../../src/analytics/runtime.js'
@@ -23,7 +25,9 @@ import type { AnalyticsSourceContext } from '../../src/analytics/source-facts.js
 import { createTurnContextRegistry } from '../../src/analytics/turn-context.js'
 import { dmTarget } from '../../src/chat/deferred-target.js'
 import { toScopedContextId } from '../../src/chat/scoped-context.js'
+import { setContextSettings } from '../../src/instances/context-store.js'
 import { insertPlatformInstance } from '../../src/instances/platform-store.js'
+import { insertTaskInstance } from '../../src/instances/task-store.js'
 import { mockLogger, setupTestDb } from '../utils/test-helpers.js'
 
 const scopedDmTarget = (nativeUserId: string): ProactiveScopeInput['deliveryTarget'] => ({
@@ -209,6 +213,127 @@ describe('resolveProactiveProviderRequestScope', () => {
       outcome: 'failure',
       statusClass: '5xx',
       retryable: true,
+    })
+    expect(seen).toHaveLength(1)
+  })
+})
+
+const schedulerOwnerContextId = (): string =>
+  toScopedContextId({ platformInstanceId: 'telegram-default', nativeContextId: 'user-1' })
+
+describe('buildSchedulerProviderRequestScope', () => {
+  beforeEach(async () => {
+    mockLogger()
+    await setupTestDb()
+    insertPlatformInstance({ id: 'telegram-default', type: 'telegram', config: { token: 't' }, status: 'active' })
+  })
+
+  test('builds an immutable scheduler actor scope from the task owner route', () => {
+    const observeProviderRequest: ObserveProviderRequest = mock(() => {})
+    const ownerContextId = schedulerOwnerContextId()
+
+    const scope = buildSchedulerProviderRequestScope(
+      { recurringTaskId: 'rt-1', userId: ownerContextId },
+      observeProviderRequest,
+    )
+
+    expect(isProviderRequestScope(scope)).toBe(true)
+    const actorScope = requireActorScope(scope)
+    expect(actorScope.requestContext.source.platform).toBe('telegram')
+    expect(actorScope.requestContext.source.platformInstanceId).toBe('telegram-default')
+    expect(actorScope.requestContext.source.chatUserId).toBe('user-1')
+    expect(actorScope.requestContext.source.nativeContextId).toBe('user-1')
+    expect(actorScope.requestContext.source.storageContextId).toBe(ownerContextId)
+    expect(actorScope.requestContext.source.configContextId).toBe(ownerContextId)
+    expect(actorScope.requestContext.source.contextType).toBe('dm')
+    expect(actorScope.requestContext.source.actorRole).toBe('system')
+    expect(actorScope.requestContext.source.invocationMode).toBe('scheduler')
+    expect(actorScope.requestContext.source.rawTurnId).toBeNull()
+    expect(actorScope.requestContext.source.taskInstanceId).toBeNull()
+    expect(actorScope.requestContext.source.taskProvider).toBe('none')
+    expect(actorScope.requestContext.sourceEventId.startsWith('scheduler:rt-1:')).toBe(true)
+    expect(Object.isFrozen(scope)).toBe(true)
+  })
+
+  test('maps the assigned task instance to its provider', () => {
+    insertTaskInstance({
+      id: 'kaneo-default',
+      type: 'kaneo',
+      config: { url: 'https://kaneo.example', apiKey: 'k' },
+      status: 'active',
+    })
+    const ownerContextId = schedulerOwnerContextId()
+    setContextSettings({
+      contextId: ownerContextId,
+      taskInstanceId: 'kaneo-default',
+      platformInstanceId: 'telegram-default',
+    })
+    const observeProviderRequest: ObserveProviderRequest = mock(() => {})
+
+    const scope = buildSchedulerProviderRequestScope(
+      { recurringTaskId: 'rt-1', userId: ownerContextId },
+      observeProviderRequest,
+    )
+
+    const actorScope = requireActorScope(scope)
+    expect(actorScope.requestContext.source.taskInstanceId).toBe('kaneo-default')
+    expect(actorScope.requestContext.source.taskProvider).toBe('kaneo')
+  })
+
+  test('falls back to NO_ANALYTICS_SCOPE when the owner route is unresolvable', () => {
+    const observeProviderRequest: ObserveProviderRequest = mock(() => {})
+
+    const scope = buildSchedulerProviderRequestScope(
+      { recurringTaskId: 'rt-1', userId: 'legacy-bare-id' },
+      observeProviderRequest,
+    )
+
+    expect(scope).toBe(NO_ANALYTICS_SCOPE)
+  })
+
+  test('falls back to NO_ANALYTICS_SCOPE when the platform instance is unknown', () => {
+    const observeProviderRequest: ObserveProviderRequest = mock(() => {})
+    const unknownOwner = toScopedContextId({ platformInstanceId: 'unknown-instance', nativeContextId: 'user-1' })
+
+    const scope = buildSchedulerProviderRequestScope(
+      { recurringTaskId: 'rt-1', userId: unknownOwner },
+      observeProviderRequest,
+    )
+
+    expect(scope).toBe(NO_ANALYTICS_SCOPE)
+  })
+})
+
+describe('resolveSchedulerProviderRequestScope', () => {
+  beforeEach(async () => {
+    mockLogger()
+    await setupTestDb()
+    insertPlatformInstance({ id: 'telegram-default', type: 'telegram', config: { token: 't' }, status: 'active' })
+  })
+
+  test('falls back to NO_ANALYTICS_SCOPE when the runtime is absent', () => {
+    expect(
+      resolveSchedulerProviderRequestScope({ recurringTaskId: 'rt-1', userId: schedulerOwnerContextId() }, null),
+    ).toBe(NO_ANALYTICS_SCOPE)
+  })
+
+  test('resolves an actor scope wired to the runtime observer', () => {
+    const { observer, seen } = makeObserver()
+
+    const scope = resolveSchedulerProviderRequestScope(
+      { recurringTaskId: 'rt-1', userId: schedulerOwnerContextId() },
+      { observer },
+    )
+
+    expect(scope.kind).toBe('actor')
+    const actorScope = requireActorScope(scope)
+    actorScope.observeProviderRequest(actorScope.requestContext, {
+      provider: 'kaneo',
+      operation: 'create',
+      durationMs: 4,
+      outcome: 'success',
+      statusClass: '2xx',
+      retryable: null,
     })
     expect(seen).toHaveLength(1)
   })

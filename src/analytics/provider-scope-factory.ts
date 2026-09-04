@@ -12,6 +12,7 @@ import { getStorageContextId } from '../deferred-prompts/proactive-llm-helpers.j
 import { getContextSettings } from '../instances/context-store.js'
 import { getPlatformInstance } from '../instances/platform-store.js'
 import { getTaskInstance } from '../instances/task-store.js'
+import { getRecurringNotificationRoute } from '../scheduler-recurring.js'
 import { createProviderRequestObserver } from './provider-observer.js'
 import type { AnalyticsRequestContext, ObserveProviderRequest } from './provider-observer.js'
 import { createActorProviderRequestScope, NO_ANALYTICS_SCOPE } from './provider-request-scope.js'
@@ -104,6 +105,64 @@ export const resolveProactiveProviderRequestScope = (
 ): ProviderRequestScope => {
   if (runtime === null) return NO_ANALYTICS_SCOPE
   return buildProactiveProviderRequestScope(input, createProviderRequestObserver(runtime.observer))
+}
+
+export type SchedulerScopeInput = Readonly<{
+  recurringTaskId: string
+  /** Owner storage-context id of the recurring task (scoped `pi:…:ctx:…` or legacy bare id). */
+  userId: string
+}>
+
+/**
+ * Builds an independent immutable scheduler scope from a recurring task record,
+ * deriving every identity field from the owner's storage-context id via the
+ * recurring notification route. Pure apart from platform/task instance and
+ * context-settings lookups; the observation callback is injected so tests can
+ * assert wiring without a runtime. Returns `NO_ANALYTICS_SCOPE` when the route
+ * or platform instance is unresolvable — scheduler execution must never fail
+ * for scope reasons.
+ */
+export const buildSchedulerProviderRequestScope = (
+  input: SchedulerScopeInput,
+  observeProviderRequest: ObserveProviderRequest,
+): ProviderRequestScope => {
+  const route = getRecurringNotificationRoute(input.userId)
+  if (route === null) return NO_ANALYTICS_SCOPE
+  const instance = getPlatformInstance(route.platformInstanceId)
+  if (instance === null) return NO_ANALYTICS_SCOPE
+  const configContextId = getConfigContextIdFromStorageContextId(input.userId)
+  const taskInstanceId = getContextSettings(configContextId)?.taskInstanceId ?? null
+  const source: AnalyticsSourceContext = {
+    platform: instance.type,
+    platformInstanceId: route.platformInstanceId,
+    chatUserId: route.target.contextId,
+    nativeContextId: route.target.contextId,
+    storageContextId: input.userId,
+    configContextId,
+    contextType: 'dm',
+    actorRole: 'system',
+    taskInstanceId,
+    taskProvider: taskProviderOf(taskInstanceId),
+    invocationMode: 'scheduler',
+    rawTurnId: null,
+  }
+  return createActorProviderRequestScope({
+    requestContext: { source, sourceEventId: `scheduler:${input.recurringTaskId}:${randomUUID()}` },
+    observeProviderRequest,
+  })
+}
+
+/**
+ * Resolves a scheduler scope wired to the active analytics runtime. Falls back
+ * to `NO_ANALYTICS_SCOPE` when analytics is not running or the owner route is
+ * unresolvable — never reuses a turn, proactive, or settings scope.
+ */
+export const resolveSchedulerProviderRequestScope = (
+  input: SchedulerScopeInput,
+  runtime: Pick<ProviderScopeRuntime, 'observer'> | null = getActiveAnalyticsRuntime(),
+): ProviderRequestScope => {
+  if (runtime === null) return NO_ANALYTICS_SCOPE
+  return buildSchedulerProviderRequestScope(input, createProviderRequestObserver(runtime.observer))
 }
 
 export type SettingsScopeInput = Readonly<{

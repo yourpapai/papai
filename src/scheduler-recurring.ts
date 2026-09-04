@@ -21,7 +21,7 @@ type RouterInstanceActiveLookup = { isInstanceActive: (id: string) => boolean }
 const hasRouterInstanceActiveLookup = (chat: ChatProvider): chat is ChatProvider & RouterInstanceActiveLookup =>
   typeof Reflect.get(chat, 'isInstanceActive') === 'function'
 
-const getRecurringNotificationRoute = (
+export const getRecurringNotificationRoute = (
   userId: string,
 ): { platformInstanceId: string; target: ReturnType<typeof dmTarget> } | null => {
   const scoped = parseScopedContextId(userId)
