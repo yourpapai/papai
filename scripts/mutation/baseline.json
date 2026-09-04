@@ -711,6 +711,12 @@
   "src/deferred-prompts/snapshots.ts": 0.8125,
   "src/deferred-prompts/tool-handlers.ts": 0.9675090252707581,
   "src/deferred-prompts/types.ts": 0.8309859154929577,
+  "src/embeddings.ts": {
+    "score": 0.65625,
+    "killed": 63,
+    "timeout": 0,
+    "scored": 96
+  },
   "src/errors.ts": 0.9875776397515528,
   "src/history.ts": 0.9891304347826086,
   "src/llm-orchestrator-events.ts": {
@@ -828,7 +834,12 @@
     "scored": 145
   },
   "src/tools/disclosure/core.ts": 1,
-  "src/tools/disclosure/embedding-tool-retriever.ts": 0.8309859154929577,
+  "src/tools/disclosure/embedding-tool-retriever.ts": {
+    "score": 0.855072463768116,
+    "killed": 117,
+    "timeout": 1,
+    "scored": 138
+  },
   "src/tools/disclosure/load-tool.ts": {
     "score": 0.6896551724137931,
     "killed": 20,
