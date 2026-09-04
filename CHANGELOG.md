@@ -5,6 +5,23 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [6.14.3] - 2026-09-04
+
+### Added
+
+- **scheduler:** Add scheduler provider request scope builder
+
+### Documentation
+
+- Scheduler provider request scope behavior and analytics data note
+
+### Fixed
+
+- **scheduler:** Execute recurring tasks inside a per-task provider request scope
+
+### Testing
+
+- **scheduler:** Pin fail-closed provider regression and detached-lease semantics
 ## [6.14.2] - 2026-09-04
 
 ### Added
