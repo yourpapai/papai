@@ -104,6 +104,41 @@ export const notifyUser = async (
   }
 }
 
+/** Permanent-failure notice (spec: recurring-failure-handling). Delivery is
+ * best-effort: the template's schedule has already advanced, so a send failure
+ * must never throw back into the scheduler tick. */
+export const notifyRecurringFailure = async (
+  chatProviderRef: ChatProvider | null,
+  userId: string,
+  task: RecurringTaskRecord,
+): Promise<void> => {
+  if (chatProviderRef === null) return
+
+  const route = getRecurringNotificationRoute(userId)
+  if (route === null) {
+    log.warn({ userId, recurringTaskId: task.id }, 'Recurring task failure notice skipped: no route')
+    return
+  }
+
+  try {
+    const message = `Recurring task failed: **${task.title}** — its project is no longer available. Update or disable this recurring task.`
+    const delivered = await chatProviderRef.sendMessage(route.platformInstanceId, route.target, message)
+    if (delivered === false) {
+      log.warn(
+        { userId, platformInstanceId: route.platformInstanceId, recurringTaskId: task.id },
+        'Recurring task failure notice refused',
+      )
+      return
+    }
+    if (parseScopedContextId(userId) !== null) recordProactiveInHistory(userId, message)
+  } catch (notifyError) {
+    log.warn(
+      { userId, error: notifyError instanceof Error ? notifyError.message : String(notifyError) },
+      'Failed to notify user about recurring task failure',
+    )
+  }
+}
+
 export const finalizeCreatedRecurringTask = async (
   task: RecurringTaskRecord,
   provider: TaskProvider,

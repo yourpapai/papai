@@ -11,8 +11,8 @@
 
 ## 3. Scheduler permanent-failure handling
 
-- [ ] 3.1 Add failing tests to `tests/scheduler.test.ts`: on a provider error whose `classifyError` yields `project-not-found`, the scheduler calls `recordFailedExecution` (template leaves the due set until its next occurrence), sends the owner failure DM via the existing route, and no occurrence is recorded; transient errors keep retry-next-tick with untouched run state; notification send failure does not block the schedule advance; unrouteable owner logs a warn and still advances. Verify: `bun test tests/scheduler.test.ts`
-- [ ] 3.2 Implement the failure branch in `src/scheduler.ts` (`provider.classifyError` check, design D2) and `notifyRecurringFailure` in `src/scheduler-recurring.ts` (design D4). Verify: `bun test tests/scheduler.test.ts tests/scheduler-recurring.test.ts tests/scheduler-integration.test.ts`
+- [x] 3.1 Add failing tests to `tests/scheduler.test.ts`: on a provider error whose `classifyError` yields `project-not-found`, the scheduler calls `recordFailedExecution` (template leaves the due set until its next occurrence), sends the owner failure DM via the existing route, and no occurrence is recorded; transient errors keep retry-next-tick with untouched run state; notification send failure does not block the schedule advance; unrouteable owner logs a warn and still advances. Verify: `bun test tests/scheduler.test.ts`
+- [x] 3.2 Implement the failure branch in `src/scheduler.ts` (`provider.classifyError` check, design D2) and `notifyRecurringFailure` in `src/scheduler-recurring.ts` (design D4). Verify: `bun test tests/scheduler.test.ts tests/scheduler-recurring.test.ts tests/scheduler-integration.test.ts`
 
 ## 4. Docs and full gates
 
