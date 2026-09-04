@@ -83,7 +83,6 @@ export type ResolvedStreamTextResult = {
 }>
 
 function stringifySingleToolSchema(toolName: string, value: unknown): string {
-  log.debug({ toolName }, 'stringifySingleToolSchema')
   try {
     const seen = new WeakSet<object>()
     return JSON.stringify(value, (key, nestedValue: unknown) => {
@@ -105,7 +104,6 @@ function stringifySingleToolSchema(toolName: string, value: unknown): string {
 }
 
 function estimateToolSchemaBytes(tools: ToolSet): number {
-  log.debug({ toolCount: Object.keys(tools).length }, 'estimateToolSchemaBytes')
   let total = 0
   for (const [name, tool] of Object.entries(tools)) {
     total += name.length
@@ -117,7 +115,6 @@ function estimateToolSchemaBytes(tools: ToolSet): number {
 
 function buildToolTelemetry(tools: ToolSet): Record<string, unknown> {
   const toolCount = Object.keys(tools).length
-  log.debug({ toolCount }, 'buildToolTelemetry')
   return {
     toolCount,
     toolSchemaBytes: estimateToolSchemaBytes(tools),
