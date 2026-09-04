@@ -274,19 +274,4 @@ export const getDueRecurringTasks = (): RecurringTaskRecord[] => {
   return rows.map(toRecord)
 }
 
-export const markExecuted = (id: string): void => {
-  log.debug({ id }, 'markExecuted called')
-  const db = getDrizzleDb()
-  const existing = db.select().from(recurringTasks).where(eq(recurringTasks.id, id)).get()
-  if (existing === undefined) return
-
-  const executedAt = new Date()
-  const now = executedAt.toISOString()
-
-  const compiled = buildCompiled(existing.rrule, existing.dtstartUtc, existing.timezone)
-  const nextRun = existing.triggerType === 'cron' && compiled !== null ? computeNextRun(compiled, executedAt) : null
-
-  db.update(recurringTasks).set({ lastRun: now, nextRun, updatedAt: now }).where(eq(recurringTasks.id, id)).run()
-
-  log.info({ id, lastRun: now, nextRun }, 'Recurring task marked as executed')
-}
+export { markExecuted, recordFailedExecution } from './recurring-run-state.js'

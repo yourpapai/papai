@@ -6,8 +6,8 @@
 
 ## 2. Failed-execution recording
 
-- [ ] 2.1 Add failing tests for `recordFailedExecution` (new) in the recurring store suite: sets `last_run` and advances `next_run` per the template's rrule; writes no occurrence row; a later `computeMissedDates`/resume does not recreate the failed attempt; null-rrule templates keep `next_run` null. Verify: `bun test tests/recurring*.test.ts tests/scheduler-recurring.test.ts`
-- [ ] 2.2 Implement `recordFailedExecution` in `src/recurring.ts` reusing the `markExecuted` next-run computation per design D3. Verify: `bun test tests/recurring*.test.ts tests/scheduler-recurring.test.ts`
+- [x] 2.1 Add failing tests for `recordFailedExecution` (new) in the recurring store suite: sets `last_run` and advances `next_run` per the template's rrule; writes no occurrence row; a later `computeMissedDates`/resume does not recreate the failed attempt; null-rrule templates keep `next_run` null. Verify: `bun test tests/recurring*.test.ts tests/scheduler-recurring.test.ts`
+- [x] 2.2 Implement `recordFailedExecution` in `src/recurring.ts` reusing the `markExecuted` next-run computation per design D3. Verify: `bun test tests/recurring*.test.ts tests/scheduler-recurring.test.ts`
 
 ## 3. Scheduler permanent-failure handling
 
