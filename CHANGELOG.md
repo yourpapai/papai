@@ -5,6 +5,23 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [6.14.5] - 2026-09-04
+
+### Documentation
+
+- **openspec:** Draft artifacts for bound-embedding-fanout
+- **tools:** State the disclosure embedding burst-bounding contract
+
+### Fixed
+
+- **embeddings:** Bound embedding calls and add the batched embedManyTexts seam
+- **disclosure:** Batch the brief-embedding fan-out behind single-flight and TTL tombstones
+
+### Miscellaneous
+
+- **mutation:** Ratchet baseline
+- **logging:** Emit load_tool debug only on real activations
+- **mutation:** Ratchet baseline
 ## [6.14.4] - 2026-09-04
 
 ### Added
