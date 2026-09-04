@@ -26,8 +26,8 @@ checks against materializations, and the exit review.
 
 ## Operate-phase tracking (runbook requires ≥2 weekly review cycles)
 
-- [ ] Two weekly review cycles completed (dates below)
-- [ ] One complete authenticated export/withdraw/delete exercise
+- [x] Two weekly review cycles completed (dates below)
+- [x] One complete authenticated export/withdraw/delete exercise
 - [ ] Hand-calculations: sessions, activation, outcomes, intent coverage, censoring — matched against materializations
 - [x] HMAC key backup/restore drill
 - [ ] Planned rekey drill
@@ -39,8 +39,8 @@ checks against materializations, and the exit review.
 
 | Cycle | Dates | Rejects delta from baseline | Delta | Expiry | Notes |
 |---|---|---|---|---|---|
-| 1 | | | | | |
-| 2 | | | | | |
+| 1 | 2026-08-20..2026-08-26 | 118 total (30+50+8+0+3+13+14), still pre-079 REALs | 0 | ok | friction sample 2026-09-02 5 strata 11 cases all band 0_1 count 0, token_map destroyed 10:15 UTC; activation/outcomes ok, expiry 2026-11-18, snapshot fresh |
+| 2 | 2026-08-27..2026-09-03 | 101 total (39+0+21+2+8+11+0+20), pre-079 REALs | 0 | ok | friction sample 2026-09-04 6 strata 12 cases all band 0_1 count 0 (1 case with 2 structured_failure tools, turn ok), token_map destroyed 2026-09-04 |
 
 ### Daily log (report CLI rows)
 
@@ -65,6 +65,8 @@ checks against materializations, and the exit review.
 | 2026-08-30 | true | — | 2026-08-30T23:42 | 0 | 2 (invalid_value=2) | 0 | ok | — |
 | 2026-08-31 | true | — | 2026-08-31T23:42 | 0 | 8 (invalid_value=8) | 0 | ok | — |
 | 2026-09-01 | true | — | 2026-09-01T23:42 | 0 | 11 (invalid_value=11) | 0 | ok | — |
+| 2026-09-02 | true | — | 2026-09-04T07:42* | 0 | 0 | 0 | ok | backfilled 2026-09-04 |
+| 2026-09-03 | true | — | 2026-09-04T07:42 | 0 | 20 (invalid_value=20) | 0 | ok | — |
 
 Days 2026-08-17–19 stayed `delta` because the pre-fix writer was still in
 production until v6.14.0 (deployed 2026-08-20, contains the writer fix +
@@ -76,10 +78,10 @@ Clean-day evidence restarts 2026-08-20.
 | Drill | Date | Result | Evidence |
 |---|---|---|---|
 | Export (authenticated, pilot subject) | 2026-08-20 | pass | 32 events = one full turn (auth→turn_completed), keyVersion v1, gen-1, 6.14.1; C2-only props; governance audit shows deny→allow toggle 13:54 UTC; sessions empty (derive job pending), deliveries empty (no external lane) |
-| Withdraw (collection-ref race) | | | |
-| Delete (cascade + censor intervals) | | | |
+| Withdraw (collection-ref race) | 2026-09-04 | pass | laneHint `Denied since 2026-09-04 08:46` — ref `v1.*` state `deny` revoked_at 1788511588245 (gen-2); live `analytics_events` count 0 |
+| Delete (cascade + censor intervals) | 2026-09-04 | pass (completed) | `Your analytics data has been deleted. Analytics stores only.` (deleteStatus completed); live `analytics_events` count 0 |
 | Key backup/restore | 2026-08-20 | pass | both keyrings copied out of the deployment env to sealed backup; the same-day authenticated export resolved all `v1` events and governance keys = restore proof |
-| Planned rekey | | | |
+| Planned rekey | 2026-09-04 | BLOCKED (paused) | run `rekey-mtmprpzl-62cf132a-0` gen-1→gen-2: plan ok, apply paused at `verify.local_graph`, `verify` equation_ok=true content_ok=false mismatches=`["censor_intervals"]`; resume retries same verify, abort forbidden post-dual-write |
 | Deletion ack after verified snapshot replacement | | | |
 
 ### Hand-calculation checks
@@ -95,6 +97,9 @@ Clean-day evidence restarts 2026-08-20.
 **Stage C exit review:** ____________________  date: ________
 
 ## Notes / incidents
+
+- 2026-09-04: **rekey drill BLOCKED — copy/verify inconsistency on orphan censor intervals.** Withdraw+delete at 08:46 left live `analytics_events` count 0 with a surviving `v1` `analytics_censor_intervals` row; plan 08:50 (highWater `0:0`) then apply 08:54/08:54:50 + verify 08:55:05 all pause with `equation_ok=true content_ok=false mismatches=["censor_intervals"]`. Root cause: `copyCensorIntervalsIn` (`src/analytics/rekey/copy-children.ts:212`) skips intervals whose actor has no source event (`inSource`), while verify (`src/analytics/rekey/verify-content.ts:100`) classifies censor rows by actor-key prefix and demands 1:1 — zero-event withdrawal state can never verify. Run stays `paused` holding the single-nonterminal slot; `abort` is correctly rejected post-dual-write. Do NOT hand-edit shadow rows. Fix must align copy with verify (copy orphan censors or scope verify to event-backed actors) + regression test (withdraw→delete→rekey with 0 events). Drill stays BLOCKED until fix + clean `verify` on this or a successor run.
+- 2026-09-04: **orphan-censor fix landed (change `rekey-orphan-censor-intervals`), drill still BLOCKED pending a successor pilot run.** `copyCensorIntervalsIn` now copies every source-scoped interval (actor prefix matched against `fromVersions`, the same classification verify uses) instead of skipping actors with no source event; the `exists` idempotency guard is retained and already-copied `v2` targets are skipped so re-runs/delta catch-up create no extras. Regression coverage in `tests/analytics/rekey/copy-children.test.ts`: zero-event orphan copy + `verifyMappingNormalizedContentIn` green, mixed event-backed+orphan 1:1 with no extras. Proof: `bun test tests/analytics/rekey` 109/109 pass, `bun run typecheck` + `bun run lint` clean, full `bun test` 18270 pass / 8 skip / 2 fail — both failures outside change scope (Telegram `resolveUserId` username case performs a live Bot API `getChat` call and hits the 5 s timeout with no network; opencode-agent `mergeBase` passed on file-level re-run, load flake). Stuck run `rekey-mtmprpzl-62cf132a-0` remains paused evidence, never hand-edited; the Planned-rekey drill row flips only when a successor run shows `verify` green.
 
 - 2026-08-15: `invalid_value` rejects expected to drop to ~0 with v6.13.0 (#209 fix live); verify against the first post-deploy daily rows.
 - 2026-08-17: **window interruption.** Days 2026-08-15/16 reported `reconciliation=delta` (live-epoch delta): the live aggregate lane wrote epoch contribution rows but never the matching `opportunity`/`aggregate_only` epoch source counters, so every epoch closed with `delta = |0 − contributions|`. Invisible during Stage B because the long-lived epoch stayed open all window (open epochs aren't delta-checked); surfaced when the v6.13.x deploys closed epochs. Fixed in the aggregate writer (counters now bump in contribution units, same transaction, live lane only) + migration `078` repairs the two poisoned closed epochs from their contribution cell keys. Consecutive-clean-day evidence restarts from the deploy containing this fix; the two delta days are kept as honest negatives, not edited.

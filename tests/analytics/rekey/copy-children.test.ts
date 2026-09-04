@@ -8,9 +8,10 @@ import { beforeEach, describe, expect, test } from 'bun:test'
 import { planRekeyRun } from '../../../src/analytics/governance/generation-store.js'
 import { copyChildrenMaterializationsBackfillIn } from '../../../src/analytics/rekey/copy-children.js'
 import { copyChildrenPreferencesCollectionGrantsIn } from '../../../src/analytics/rekey/copy-governance.js'
-import { copyChildrenDeliveryDeletionIn, copyParentsIn } from '../../../src/analytics/rekey/copy.js'
+import { analyticsRemap, copyChildrenDeliveryDeletionIn, copyParentsIn } from '../../../src/analytics/rekey/copy.js'
 import type { RekeyFullKeyMaterial } from '../../../src/analytics/rekey/dual-write.js'
 import { getRekeyRun } from '../../../src/analytics/rekey/run-store.js'
+import { verifyMappingNormalizedContentIn } from '../../../src/analytics/rekey/verify-content.js'
 import type { AnalyticsRekeyRunRow } from '../../../src/db/schema.js'
 import { setupTestDb } from '../../utils/test-helpers.js'
 import {
@@ -87,6 +88,12 @@ const mustShadowSession = (db: Db): ShadowSessionRow => {
   return row
 }
 
+const mustRemapActor = (actor: string): string => {
+  const remapped = analyticsRemap(MATERIAL, 'actor:v1', actor)
+  if (remapped === null) throw new Error('actor remap failed')
+  return remapped
+}
+
 describe('rekey copy children', () => {
   let db: Db
 
@@ -151,5 +158,63 @@ describe('rekey copy children', () => {
         .get(row.source_ref_key)
       expect(shadow).toBeDefined()
     }
+  })
+
+  test('orphan censor interval copies without a source parent event', () => {
+    db.$client.run(`DELETE FROM analytics_session_events`)
+    db.$client.run(`DELETE FROM analytics_sessions WHERE storage_generation = 'gen-1'`)
+    db.$client.run(`DELETE FROM analytics_goal_attempts WHERE storage_generation = 'gen-1'`)
+    db.$client.run(`DELETE FROM analytics_turn_friction WHERE storage_generation = 'gen-1'`)
+    db.$client.run(`DELETE FROM analytics_feature_opportunity_days WHERE storage_generation = 'gen-1'`)
+    db.$client.run(`DELETE FROM analytics_feature_use_days WHERE storage_generation = 'gen-1'`)
+    db.$client.run(`DELETE FROM analytics_event_collection_refs`)
+    db.$client.run(`DELETE FROM analytics_backfill_event_map`)
+    db.$client.run(`DELETE FROM analytics_deliveries`)
+    db.$client.run(`DELETE FROM analytics_events WHERE storage_generation = 'gen-1'`)
+    db.$client.run(`DELETE FROM analytics_censor_intervals`)
+    db.$client.run(
+      `INSERT INTO analytics_censor_intervals (actor_key, kind, start_ms, end_ms, censor_version)
+       VALUES ('v1.p-orphan', 'withdrawal', ?, NULL, 1)`,
+      [NOW],
+    )
+    expect(countRows(db, `SELECT COUNT(*) AS n FROM analytics_events WHERE storage_generation = 'gen-1'`)).toBe(0)
+
+    runFullCopy(db)
+
+    const expectedActor = mustRemapActor('v1.p-orphan')
+    expect(expectedActor.startsWith('v2.')).toBe(true)
+    const target = db.$client
+      .query<{ actor_key: string }, [string]>(`SELECT actor_key FROM analytics_censor_intervals WHERE actor_key = ?`)
+      .get(expectedActor)
+    expect(target).toBeDefined()
+    const report = db.transaction((tx) => verifyMappingNormalizedContentIn(tx, mustRun(db), MATERIAL))
+    expect(report.mismatches).not.toContain('censor_intervals')
+    expect(report.ok).toBe(true)
+  })
+
+  test('mixed event-backed and orphan censors copy 1:1 with no extras', () => {
+    db.$client.run(
+      `INSERT INTO analytics_censor_intervals (actor_key, kind, start_ms, end_ms, censor_version)
+       VALUES ('v1.p-orphan', 'withdrawal', ?, NULL, 1)`,
+      [NOW],
+    )
+
+    runFullCopy(db)
+
+    const rows = db.$client
+      .query<{ actor_key: string }, []>(`SELECT actor_key FROM analytics_censor_intervals ORDER BY actor_key`)
+      .all()
+      .map((row) => row.actor_key)
+    const sources = rows.filter((key) => key.startsWith('v1.'))
+    const targets = rows.filter((key) => key.startsWith('v2.'))
+    expect(sources).toHaveLength(2)
+    expect(targets).toHaveLength(2)
+    for (const source of sources) {
+      expect(targets).toContain(mustRemapActor(source))
+    }
+    expect(rows).toHaveLength(4)
+    const report = db.transaction((tx) => verifyMappingNormalizedContentIn(tx, mustRun(db), MATERIAL))
+    expect(report.mismatches).not.toContain('censor_intervals')
+    expect(report.ok).toBe(true)
   })
 })
