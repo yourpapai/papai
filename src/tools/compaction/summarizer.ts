@@ -38,7 +38,13 @@ export interface SummarizeInput {
 export function buildSummarizerDeps(configContextId: string): SummarizerDeps | null {
   const resolved = resolveLlmConfig(configContextId)
   if (!resolved.ok) return null
-  const model = buildChatModel(resolved.small.apiKey, resolved.small.baseUrl, resolved.small.model)
+  const model = buildChatModel(
+    resolved.small.apiKey,
+    resolved.small.baseUrl,
+    resolved.small.model,
+    undefined,
+    resolved.small.metadata,
+  )
   return {
     generate: async (opts) => {
       const result = await generateText({ model, instructions: opts.system, prompt: opts.prompt })

@@ -11,6 +11,7 @@ import { buildChatModel } from '../llm-model-builder.js'
 import { resolveAdminLlmConfig } from '../llm-providers/resolver.js'
 import type { LlmConfigResult } from '../llm-providers/types.js'
 import { logger } from '../logger.js'
+import type { ModelMetadata } from '../models-dev/resolve.js'
 
 const log = logger.child({ scope: 'announcements:humanize' })
 
@@ -86,7 +87,7 @@ const WRITE_SYSTEM_PROMPTS: Record<Locale, string> = {
 
 export interface HumanizeChangelogDeps {
   resolveConfig: () => LlmConfigResult
-  buildModel: (apiKey: string, baseUrl: string, modelName: string) => LanguageModel
+  buildModel: (apiKey: string, baseUrl: string, modelName: string, metadata: ModelMetadata) => LanguageModel
   generate: (opts: { model: LanguageModel; system: string; prompt: string }) => Promise<{ text: string }>
   generateStructured: (opts: { model: LanguageModel; system: string; prompt: string }) => Promise<ClassifiedEntries>
   /** Locales to produce bodies for; write pass runs once per entry. Defaults to every supported locale. */
@@ -95,7 +96,7 @@ export interface HumanizeChangelogDeps {
 
 const defaultDeps: HumanizeChangelogDeps = {
   resolveConfig: resolveAdminLlmConfig,
-  buildModel: buildChatModel,
+  buildModel: (apiKey, baseUrl, modelName, metadata) => buildChatModel(apiKey, baseUrl, modelName, undefined, metadata),
   generate: async (opts) => {
     const result = await generateText(opts)
     return { text: result.text }
@@ -118,7 +119,7 @@ async function runClassifyPass(
   config: OkLlmConfig,
 ): Promise<ClassifyOutcome> {
   try {
-    const model = deps.buildModel(config.main.apiKey, config.main.baseUrl, config.main.model)
+    const model = deps.buildModel(config.main.apiKey, config.main.baseUrl, config.main.model, config.main.metadata)
     const classified = await deps.generateStructured({ model, system: CLASSIFY_SYSTEM_PROMPT, prompt: rawSection })
     return { model, entries: classified.entries }
   } catch (error) {

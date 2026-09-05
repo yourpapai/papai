@@ -8,6 +8,7 @@ import { generateText, type LanguageModel } from 'ai'
 import { buildChatModel } from '../llm-model-builder.js'
 import { resolveLlmConfig } from '../llm-providers/resolver.js'
 import { logger } from '../logger.js'
+import type { ModelMetadata } from '../models-dev/resolve.js'
 import { recordUsage } from '../usage/recorder.js'
 import type { ContextType } from '../usage/types.js'
 
@@ -40,10 +41,17 @@ const bypassDistillation = (storageContextId: string, content: string): Distille
   return { summary: content, excerpt: content, truncated: false }
 }
 
-const getModelConfig = (configContextId: string): { apiKey: string; baseUrl: string; modelId: string } => {
+const getModelConfig = (
+  configContextId: string,
+): { apiKey: string; baseUrl: string; modelId: string; metadata: ModelMetadata } => {
   const resolved = resolveLlmConfig(configContextId)
   if (resolved.ok) {
-    return { apiKey: resolved.small.apiKey, baseUrl: resolved.small.baseUrl, modelId: resolved.small.model }
+    return {
+      apiKey: resolved.small.apiKey,
+      baseUrl: resolved.small.baseUrl,
+      modelId: resolved.small.model,
+      metadata: resolved.small.metadata,
+    }
   }
   const details = resolved.type === 'missing' ? resolved.missing.join(', ') : resolved.error
   throw new Error(`Missing ${resolved.source} LLM config: ${details}`)
@@ -74,12 +82,12 @@ const logDistilledContent = (storageContextId: string, modelId: string, result: 
 
 export interface DistillDeps {
   readonly generateText: typeof generateText
-  readonly buildModel: (apiKey: string, baseUrl: string, modelId: string) => LanguageModel
+  readonly buildModel: (apiKey: string, baseUrl: string, modelId: string, metadata: ModelMetadata) => LanguageModel
 }
 
 const defaultDeps: DistillDeps = {
   generateText: (...args) => generateText(...args),
-  buildModel: (apiKey, baseUrl, modelId) => buildChatModel(apiKey, baseUrl, modelId),
+  buildModel: (apiKey, baseUrl, modelId, metadata) => buildChatModel(apiKey, baseUrl, modelId, undefined, metadata),
 }
 
 export type DistillCallContext = {
@@ -181,8 +189,8 @@ export async function distillWebContent(
     return bypassDistillation(input.storageContextId, input.content)
   }
 
-  const { apiKey, baseUrl, modelId } = getModelConfig(input.configContextId ?? input.storageContextId)
-  const model = deps.buildModel(apiKey, baseUrl, modelId)
+  const { apiKey, baseUrl, modelId, metadata } = getModelConfig(input.configContextId ?? input.storageContextId)
+  const model = deps.buildModel(apiKey, baseUrl, modelId, metadata)
   const prompt = buildPrompt(input.title, input.goal ?? DEFAULT_GOAL, input.content)
   const callContext = getDistillCallContext(input)
   const startedAt = Date.now()

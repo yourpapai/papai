@@ -55,7 +55,13 @@ const defaultExtract = (input: CaptureExtractInput): Promise<MemoryPatch> => {
     )
     return Promise.resolve(EMPTY_PATCH)
   }
-  const model = buildChatModel(resolved.small.apiKey, resolved.small.baseUrl, resolved.small.model)
+  const model = buildChatModel(
+    resolved.small.apiKey,
+    resolved.small.baseUrl,
+    resolved.small.model,
+    undefined,
+    resolved.small.metadata,
+  )
   return extractMemoryPatch({ history: input.history, profile: input.profile, records: [], model })
 }
 

@@ -61,7 +61,13 @@ const defaultDeps: LookupGroupHistoryDeps = {
       return null
     }
 
-    return buildChatModel(resolved.small.apiKey, resolved.small.baseUrl, resolved.small.model)
+    return buildChatModel(
+      resolved.small.apiKey,
+      resolved.small.baseUrl,
+      resolved.small.model,
+      undefined,
+      resolved.small.metadata,
+    )
   },
 }
 

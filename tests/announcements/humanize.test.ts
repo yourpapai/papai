@@ -129,14 +129,15 @@ describe('humanizeChangelog', () => {
   test('classifies first, then writes from surviving entries only', async () => {
     let classifyPrompt = ''
     const writePrompts: string[] = []
-    const seenModel: { apiKey?: string; baseUrl?: string; model?: string } = {}
+    const seenModel: { apiKey?: string; baseUrl?: string; model?: string; metadata?: unknown } = {}
     const result = await humanizeChangelog(
       '### Added\n- thing',
       deps({
-        buildModel: (apiKey, baseUrl, model) => {
+        buildModel: (apiKey, baseUrl, model, metadata) => {
           seenModel.apiKey = apiKey
           seenModel.baseUrl = baseUrl
           seenModel.model = model
+          seenModel.metadata = metadata
           return 'test-model'
         },
         generateStructured: (opts) => {
@@ -154,7 +155,12 @@ describe('humanizeChangelog', () => {
     expect(writePrompts).toHaveLength(1)
     expect(writePrompts[0]).not.toContain('### Added')
     expect(writePrompts[0]).toContain('stale memory results')
-    expect(seenModel).toEqual({ apiKey: 'k', baseUrl: 'https://llm.example', model: 'main' })
+    expect(seenModel).toEqual({
+      apiKey: 'k',
+      baseUrl: 'https://llm.example',
+      model: 'main',
+      metadata: noneMetadata,
+    })
   })
 
   test('one classify pass serves one write pass per supported locale by default', async () => {

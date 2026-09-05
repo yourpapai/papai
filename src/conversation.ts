@@ -17,15 +17,16 @@ import { resolveMemoryScope } from './long-term-memory/scope.js'
 import { getMemoryProfile, listMemoryRecords } from './long-term-memory/store.js'
 import { buildMemoryContextMessage, loadFacts, loadSummary, saveSummary, trimWithMemoryModel } from './memory.js'
 import { estimateMessagesTokens } from './model-context.js'
+import type { ModelMetadata } from './models-dev/resolve.js'
 
 const log = logger.child({ scope: 'conversation' })
 
 export interface ConversationDeps {
-  buildModel: (apiKey: string, baseUrl: string, modelName: string) => LanguageModel
+  buildModel: (apiKey: string, baseUrl: string, modelName: string, metadata: ModelMetadata) => LanguageModel
 }
 
 const defaultConversationDeps: ConversationDeps = {
-  buildModel: (apiKey, baseUrl, modelName) => buildChatModel(apiKey, baseUrl, modelName),
+  buildModel: (apiKey, baseUrl, modelName, metadata) => buildChatModel(apiKey, baseUrl, modelName, undefined, metadata),
 }
 
 const WORKING_MEMORY_CAP = 100
@@ -127,7 +128,12 @@ const performTrim = async (
 
   try {
     const existing = loadSummary(userId)
-    const model = deps.buildModel(resolved.small.apiKey, resolved.small.baseUrl, resolved.small.model)
+    const model = deps.buildModel(
+      resolved.small.apiKey,
+      resolved.small.baseUrl,
+      resolved.small.model,
+      resolved.small.metadata,
+    )
     const { trimmedMessages, summary } = await trimWithMemoryModel(history, TRIM_MIN, TRIM_MAX, existing, model)
     // Preserve any messages added to history while the async trim was running
     const currentHistory = getCachedHistory(userId)

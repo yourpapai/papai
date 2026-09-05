@@ -53,6 +53,7 @@ describe('getLlmConfig', () => {
       apiKey: 'sk-main',
       baseURL: 'https://main.invalid/v1',
       mainModel: 'main-model',
+      metadata: noneMetadata,
     })
   })
 
