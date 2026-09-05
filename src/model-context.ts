@@ -50,13 +50,16 @@ const MODEL_CONTEXT_WINDOWS: ReadonlyArray<readonly [prefix: string, tokens: num
   ['mixtral-8x7b', 32_000],
 ]
 
-/** Resolve a model's context-window size in tokens, or null when the model is unknown. */
-export const resolveMaxTokens = (modelName: string): number | null => {
+/** Resolve a model's context-window size from the built-in prefix table, or null when unknown. */
+export const prefixTableContextWindow = (modelName: string): number | null => {
   for (const [prefix, tokens] of MODEL_CONTEXT_WINDOWS) {
     if (modelName.startsWith(prefix)) return tokens
   }
   return null
 }
+
+/** Resolve a model's context-window size in tokens, or null when the model is unknown. */
+export const resolveMaxTokens = (modelName: string): number | null => prefixTableContextWindow(modelName)
 
 /**
  * Cheap, dependency-free token estimate (~4 characters per token). Accurate enough for
