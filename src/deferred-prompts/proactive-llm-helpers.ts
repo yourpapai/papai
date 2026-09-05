@@ -140,7 +140,14 @@ export const finalizeAndLog = async (
       result.text === undefined || result.text === '' || result.finishReason === 'tool-calls' || hadToolFailure
     if (isRisky) {
       const verified = await buildVerifiedCompletion(
-        { history: verification.history, finishReason: result.finishReason, hadToolFailure, hadToolActivity, locale },
+        {
+          history: verification.history,
+          finishReason: result.finishReason,
+          hadToolFailure,
+          hadToolActivity,
+          finalText: result.text,
+          locale,
+        },
         verification.verifier,
       )
       return verified.text

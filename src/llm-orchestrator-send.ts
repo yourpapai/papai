@@ -38,7 +38,14 @@ const resolveFinalText = async (
   const locale = getContextLanguage(getConfigContextIdFromStorageContextId(contextId))
   if (isRisky && verification !== undefined) {
     const verified = await buildVerifiedCompletion(
-      { history: verification.history, finishReason: result.finishReason, hadToolFailure, hadToolActivity, locale },
+      {
+        history: verification.history,
+        finishReason: result.finishReason,
+        hadToolFailure,
+        hadToolActivity,
+        finalText: result.text,
+        locale,
+      },
       verification.verifier,
     )
     return verified.text

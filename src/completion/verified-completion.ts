@@ -45,18 +45,6 @@ export const turnHasToolActivity = (messages: readonly ModelMessage[]): boolean 
   return false
 }
 
-const hasAssistantText = (messages: readonly ModelMessage[]): boolean => {
-  for (const message of messages) {
-    if (message.role !== 'assistant') continue
-    if (typeof message.content === 'string') {
-      if (message.content !== '') return true
-      continue
-    }
-    if (message.content.some((part) => part.type === 'text' && part.text !== '')) return true
-  }
-  return false
-}
-
 export type CompletionVerdict = 'confirmed' | 'truncated' | 'partial' | 'failed' | 'unconfirmed' | 'no-op'
 export type VerifiedCompletion = { text: string; verdict: CompletionVerdict }
 export type VerifierPrompt = { system: string; messages: ModelMessage[] }
@@ -74,6 +62,8 @@ export type CompletionTurn = {
   hadToolFailure: boolean
   /** True when the turn executed at least one tool; the call sites fill it from the messages they collect. */
   hadToolActivity?: boolean
+  /** The turn's own final model text; undefined when the model produced none. */
+  finalText?: string
   /** Locale of the turn's config context; the verifier prompt and fallback localize to it. */
   locale?: Locale
 }
@@ -99,7 +89,7 @@ const buildVerifierPrompt = (turn: CompletionTurn): VerifierPrompt => {
 export const deriveVerdict = (turn: CompletionTurn): CompletionVerdict => {
   if (turn.finishReason === 'tool-calls') return 'truncated'
   if (turn.hadToolFailure) return 'partial'
-  if (turn.hadToolActivity !== true && !hasAssistantText(turn.history)) return 'no-op'
+  if (turn.hadToolActivity !== true && (turn.finalText === undefined || turn.finalText === '')) return 'no-op'
   return 'confirmed'
 }
 

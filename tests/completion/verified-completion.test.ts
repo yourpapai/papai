@@ -142,32 +142,62 @@ describe('deriveVerdict', () => {
   test('verdict derivation matrix: truncated and partial precede no-op; activity keeps confirmed', async () => {
     const rows: readonly Row<{ turn: CompletionTurn; expected: CompletionVerdict }>[] = [
       {
-        label: 'empty text with no tool activity is a no-op',
-        turn: { history: emptyTextHistory, finishReason: 'stop', hadToolFailure: false, hadToolActivity: false },
+        label: 'empty final text with no tool activity is a no-op',
+        turn: {
+          history: emptyTextHistory,
+          finishReason: 'stop',
+          hadToolFailure: false,
+          hadToolActivity: false,
+          finalText: '',
+        },
         expected: 'no-op',
       },
       {
-        label: 'empty text with tool activity stays on the confirmed path',
-        turn: { history: activeHistory, finishReason: 'stop', hadToolFailure: false, hadToolActivity: true },
+        label: 'empty final text with tool activity stays on the confirmed path',
+        turn: {
+          history: activeHistory,
+          finishReason: 'stop',
+          hadToolFailure: false,
+          hadToolActivity: true,
+          finalText: '',
+        },
         expected: 'confirmed',
       },
       {
         label: 'a pending tool call beats no-op (truncated)',
-        turn: { history: emptyTextHistory, finishReason: 'tool-calls', hadToolFailure: false, hadToolActivity: false },
+        turn: {
+          history: emptyTextHistory,
+          finishReason: 'tool-calls',
+          hadToolFailure: false,
+          hadToolActivity: false,
+          finalText: '',
+        },
         expected: 'truncated',
       },
       {
         label: 'a tool failure beats no-op (partial)',
-        turn: { history: emptyTextHistory, finishReason: 'stop', hadToolFailure: true, hadToolActivity: false },
+        turn: {
+          history: emptyTextHistory,
+          finishReason: 'stop',
+          hadToolFailure: true,
+          hadToolActivity: false,
+          finalText: '',
+        },
         expected: 'partial',
       },
       {
         label: 'a pending tool call also beats a tool failure (truncated keeps priority)',
-        turn: { history: failedHistory, finishReason: 'tool-calls', hadToolFailure: true, hadToolActivity: true },
+        turn: {
+          history: failedHistory,
+          finishReason: 'tool-calls',
+          hadToolFailure: true,
+          hadToolActivity: true,
+          finalText: '',
+        },
         expected: 'truncated',
       },
       {
-        label: 'non-empty text with no activity stays confirmed',
+        label: 'non-empty final text with no activity stays confirmed',
         turn: {
           history: [
             { role: 'user', content: 'hi' },
@@ -176,21 +206,34 @@ describe('deriveVerdict', () => {
           finishReason: 'stop',
           hadToolFailure: false,
           hadToolActivity: false,
+          finalText: 'All done.',
         },
         expected: 'confirmed',
       },
       {
-        label: 'assistant text delivered as content parts still counts as text',
+        label: 'stale assistant text from earlier turns does not mask a no-op turn',
         turn: {
           history: [
             { role: 'user', content: 'hi' },
-            { role: 'assistant', content: [{ type: 'text', text: 'All done.' }] },
+            { role: 'assistant', content: 'Earlier reply.' },
+            { role: 'user', content: 'list open tasks' },
           ],
           finishReason: 'stop',
           hadToolFailure: false,
           hadToolActivity: false,
+          finalText: '',
         },
-        expected: 'confirmed',
+        expected: 'no-op',
+      },
+      {
+        label: 'undefined final text with no activity is a no-op',
+        turn: {
+          history: [],
+          finishReason: 'stop',
+          hadToolFailure: false,
+          hadToolActivity: false,
+        },
+        expected: 'no-op',
       },
     ]
     await assertEach(rows, (row) => {
