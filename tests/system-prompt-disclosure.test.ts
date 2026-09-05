@@ -5,6 +5,7 @@
 
 import { beforeEach, describe, expect, it, mock } from 'bun:test'
 
+import { setConfigValue } from '../src/config.js'
 import { buildProviderlessSystemPrompt } from '../src/system-prompt.js'
 import { mockLogger, setupTestDb } from './utils/test-helpers.js'
 
@@ -46,5 +47,40 @@ describe('discovery preamble', () => {
     })
     expect(prompt).toContain('expand_result')
     expect(prompt).toContain('use expand_result with its handle to read more')
+  })
+})
+
+describe('disclosure protocol expiry line', () => {
+  const enabled = new Set(['get_current_time', 'search_tools', 'load_tool'])
+
+  beforeEach(async () => {
+    mockLogger()
+    mock.restore()
+    await setupTestDb()
+  })
+
+  it('states in en that activations expire with the turn and must be re-activated before reuse', () => {
+    const prompt = buildProviderlessSystemPrompt('ctx-expiry-en', enabled, {
+      askPermissionAvailable: false,
+      progressiveDisclosure: true,
+    })
+    expect(prompt).toContain('Tool activations expire with the turn')
+    expect(prompt).toContain('call load_tool again')
+    // The expiry line lives in the disclosure fragment, so it is absent without it.
+    const withoutDisclosure = buildProviderlessSystemPrompt('ctx-expiry-en', enabled, {
+      askPermissionAvailable: false,
+      progressiveDisclosure: false,
+    })
+    expect(withoutDisclosure).not.toContain('Tool activations expire with the turn')
+  })
+
+  it('states in ru that activations expire with the turn and must be re-activated before reuse', () => {
+    setConfigValue('ctx-expiry-ru', 'language', 'ru')
+    const prompt = buildProviderlessSystemPrompt('ctx-expiry-ru', enabled, {
+      askPermissionAvailable: false,
+      progressiveDisclosure: true,
+    })
+    expect(prompt).toContain('действуют только до конца текущего хода')
+    expect(prompt).toContain('вызови load_tool заново')
   })
 })

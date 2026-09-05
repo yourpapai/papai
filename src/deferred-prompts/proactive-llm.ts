@@ -20,6 +20,7 @@ import { handleToolCallFinish } from '../llm-orchestrator-support.js'
 import { adaptToolExecutionEnd } from '../llm-orchestrator-tool-events.js'
 import { logger } from '../logger.js'
 import { createDisclosurePrepareStep } from '../tools/disclosure/prepare-step.js'
+import { createRepairToolCall } from '../tools/disclosure/repair-tool-call.js'
 import { buildToolsContextRecord } from '../tools/wrap-tool-execution.js'
 import { getContextLanguage } from '../utils/config-language.js'
 import { getLlmConfig, type LlmConfig } from './proactive-llm-config.js'
@@ -161,6 +162,26 @@ const generateWithTrace = async (
   }
 }
 
+const buildFullGenerationBaseOptions = (
+  prepared: FullGenerationInput,
+  deps: ProactiveLlmDeps,
+  model: LanguageModel,
+  turnId: string,
+): Parameters<ProactiveLlmDeps['generateText']>[0] => {
+  return {
+    model,
+    ...hoistSystemMessages(prepared.systemPrompt, prepared.messages),
+    tools: prepared.tools,
+    stopWhen: deps.stepCountIs(25),
+    timeout: 1_200_000,
+    prepareStep: createDisclosurePrepareStep(prepared.disclosure, prepared.storageContextId, turnId),
+    repairToolCall: createRepairToolCall(prepared.disclosure, prepared.storageContextId),
+    onToolExecutionEnd: (event) => {
+      handleToolCallFinish(prepared.storageContextId, undefined, { ...adaptToolExecutionEnd(event), turnId })
+    },
+  }
+}
+
 const runScopedGeneration = async (args: ScopedGenerationArgs): Promise<string> => {
   const { execCtx, config, configContextId, deps, model, scope } = args
   const { createdByUserId } = execCtx
@@ -181,17 +202,7 @@ const runScopedGeneration = async (args: ScopedGenerationArgs): Promise<string> 
   // Keyed toolsContext record: every name in the final ToolSet maps to the
   // same immutable scope (see llm-orchestrator-invoke.ts for the Object.assign
   // intersection rationale).
-  const baseOptions: Parameters<ProactiveLlmDeps['generateText']>[0] = {
-    model,
-    ...hoistSystemMessages(prepared.systemPrompt, prepared.messages),
-    tools,
-    stopWhen: deps.stepCountIs(25),
-    timeout: 1_200_000,
-    prepareStep: createDisclosurePrepareStep(prepared.disclosure, prepared.storageContextId, turnId),
-    onToolExecutionEnd: (event) => {
-      handleToolCallFinish(prepared.storageContextId, undefined, { ...adaptToolExecutionEnd(event), turnId })
-    },
-  }
+  const baseOptions = buildFullGenerationBaseOptions(prepared, deps, model, turnId)
   const result = await generateWithTrace(execCtx, config, prepared, deps, scope, turnId, baseOptions)
   const previousHistory = getCachedHistory(prepared.storageContextId)
   const assistantMessages = collectTurnMessages(result)
