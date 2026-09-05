@@ -455,6 +455,42 @@
     "timeout": 0,
     "scored": 177
   },
+  "client/settings/byok-provider-fetchers.ts": {
+    "score": 0.75,
+    "killed": 18,
+    "timeout": 0,
+    "scored": 24
+  },
+  "client/settings/fetcher-schemas-llm-providers.ts": {
+    "score": 0.38333333333333336,
+    "killed": 23,
+    "timeout": 0,
+    "scored": 60
+  },
+  "client/settings/fetchers.ts": {
+    "score": 0.6587677725118484,
+    "killed": 139,
+    "timeout": 0,
+    "scored": 211
+  },
+  "client/settings/llm-model-metadata-fetchers.ts": {
+    "score": 1,
+    "killed": 20,
+    "timeout": 0,
+    "scored": 20
+  },
+  "client/stories/msw/scenarios.ts": {
+    "score": 1,
+    "killed": 96,
+    "timeout": 0,
+    "scored": 96
+  },
+  "client/stories/msw/settings-handlers-metadata.ts": {
+    "score": 0.34615384615384615,
+    "killed": 9,
+    "timeout": 0,
+    "scored": 26
+  },
   "plugins/task-provider-github/classify-error.ts": 0.744,
   "plugins/task-provider-github/constants.ts": 1,
   "plugins/task-provider-github/due-date.ts": 1,
@@ -643,22 +679,92 @@
     "timeout": 0,
     "scored": 97
   },
+  "src/announcements/humanize.ts": {
+    "score": 0.9369369369369369,
+    "killed": 104,
+    "timeout": 0,
+    "scored": 111
+  },
+  "src/byok-llm/blob-codec.ts": {
+    "score": 1,
+    "killed": 72,
+    "timeout": 0,
+    "scored": 72
+  },
   "src/coding-sessions/configure.ts": 0.6666666666666666,
   "src/config.ts": 0.6535433070866141,
-  "src/conversation.ts": 0.6231884057971014,
+  "src/context-vault/summarizer.ts": {
+    "score": 0.6153846153846154,
+    "killed": 108,
+    "timeout": 4,
+    "scored": 182
+  },
+  "src/conversation.ts": {
+    "score": 0.6231884057971014,
+    "killed": 86,
+    "timeout": 0,
+    "scored": 138
+  },
   "src/db/deferred-schema.ts": 0.40540540540540543,
-  "src/db/index.ts": 0.027777777777777776,
+  "src/db/index.ts": {
+    "score": 0.027777777777777776,
+    "killed": 1,
+    "timeout": 0,
+    "scored": 36
+  },
+  "src/db/llm-providers-schema.ts": {
+    "score": 0.06896551724137931,
+    "killed": 2,
+    "timeout": 0,
+    "scored": 29
+  },
   "src/db/migrations/081_alert_task_instance_pin.ts": 0.85,
   "src/db/migrations/082_alert_activity_cursor.ts": 0.8,
+  "src/db/migrations/083_llm_provider_base_refs.ts": {
+    "score": 0.8571428571428571,
+    "killed": 24,
+    "timeout": 0,
+    "scored": 28
+  },
   "src/debug/llm-trace-collector.ts": {
     "score": 0.8461538461538461,
     "killed": 143,
     "timeout": 0,
     "scored": 169
   },
+  "src/debug/settings-api-router.ts": {
+    "score": 0.5170940170940171,
+    "killed": 121,
+    "timeout": 0,
+    "scored": 234
+  },
   "src/debug/settings/admin/instances-routes.ts": 0.6261127596439169,
+  "src/debug/settings/admin/llm-providers-routes.ts": {
+    "score": 0.6859504132231405,
+    "killed": 166,
+    "timeout": 0,
+    "scored": 242
+  },
+  "src/debug/settings/byok-field-response.ts": {
+    "score": 0.8085106382978723,
+    "killed": 38,
+    "timeout": 0,
+    "scored": 47
+  },
+  "src/debug/settings/byok-routes.ts": {
+    "score": 0.7853658536585366,
+    "killed": 161,
+    "timeout": 0,
+    "scored": 205
+  },
   "src/debug/settings/context-task-instance-routes.ts": 0.5808823529411765,
   "src/debug/settings/group-routes.ts": 0.6975476839237057,
+  "src/debug/settings/llm-model-metadata-routes.ts": {
+    "score": 0.68,
+    "killed": 17,
+    "timeout": 0,
+    "scored": 25
+  },
   "src/deferred-prompts/activity-gating.ts": 1,
   "src/deferred-prompts/alerts.ts": 0.5974842767295597,
   "src/deferred-prompts/condition-eval.ts": 0.8547717842323651,
@@ -675,6 +781,12 @@
     "killed": 44,
     "timeout": 0,
     "scored": 77
+  },
+  "src/deferred-prompts/proactive-llm-config.ts": {
+    "score": 0.625,
+    "killed": 20,
+    "timeout": 0,
+    "scored": 32
   },
   "src/deferred-prompts/proactive-llm-helpers.ts": 0.6952380952380952,
   "src/deferred-prompts/proactive-llm.ts": {
@@ -719,6 +831,18 @@
   },
   "src/errors.ts": 0.9875776397515528,
   "src/history.ts": 0.9891304347826086,
+  "src/index.ts": {
+    "score": 0.5735294117647058,
+    "killed": 39,
+    "timeout": 0,
+    "scored": 68
+  },
+  "src/llm-model-builder.ts": {
+    "score": 0.8275862068965517,
+    "killed": 24,
+    "timeout": 0,
+    "scored": 29
+  },
   "src/llm-orchestrator-events.ts": {
     "score": 0.6031746031746031,
     "killed": 38,
@@ -737,7 +861,67 @@
     "timeout": 0,
     "scored": 46
   },
+  "src/llm-providers/env-bootstrap.ts": {
+    "score": 0.35365853658536583,
+    "killed": 29,
+    "timeout": 0,
+    "scored": 82
+  },
+  "src/llm-providers/resolver.ts": {
+    "score": 0.8305084745762712,
+    "killed": 98,
+    "timeout": 0,
+    "scored": 118
+  },
+  "src/llm-providers/store.ts": {
+    "score": 0.5787037037037037,
+    "killed": 125,
+    "timeout": 0,
+    "scored": 216
+  },
+  "src/long-term-memory/capture.ts": {
+    "score": 0.484375,
+    "killed": 31,
+    "timeout": 0,
+    "scored": 64
+  },
+  "src/long-term-memory/promotion.ts": {
+    "score": 0.391304347826087,
+    "killed": 36,
+    "timeout": 0,
+    "scored": 92
+  },
+  "src/long-term-memory/runner.ts": {
+    "score": 0.3761467889908257,
+    "killed": 41,
+    "timeout": 0,
+    "scored": 109
+  },
   "src/memory.ts": 0.6538461538461539,
+  "src/model-context.ts": {
+    "score": 0.625,
+    "killed": 65,
+    "timeout": 0,
+    "scored": 104
+  },
+  "src/models-dev/client.ts": {
+    "score": 0.7209302325581395,
+    "killed": 62,
+    "timeout": 0,
+    "scored": 86
+  },
+  "src/models-dev/provider-id.ts": {
+    "score": 0.7254901960784313,
+    "killed": 37,
+    "timeout": 0,
+    "scored": 51
+  },
+  "src/models-dev/resolve.ts": {
+    "score": 0.9069767441860465,
+    "killed": 78,
+    "timeout": 0,
+    "scored": 86
+  },
   "src/plugins/discovery-import-scan.ts": 0.9032258064516129,
   "src/plugins/discovery-imports.ts": 0.8823529411764706,
   "src/plugins/discovery-paths.ts": 0.6746987951807228,
@@ -801,7 +985,12 @@
   "src/tools/compaction/expand-result.ts": 0.5789473684210527,
   "src/tools/compaction/result-store.ts": 0.7796610169491526,
   "src/tools/compaction/size-gate.ts": 0.8333333333333334,
-  "src/tools/compaction/summarizer.ts": 0.5,
+  "src/tools/compaction/summarizer.ts": {
+    "score": 0.5,
+    "killed": 20,
+    "timeout": 0,
+    "scored": 40
+  },
   "src/tools/compaction/types.ts": 0.9473684210526315,
   "src/tools/compaction/wrap-compaction.ts": 0.5238095238095238,
   "src/tools/completion-hook.ts": 0.5230769230769231,
@@ -881,7 +1070,12 @@
   "src/tools/list-watchers.ts": 0.5,
   "src/tools/list-work.ts": 0.48148148148148145,
   "src/tools/log-work.ts": 0.36363636363636365,
-  "src/tools/lookup-group-history.ts": 0.5,
+  "src/tools/lookup-group-history.ts": {
+    "score": 0.5,
+    "killed": 33,
+    "timeout": 0,
+    "scored": 66
+  },
   "src/tools/memory.ts": 0.4700854700854701,
   "src/tools/pause-recurring-task.ts": 0.56,
   "src/tools/permission-gate.ts": 0.9682539682539683,
@@ -956,5 +1150,11 @@
     "timeout": 0,
     "scored": 57
   },
-  "src/utils/fetch.ts": 0
+  "src/utils/fetch.ts": 0,
+  "src/web/distill.ts": {
+    "score": 0.5350877192982456,
+    "killed": 61,
+    "timeout": 0,
+    "scored": 114
+  }
 }

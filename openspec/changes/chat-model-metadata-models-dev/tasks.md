@@ -32,5 +32,5 @@
 
 ## 6. Full verification and docs
 
-- [ ] 6.1 Run the affected suites and the mutation ratchet for the new files (`bun run test tests/models-dev/ tests/debug/settings/ tests/client/settings/ tests/llm-providers/ tests/byok-llm/ && bun run test:mutate:changed --base=HEAD~1 --update-baseline`), then `bun run lint` and `bun run typecheck`. Verify: all four commands exit 0
+- [x] 6.1 Run the affected suites and the mutation ratchet for the new files (`bun run test tests/models-dev/ tests/debug/settings/ tests/client/settings/ tests/llm-providers/ tests/byok-llm/ && bun run test:mutate:changed --base=HEAD~1 --update-baseline`), then `bun run lint` and `bun run typecheck`. Verify: all four commands exit 0
 - [ ] 6.2 Update `docs/architecture/environment.md` (LLM_BASE_PROVIDER/LLM_BASE_MODEL, models.dev outbound host + cache path) and `docs/architecture/behaviors.md` (catalogue-driven limits, trim-trigger change, settings preview at selection, preview endpoint auth model), then run the full `bun test` and `bun check:full` before finishing. Verify: `bun test` and `bun check:full` exit 0
