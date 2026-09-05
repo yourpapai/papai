@@ -40,9 +40,21 @@ describe('MIGRATIONS list', () => {
     expect(ids).toContain('082_alert_activity_cursor')
   })
 
-  test('082_alert_activity_cursor is the last migration', () => {
+  test('includes migration 083_llm_provider_base_refs', () => {
+    const ids = MIGRATIONS.map((m) => m.id)
+    expect(ids).toContain('083_llm_provider_base_refs')
+  })
+
+  test('083_llm_provider_base_refs is the last migration', () => {
     const lastMigration = requireDefined(MIGRATIONS.at(-1))
-    expect(lastMigration.id).toBe('082_alert_activity_cursor')
+    expect(lastMigration.id).toBe('083_llm_provider_base_refs')
+  })
+
+  test('083_llm_provider_base_refs is registered immediately after 082_alert_activity_cursor', () => {
+    const ids = MIGRATIONS.map((m) => m.id)
+    const activityCursorIndex = ids.indexOf('082_alert_activity_cursor')
+    expect(activityCursorIndex).toBeGreaterThanOrEqual(0)
+    expect(ids[activityCursorIndex + 1]).toBe('083_llm_provider_base_refs')
   })
 
   test('082_alert_activity_cursor is registered immediately after 081_alert_task_instance_pin', () => {
