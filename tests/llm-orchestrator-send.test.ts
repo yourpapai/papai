@@ -83,6 +83,48 @@ describe('sendLlmResponse verification wiring', () => {
     )
   })
 
+  test('turn with executed tools gets the neutral fallback, not the no-op message', async () => {
+    mockLogger()
+    const reply = createMockReply()
+    await sendLlmResponse(
+      reply.reply,
+      'ctx-1',
+      {
+        ...baseResult,
+        steps: [
+          {
+            response: {
+              messages: [
+                {
+                  role: 'tool',
+                  content: [
+                    {
+                      type: 'tool-result',
+                      toolCallId: 'c1',
+                      toolName: 'get_task',
+                      output: { type: 'json', value: { id: 'TK-1' } },
+                    },
+                  ],
+                },
+              ],
+            },
+          },
+        ],
+      },
+      undefined,
+      {
+        history: [],
+        verifier: {
+          readOnlyToolset: undefined,
+          invokeVerifier: (): Promise<{ text: string | undefined }> => Promise.resolve({ text: undefined }),
+        },
+      },
+    )
+    expect(reply.textCalls).toContain(
+      'I ran the requested actions but could not confirm the result — please double-check.',
+    )
+  })
+
   test('empty-text turn without a verifier in a ru context gets the localized done fallback', async () => {
     mockLogger()
     setConfigValue('ctx-ru-done', 'language', 'ru')

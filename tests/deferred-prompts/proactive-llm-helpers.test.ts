@@ -125,6 +125,44 @@ describe('finalizeAndLog verification', () => {
     expect(text).toBe('Похоже, в этот раз я ничего не выполнил — ход прервался. Пожалуйста, повтори запрос.')
   })
 
+  test('executed tools → neutral fallback, not the no-op message', async () => {
+    mockLogger()
+    const text = await finalizeAndLog(
+      {
+        text: '',
+        finishReason: 'stop',
+        steps: [
+          {
+            response: {
+              messages: [
+                {
+                  role: 'tool',
+                  content: [
+                    {
+                      type: 'tool-result',
+                      toolCallId: 'c1',
+                      toolName: 'get_task',
+                      output: { type: 'json', value: { id: 'TK-1' } },
+                    },
+                  ],
+                },
+              ],
+            },
+          },
+        ],
+      },
+      'user-1',
+      {
+        history: [],
+        verifier: {
+          readOnlyToolset: undefined,
+          invokeVerifier: (): Promise<{ text: string | undefined }> => Promise.resolve({ text: undefined }),
+        },
+      },
+    )
+    expect(text).toBe('I ran the requested actions but could not confirm the result — please double-check.')
+  })
+
   test('no verification arg → legacy Done. fallback preserved', async () => {
     mockLogger()
     const text = await finalizeAndLog({ text: '', finishReason: 'stop' }, 'user-1')

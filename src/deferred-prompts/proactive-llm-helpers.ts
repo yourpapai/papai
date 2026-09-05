@@ -12,6 +12,7 @@ import {
   buildVerifiedCompletion,
   detectToolFailure,
   selectReadOnlyTools,
+  turnHasToolActivity,
   VERIFIER_MAX_STEPS,
 } from '../completion/verified-completion.js'
 import type { VerifierDeps, VerifierPrompt } from '../completion/verified-completion.js'
@@ -132,12 +133,14 @@ export const finalizeAndLog = async (
   }
 
   if (verification !== undefined) {
-    const hadToolFailure = detectToolFailure(collectTurnMessages(result))
+    const turnMessages = collectTurnMessages(result)
+    const hadToolFailure = detectToolFailure(turnMessages)
+    const hadToolActivity = turnHasToolActivity(turnMessages)
     const isRisky =
       result.text === undefined || result.text === '' || result.finishReason === 'tool-calls' || hadToolFailure
     if (isRisky) {
       const verified = await buildVerifiedCompletion(
-        { history: verification.history, finishReason: result.finishReason, hadToolFailure, locale },
+        { history: verification.history, finishReason: result.finishReason, hadToolFailure, hadToolActivity, locale },
         verification.verifier,
       )
       return verified.text

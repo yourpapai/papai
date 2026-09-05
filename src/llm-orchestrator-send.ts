@@ -8,7 +8,7 @@ import type { ModelMessage } from 'ai'
 import type { AiProgressReporter } from './ai-progress-reporter.js'
 import { getConfigContextIdFromStorageContextId } from './chat/scoped-context.js'
 import type { ReplyFn } from './chat/types.js'
-import { buildVerifiedCompletion, detectToolFailure } from './completion/verified-completion.js'
+import { buildVerifiedCompletion, detectToolFailure, turnHasToolActivity } from './completion/verified-completion.js'
 import type { VerifierDeps } from './completion/verified-completion.js'
 import { t } from './i18n/index.js'
 import { collectTurnMessages, type TurnMessagesResult } from './llm-orchestrator-messages.js'
@@ -29,6 +29,7 @@ type Verification = { verifier: VerifierDeps; history: readonly ModelMessage[] }
 const resolveFinalText = async (
   result: SendResult,
   hadToolFailure: boolean,
+  hadToolActivity: boolean,
   verification: Verification | undefined,
   contextId: string,
 ): Promise<string> => {
@@ -37,7 +38,7 @@ const resolveFinalText = async (
   const locale = getContextLanguage(getConfigContextIdFromStorageContextId(contextId))
   if (isRisky && verification !== undefined) {
     const verified = await buildVerifiedCompletion(
-      { history: verification.history, finishReason: result.finishReason, hadToolFailure, locale },
+      { history: verification.history, finishReason: result.finishReason, hadToolFailure, hadToolActivity, locale },
       verification.verifier,
     )
     return verified.text
@@ -69,8 +70,10 @@ export const sendLlmResponse = async (
   /** Runs once right before the first reply posts (after verification), to dismiss the live-status placeholder. */
   beforeFirstMessage?: () => Promise<void>,
 ): Promise<void> => {
-  const hadToolFailure = detectToolFailure(collectTurnMessages(result))
-  const textToFormat = await resolveFinalText(result, hadToolFailure, verification, contextId)
+  const turnMessages = collectTurnMessages(result)
+  const hadToolFailure = detectToolFailure(turnMessages)
+  const hadToolActivity = turnHasToolActivity(turnMessages)
+  const textToFormat = await resolveFinalText(result, hadToolFailure, hadToolActivity, verification, contextId)
 
   const responseLength = result.text === undefined ? 0 : result.text.length
   const toolCallCount = result.toolCalls === undefined ? 0 : result.toolCalls.length

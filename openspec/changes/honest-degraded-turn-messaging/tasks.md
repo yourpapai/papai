@@ -9,7 +9,7 @@
 
 - [x] 2.1 Write failing tests: in `tests/completion/verified-completion.test.ts` — verifier-empty with `hadToolActivity: true` → existing `neutralFallback` text; verifier-empty with `hadToolActivity: false` → the new no-op message; verifier-throw matrix likewise; both return verdict `unconfirmed`. In `tests/completion/verified-completion-locale.test.ts` — ru and en no-op strings match the dictionary exactly. Verify: `bun test tests/completion/` (expect fail)
 - [x] 2.2 Implement: add `noopFallback` to the completion dictionary type (`src/i18n/types.ts`) and both locales (wording per design D3), select the fallback by `hadToolActivity` at the two fallback returns in `buildVerifiedCompletion`. Verify: `bun test tests/completion/`
-- [ ] 2.3 Fill `hadToolActivity` at both call sites — `sendLlmResponse` (`src/llm-orchestrator-send.ts`) and `finalizeAndLog` (`src/deferred-prompts/proactive-llm-helpers.ts`) — from the messages they already collect; extend `tests/deferred-prompts/proactive-llm-helpers.test.ts` with a no-op-verification case. Verify: `bun test tests/deferred-prompts/proactive-llm-helpers.test.ts tests/llm-orchestrator-send.test.ts`
+- [x] 2.3 Fill `hadToolActivity` at both call sites — `sendLlmResponse` (`src/llm-orchestrator-send.ts`) and `finalizeAndLog` (`src/deferred-prompts/proactive-llm-helpers.ts`) — from the messages they already collect; extend `tests/deferred-prompts/proactive-llm-helpers.test.ts` with a no-op-verification case. Verify: `bun test tests/deferred-prompts/proactive-llm-helpers.test.ts tests/llm-orchestrator-send.test.ts`
 
 ## 3. Verifier read-only set includes `read_`
 
