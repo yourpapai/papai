@@ -19,6 +19,7 @@ import { createStopRequestedCondition } from './run-control/stop-condition.js'
 import { RunAbortedError } from './run-control/types.js'
 import { buildProviderlessSystemPrompt, buildSystemPrompt } from './system-prompt.js'
 import { createDisclosurePrepareStep } from './tools/disclosure/prepare-step.js'
+import { createRepairToolCall } from './tools/disclosure/repair-tool-call.js'
 import { buildToolsContextRecord } from './tools/wrap-tool-execution.js'
 
 // Re-exported for existing importers/tests that reach these through this module.
@@ -113,6 +114,7 @@ const callGenerateText = async (a: GenerateArgs): ReturnType<LlmOrchestratorDeps
         finishHandler?.(event)
       },
       ...(prepareStep === undefined ? {} : { prepareStep }),
+      ...(disclosure === undefined ? {} : { repairToolCall: createRepairToolCall(disclosure, contextId) }),
     }
     return await deps.generateText(Object.assign({}, baseOptions, { toolsContext }))
   } catch (error) {

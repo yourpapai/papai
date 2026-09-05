@@ -9,7 +9,7 @@
 // (Uses mockLogger + setupTestDb helpers; mocks ai + openai-compatible in beforeEach)
 import { beforeEach, describe, expect, mock, test } from 'bun:test'
 
-import type { ModelMessage } from 'ai'
+import { NoSuchToolError, type ModelMessage } from 'ai'
 
 import { NO_ANALYTICS_SCOPE } from '../../src/analytics/provider-request-scope.js'
 import { updateByokLlmConfig } from '../../src/byok-llm/store.js'
@@ -33,6 +33,11 @@ import type { MemoryFact } from '../../src/types/memory.js'
 import { createMockProvider } from '../tools/mock-provider.js'
 import { flushMicrotasks, mockLogger, seedAdminLlmBinding, setupTestDb } from '../utils/test-helpers.js'
 
+// Captured at module evaluation, before this file's beforeEach narrows the mocked
+// 'ai' module: the repair closure compares errors with the real
+// NoSuchToolError.isInstance, so the narrowed mock must keep exporting the real class.
+const realNoSuchToolError = NoSuchToolError
+
 // Track generateText calls
 type GenerateTextResult = {
   text: string
@@ -48,6 +53,15 @@ type ToolExecutionEndEvent = {
   toolExecutionMs: number
   toolOutput: { type: 'tool-result'; output: unknown } | { type: 'tool-error'; error: unknown }
 }
+type RepairToolCallArg = {
+  toolCall: { type: 'tool-call'; toolCallId: string; toolName: string; input: string }
+  tools: unknown
+  instructions: undefined
+  system: undefined
+  messages: ModelMessage[]
+  inputSchema: () => Promise<unknown>
+  error: unknown
+}
 type GenerateTextCall = {
   model: string
   instructions: string
@@ -57,6 +71,7 @@ type GenerateTextCall = {
   stopWhen?: unknown
   prepareStep?: (arg: { stepNumber: number; steps?: readonly unknown[] }) => { activeTools?: string[] }
   onToolExecutionEnd?: (event: ToolExecutionEndEvent) => void
+  repairToolCall?: (arg: RepairToolCallArg) => Promise<unknown>
 }
 type BuildModelCall = { apiKey: string; baseURL: string; modelId: string }
 
@@ -190,6 +205,7 @@ describe('dispatchExecution', () => {
       generateText: (args: GenerateTextCall): Promise<GenerateTextResult> => generateTextImpl(args),
       tool: (opts: unknown): unknown => opts,
       isStepCount: (n: number): unknown => ({ __stopAfterSteps: n }),
+      NoSuchToolError: realNoSuchToolError,
     }))
     void mock.module('../../src/llm-model-builder.js', () => ({
       buildChatModel: (apiKey: string, baseUrl: string, modelId: string): string => {
@@ -432,6 +448,41 @@ describe('dispatchExecution', () => {
       expect(activeTools).toContain('load_tool')
       expect(activeTools).not.toContain('create_task')
       expect(activeTools).not.toContain('search_tasks')
+    })
+  })
+
+  describe('repairToolCall wiring', () => {
+    const metadata: ExecutionMetadata = {
+      delivery_brief: 'be brief',
+      context_snapshot: null,
+    }
+
+    test('full generation passes a repairToolCall bound to the prepared disclosure session', async () => {
+      setupUserConfig()
+      const provider = createMockProvider()
+      await dispatchExecution(makeExecCtx(), 'scheduled', 'check overdue', metadata, () => provider)
+
+      const call = generateTextCalls[generateTextCalls.length - 1]!
+      expect(call.repairToolCall).toBeTypeOf('function')
+      // The proactive full toolset registers create_task, but under disclosure it is
+      // inactive until loaded — so a repair bound to the prepared session must redirect
+      // the misdirected call into load_tool, while a repair bound to any other (empty)
+      // session would return null.
+      const repaired = await call.repairToolCall!({
+        toolCall: { type: 'tool-call', toolCallId: 'call-9', toolName: 'create_task', input: '{}' },
+        tools: call.tools,
+        instructions: undefined,
+        system: undefined,
+        messages: [],
+        inputSchema: () => Promise.resolve({ type: 'object' }),
+        error: new realNoSuchToolError({ toolName: 'create_task' }),
+      })
+      expect(repaired).toEqual({
+        type: 'tool-call',
+        toolCallId: 'call-9',
+        toolName: 'load_tool',
+        input: JSON.stringify({ names: ['create_task'] }),
+      })
     })
   })
 

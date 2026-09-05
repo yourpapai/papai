@@ -68,7 +68,8 @@ When the user asks for task-tracker-backed help, explain that those tools are un
   disclosureProtocol: `TOOL DISCOVERY — Most tools are not loaded right now. To use a tool you must first find and load it:
 1. Call search_tools with a short natural-language description of what you want to do.
 2. Call load_tool with the names you need (pass several at once to avoid extra steps).
-3. Then call the loaded tool(s) normally.`,
+3. Then call the loaded tool(s) normally.
+4. Tool activations expire with the turn — to reuse a tool from an earlier turn, call load_tool again first.`,
   disclosureAlwaysTools: 'Always-available tools: get_current_time, search_tools, load_tool.',
   disclosureAlwaysToolsWithExpand:
     'Always-available tools: get_current_time, search_tools, load_tool, expand_result. If a result says it was compacted, use expand_result with its handle to read more.',

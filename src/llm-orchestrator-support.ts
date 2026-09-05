@@ -176,6 +176,37 @@ type InvokeWithLiveStatusArgs = {
   liveStatusEnabled: boolean
 }
 
+/**
+ * Minimum billed output tokens for the anomalous empty-turn warn below. Fixed,
+ * not config: the incident floor this guards was 186 tokens; trivial empty
+ * stops cost single digits (design D2).
+ */
+const EMPTY_TURN_WARN_MIN_OUTPUT_TOKENS = 64
+
+const buildTurnVerifier = (invokeArgs: InvokeModelArgs): VerifierDeps => {
+  const readOnlyToolset = selectReadOnlyTools(invokeArgs.tools)
+  // The verifier runs its own generateText with an independently built,
+  // full keyed toolsContext record — a verifier tool call must not run
+  // without its keyed context.
+  const verifierToolsContext = buildToolsContextRecord(readOnlyToolset ?? {}, invokeArgs.providerRequestScope)
+  return {
+    readOnlyToolset,
+    invokeVerifier: async ({ system, messages }: VerifierPrompt) => {
+      const baseOptions: Parameters<LlmOrchestratorDeps['generateText']>[0] = {
+        model: invokeArgs.model,
+        ...hoistSystemMessages(system, messages),
+        tools: readOnlyToolset ?? {},
+        stopWhen: invokeArgs.deps.stepCountIs(VERIFIER_MAX_STEPS),
+        timeout: 1_200_000,
+      }
+      const res = await invokeArgs.deps.generateText(
+        Object.assign({}, baseOptions, { toolsContext: verifierToolsContext }),
+      )
+      return { text: res.text, finishReason: res.finishReason }
+    },
+  }
+}
+
 export const invokeWithLiveStatus = async (
   args: InvokeWithLiveStatusArgs,
 ): Promise<{ finalStep: { response: { messages: ModelMessage[] } }; finishReason?: string }> => {
@@ -191,32 +222,19 @@ export const invokeWithLiveStatus = async (
       { contextId: invokeArgs.contextId, toolCalls: toolCallCount, usage: result.usage },
       'LLM response received',
     )
+    const outputTokens = result.usage?.outputTokens
+    if ((outputTokens ?? 0) >= EMPTY_TURN_WARN_MIN_OUTPUT_TOKENS && !result.text && (toolCallCount ?? 0) === 0) {
+      log.warn(
+        { contextId: invokeArgs.contextId, outputTokens, finishReason: result.finishReason },
+        'LLM turn produced no content despite billed output tokens',
+      )
+    }
     progressReporter.reasoning(result.finalStep.reasoningText, result.finalStep.reasoning)
     persistFactsFromResults(invokeArgs.contextId, result)
     // Keep the status alive as a placeholder through any verification round-trip; sendLlmResponse dismisses
     // it right before the first reply posts, so there is no empty gap between the tool status and the answer.
     await liveStatus.placeholder(t('liveStatus.preparingResponse', locale))
-    const readOnlyToolset = selectReadOnlyTools(invokeArgs.tools)
-    // The verifier runs its own generateText with an independently built,
-    // full keyed toolsContext record — a verifier tool call must not run
-    // without its keyed context.
-    const verifierToolsContext = buildToolsContextRecord(readOnlyToolset ?? {}, invokeArgs.providerRequestScope)
-    const verifier: VerifierDeps = {
-      readOnlyToolset,
-      invokeVerifier: async ({ system, messages }: VerifierPrompt) => {
-        const baseOptions: Parameters<LlmOrchestratorDeps['generateText']>[0] = {
-          model: invokeArgs.model,
-          ...hoistSystemMessages(system, messages),
-          tools: readOnlyToolset ?? {},
-          stopWhen: invokeArgs.deps.stepCountIs(VERIFIER_MAX_STEPS),
-          timeout: 1_200_000,
-        }
-        const res = await invokeArgs.deps.generateText(
-          Object.assign({}, baseOptions, { toolsContext: verifierToolsContext }),
-        )
-        return { text: res.text, finishReason: res.finishReason }
-      },
-    }
+    const verifier = buildTurnVerifier(invokeArgs)
     const history: ModelMessage[] = [...invokeArgs.messages, ...collectTurnMessages(result)]
     await sendLlmResponse(reply, invokeArgs.contextId, result, progressReporter, { verifier, history }, () =>
       liveStatus.dismiss(),

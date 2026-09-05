@@ -4,14 +4,24 @@
 // See LICENSE in the project root for details.
 
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
+import assert from 'node:assert/strict'
+
+import { generateText, NoSuchToolError, stepCountIs, tool, type ToolSet } from 'ai'
+import { MockLanguageModelV3 } from 'ai/test'
+import { z } from 'zod'
 
 import type { AiProgressReporter, ToolFinishedEvent, ToolStartedEvent } from '../src/ai-progress-reporter.js'
+import { NO_ANALYTICS_SCOPE } from '../src/analytics/provider-request-scope.js'
 import { userCachesForTesting } from '../src/cache.js'
 import { toScopedContextId, toScopedThreadContextId } from '../src/chat/scoped-context.js'
 import { type DebugEvent, subscribe, unsubscribe } from '../src/debug/event-bus.js'
-import { resolveSystemPrompt } from '../src/llm-orchestrator-invoke.js'
+import { invokeModel, resolveSystemPrompt } from '../src/llm-orchestrator-invoke.js'
 import { handleToolCallStart, handleToolCallFinishEvent } from '../src/llm-orchestrator-tool-events.js'
-import type { ToolCallContext } from '../src/llm-orchestrator-types.js'
+import type { InvokeModelArgs, LlmOrchestratorDeps, ToolCallContext } from '../src/llm-orchestrator-types.js'
+import { defaultDeps } from '../src/llm-orchestrator.js'
+import { runRegistry } from '../src/run-control/registry.js'
+import { CORE_TOOL_NAMES } from '../src/tools/disclosure/core.js'
+import { createDisclosureSession, type DisclosureSession } from '../src/tools/disclosure/registry.js'
 import { createMockProvider } from './tools/mock-provider.js'
 import { createMockReply, mockLogger, setupTestDb } from './utils/test-helpers.js'
 
@@ -420,5 +430,111 @@ describe('resolveSystemPrompt', () => {
     })
 
     expect(prompt).toContain('Отвечай пользователю на русском языке')
+  })
+})
+
+type CapturedGenerateOpts = Parameters<LlmOrchestratorDeps['generateText']>[0]
+type GenerateResult = Awaited<ReturnType<LlmOrchestratorDeps['generateText']>>
+
+// A bare mock model is enough: invokeModel passes it straight through and the
+// stubbed generateText never actually drives it.
+const wireMockModel = new MockLanguageModelV3({
+  doGenerate: {
+    content: [],
+    finishReason: { unified: 'stop', raw: undefined } as const,
+    usage: {
+      inputTokens: { total: 0, noCache: 0, cacheRead: 0, cacheWrite: 0 },
+      outputTokens: { total: 0, text: 0, reasoning: 0 },
+    },
+    warnings: [],
+  },
+})
+
+// A real, fully-typed result reused as the canned success return so the mock
+// deps stay assignable to LlmOrchestratorDeps without an unsafe assertion.
+const okGenerateResult: GenerateResult = await generateText({ model: wireMockModel, prompt: 'hi' })
+
+const disclosureStubTool = (): ToolSet[string] =>
+  tool({ description: 'x', inputSchema: z.object({}), execute: () => ({}) })
+
+function buildInvokeArgs(
+  captured: { opts?: CapturedGenerateOpts },
+  disclosure: DisclosureSession | undefined,
+): InvokeModelArgs & { reply: undefined; turnId: string } {
+  return {
+    contextId: 'ctx-1',
+    chatUserId: 'user-1',
+    contextType: 'dm',
+    mainModel: 'main',
+    model: wireMockModel,
+    provider: null,
+    tools: {},
+    enabledToolNames: new Set<string>(),
+    messages: [{ role: 'user' as const, content: 'hi' }],
+    providerRequestScope: NO_ANALYTICS_SCOPE,
+    deps: {
+      ...defaultDeps,
+      generateText: (opts) => {
+        captured.opts = opts
+        return Promise.resolve(okGenerateResult)
+      },
+      stepCountIs,
+      resolve: () => null,
+      maybeAutoProvision: () => Promise.resolve(false),
+    },
+    ...(disclosure === undefined ? {} : { disclosure }),
+    reply: undefined,
+    turnId: 't1',
+  }
+}
+
+describe('invokeModel repairToolCall wiring', () => {
+  beforeEach(async () => {
+    mockLogger()
+    userCachesForTesting.clear()
+    await setupTestDb()
+    runRegistry.clear()
+  })
+
+  afterEach(() => {
+    runRegistry.clear()
+  })
+
+  test('disclosure present: generateText options include a repair function bound to the disclosure session', async () => {
+    const tools: ToolSet = {
+      get_current_time: disclosureStubTool(),
+      search_tools: disclosureStubTool(),
+      load_tool: disclosureStubTool(),
+      list_tasks: disclosureStubTool(),
+    }
+    const disclosure = createDisclosureSession(tools, CORE_TOOL_NAMES)
+    const captured: { opts?: CapturedGenerateOpts } = {}
+    await invokeModel(buildInvokeArgs(captured, disclosure))
+
+    const repair = captured.opts?.repairToolCall
+    assert.ok(typeof repair === 'function', 'repairToolCall should be a function when disclosure is present')
+    const repaired = await repair({
+      toolCall: { type: 'tool-call', toolCallId: 'call-1', toolName: 'list_tasks', input: '{}' },
+      tools,
+      instructions: undefined,
+      system: undefined,
+      messages: [],
+      inputSchema: () => Promise.resolve({ type: 'object' }),
+      error: new NoSuchToolError({ toolName: 'list_tasks' }),
+    })
+    expect(repaired).toEqual({
+      type: 'tool-call',
+      toolCallId: 'call-1',
+      toolName: 'load_tool',
+      input: JSON.stringify({ names: ['list_tasks'] }),
+    })
+    expect(disclosure.activeToolNames()).toContain('list_tasks')
+  })
+
+  test('disclosure undefined: generateText options omit the repairToolCall key', async () => {
+    const captured: { opts?: CapturedGenerateOpts } = {}
+    await invokeModel(buildInvokeArgs(captured, undefined))
+    assert.ok(captured.opts !== undefined, 'generateText options should be captured')
+    expect('repairToolCall' in captured.opts).toBe(false)
   })
 })
