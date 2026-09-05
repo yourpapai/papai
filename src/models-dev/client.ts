@@ -84,7 +84,9 @@ const readCache = async (cachePath: string): Promise<CachedProviders | null> => 
   try {
     const raw = await readFile(cachePath, 'utf8')
     const { mtimeMs } = await stat(cachePath)
-    return { providers: parseProviders(raw), mtime: mtimeMs }
+    const providers = parseProviders(raw)
+    if (Object.keys(providers).length === 0) return null
+    return { providers, mtime: mtimeMs }
   } catch {
     return null
   }
@@ -117,6 +119,10 @@ const runCycle = async (deps: ModelsDevClientDeps): Promise<void> => {
   try {
     const body = await deps.fetchImpl(AbortSignal.timeout(deps.fetchTimeoutMs))
     const providers = parseProviders(body)
+    if (Object.keys(providers).length === 0) {
+      log.warn('models.dev response parsed to an empty catalogue; keeping previous snapshot')
+      return
+    }
     snapshot = { fetchedAt: deps.now(), providers }
     await writeCache(deps.cachePath, providers)
   } catch (error) {

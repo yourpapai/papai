@@ -4,7 +4,7 @@
 // See LICENSE in the project root for details.
 
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
-import { existsSync, mkdtempSync, rmSync, utimesSync } from 'node:fs'
+import { existsSync, mkdtempSync, readFileSync, rmSync, utimesSync, writeFileSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 
@@ -109,6 +109,36 @@ describe('models-dev client', () => {
 
     expect(getModelsDevSnapshot()).toEqual(before)
     expect(getModelsDevSnapshot().fetchedAt).toBe(NOW)
+  })
+
+  test('a valid-JSON wrong-shape body degrades to the previous snapshot and cache', async () => {
+    await prewarmModelsDevSnapshot({ fetchImpl: staticFetch(catalogueBody), cachePath, now: () => NOW })
+    const before = getModelsDevSnapshot()
+
+    await refreshModelsDevSnapshot({ fetchImpl: staticFetch('{"error":"rate limited"}'), now: () => NOW + 5 })
+
+    expect(getModelsDevSnapshot()).toEqual(before)
+    expect(getModelsDevSnapshot().fetchedAt).toBe(NOW)
+    expect(JSON.parse(readFileSync(cachePath, 'utf8'))).toEqual(before.providers)
+  })
+
+  test('a wrong-shape first fetch leaves the empty snapshot without writing the cache', async () => {
+    await prewarmModelsDevSnapshot({ fetchImpl: staticFetch('{"error":"rate limited"}'), cachePath, now: () => NOW })
+
+    expect(getModelsDevSnapshot()).toEqual({ fetchedAt: null, providers: {} })
+    expect(existsSync(cachePath)).toBe(false)
+  })
+
+  test('an empty disk cache is ignored and refetched', async () => {
+    writeFileSync(cachePath, '{}')
+
+    await prewarmModelsDevSnapshot({ fetchImpl: staticFetch(catalogueBody), cachePath, now: () => NOW })
+
+    expect(getModelsDevSnapshot().fetchedAt).toBe(NOW)
+    expect(getModelsDevSnapshot().providers).toEqual({
+      openai: { models: { 'gpt-4o': { limit: { context: 128_000, output: 16_384 } } } },
+      anthropic: { models: { 'claude-opus-4': { limit: { context: 200_000, output: 32_000 } } } },
+    })
   })
 
   test('a failed first fetch leaves the empty snapshot', async () => {
