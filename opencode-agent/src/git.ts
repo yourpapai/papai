@@ -72,7 +72,15 @@ export const credentialEnv = (credential: GitCredential | null): Record<string, 
 
 const makeRunners = (options: GitOptions): { git: GitFn; gitOrThrow: GitFn } => {
   const credential = credentialEnv(options.credential)
-  const authorEnv = { GIT_AUTHOR_NAME: options.authorName, GIT_AUTHOR_EMAIL: options.authorEmail }
+  const authorEnv = {
+    GIT_AUTHOR_NAME: options.authorName,
+    GIT_AUTHOR_EMAIL: options.authorEmail,
+    // Ambient `GIT_COMMITTER_*` outranks the `-c user.*` stamps below, so a
+    // launcher's identity would silently win; pin the same resolution `commit`
+    // uses, making the committer a fact of options rather than of the env.
+    GIT_COMMITTER_NAME: options.committerName ?? options.authorName,
+    GIT_COMMITTER_EMAIL: options.committerEmail ?? options.authorEmail,
+  }
   const env = credential === undefined ? authorEnv : { ...credential, ...authorEnv }
   const git: GitFn = (...argv) => options.run(['git', ...argv], { cwd: options.cwd, env })
 

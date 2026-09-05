@@ -14,7 +14,7 @@ import type { ReplyFn } from './chat/types.js'
 import { appendHistory } from './history.js'
 import { maybeAutoLinkIdentity } from './identity/resolver.js'
 import { recordAssistantTurn } from './llm-history.js'
-import { getOpenAICompatibleProvider } from './llm-model-builder.js'
+import { buildChatModel } from './llm-model-builder.js'
 import { resolveConfigId } from './llm-orchestrator-config.js'
 import { buildHistory } from './llm-orchestrator-history.js'
 import { replayLeftoverSteerAsFreshTurn } from './llm-orchestrator-leftover-replay.js'
@@ -48,7 +48,8 @@ export const resolveAiOutputSettingsContextId = (contextId: string): string =>
 export const defaultDeps: LlmOrchestratorDeps = {
   generateText: (...args) => generateText(...args),
   stepCountIs: (...args) => isStepCount(...args),
-  buildModel: (config) => getOpenAICompatibleProvider(config.main.apiKey, config.main.baseUrl)(config.main.model),
+  buildModel: (config) =>
+    buildChatModel(config.main.apiKey, config.main.baseUrl, config.main.model, undefined, config.main.metadata),
   resolve: (contextId: string) => defaultTaskProviderResolver.resolve(contextId),
   maybeAutoProvision: (reply, contextId, chatUserId, username, scope) =>
     maybeAutoProvisionProvider(reply, contextId, chatUserId, username, scope),
