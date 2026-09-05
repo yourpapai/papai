@@ -6,9 +6,10 @@
 import { afterEach, beforeEach, describe, expect, mock, spyOn, test } from 'bun:test'
 import assert from 'node:assert/strict'
 
-import { generateText, stepCountIs } from 'ai'
+import { generateText, stepCountIs, tool } from 'ai'
 import type { ModelMessage } from 'ai'
 import { MockLanguageModelV3 } from 'ai/test'
+import { z } from 'zod'
 
 import type { AiProgressReporter } from '../src/ai-progress-reporter.js'
 import { NO_ANALYTICS_SCOPE } from '../src/analytics/provider-request-scope.js'
@@ -24,6 +25,7 @@ import {
   invokeWithLiveStatus,
 } from '../src/llm-orchestrator-support.js'
 import type { InvokeModelArgs } from '../src/llm-orchestrator-types.js'
+import { logger, logMultistream } from '../src/logger.js'
 import { buildToolFailureResult } from '../src/tool-failure.js'
 import { llmError } from './utils/test-errors.js'
 import { createMockReply, mockLogger, setupTestDb } from './utils/test-helpers.js'
@@ -450,5 +452,147 @@ describe('invokeWithLiveStatus locale', () => {
 
     expect(created).toEqual(['💭 Thinking…'])
     expect(updates).toContain('💬 Preparing response…')
+  })
+})
+
+// Real-logger capture window (logging-privacy pattern): the shared logger is
+// constructed at 'silent' by tests/setup, so its fixed-level multistream legs
+// stay quiet even while a test raises the root level; this dedicated
+// debug-level tap is the only destination during the window.
+const realLogger = logger
+const supportWarnLines: string[] = []
+logMultistream.add({
+  level: 'debug',
+  stream: {
+    write: (chunk: string): void => {
+      supportWarnLines.push(chunk)
+    },
+  },
+})
+
+const supportWarns = (): Array<Record<string, unknown>> => {
+  const warns: Array<Record<string, unknown>> = []
+  for (const line of supportWarnLines) {
+    const parsed: unknown = JSON.parse(line)
+    if (isRecord(parsed) && parsed['level'] === 40 && parsed['scope'] === 'llm-orchestrator:support') {
+      warns.push(parsed)
+    }
+  }
+  return warns
+}
+
+// Synthetic turn shapes: each mock model bills a realistic response but returns
+// exactly the content under test, so the real generateText result reaching
+// invokeWithLiveStatus carries the anomalous combination.
+const makeTurnModel = (
+  content: Array<
+    { type: 'text'; text: string } | { type: 'tool-call'; toolCallId: string; toolName: string; input: string }
+  >,
+  outputTokens: number,
+  unified: 'stop' | 'tool-calls',
+): MockLanguageModelV3 =>
+  new MockLanguageModelV3({
+    doGenerate: {
+      content,
+      finishReason: { unified, raw: undefined },
+      usage: {
+        inputTokens: { total: 10, noCache: 0, cacheRead: 0, cacheWrite: 0 },
+        outputTokens: { total: outputTokens, text: 0, reasoning: 0 },
+      },
+      warnings: [],
+    },
+  })
+const stubTool = tool({ description: 'x', inputSchema: z.object({}), execute: () => ({}) })
+
+describe('invokeWithLiveStatus anomalous empty-turn warn', () => {
+  const CANARY_USER_TEXT = 'CANARY-USER-TEXT-4f'
+
+  beforeEach(async () => {
+    // No mockLogger here: the warn capture window relies on the real logger.
+    await setupTestDb()
+  })
+
+  const runTurn = async (contextId: string, model: MockLanguageModelV3, tools: 'none' | 'time'): Promise<void> => {
+    await invokeWithLiveStatus({
+      reply: createMockReply().reply,
+      invokeArgs: {
+        contextId,
+        chatUserId: 'user-1',
+        contextType: 'dm',
+        mainModel: 'gpt-4o',
+        model,
+        provider: null,
+        tools: tools === 'time' ? { get_current_time: stubTool } : {},
+        enabledToolNames: new Set<string>(),
+        messages: [{ role: 'user', content: CANARY_USER_TEXT }],
+        turnId: `turn-${contextId}`,
+        providerRequestScope: NO_ANALYTICS_SCOPE,
+        deps: {
+          generateText: (options) => generateText(options),
+          // Single-step turns: the mock model would otherwise answer identically
+          // every step, and the pending-tool-call case must stay bounded.
+          stepCountIs: () => stepCountIs(1),
+          buildModel: () => model,
+          resolve: () => null,
+          maybeAutoProvision: () => Promise.resolve(false),
+        },
+      },
+      progressReporter: {
+        toolStarted: (): void => {},
+        toolFinished: (): void => {},
+        reasoning: (): void => {},
+        flush: () => Promise.resolve(),
+      },
+      liveStatusEnabled: false,
+    })
+  }
+
+  const runWithCapture = async (
+    contextId: string,
+    model: MockLanguageModelV3,
+    tools: 'none' | 'time',
+  ): Promise<void> => {
+    supportWarnLines.length = 0
+    realLogger.level = 'debug'
+    try {
+      await runTurn(contextId, model, tools)
+    } finally {
+      realLogger.level = 'silent'
+    }
+  }
+
+  test('empty turn billed at outputTokens >= 64 warns once with outputTokens and finishReason and no message content', async () => {
+    const model = makeTurnModel([], 200, 'stop')
+    await runWithCapture('ctx-warn-anomaly', model, 'none')
+
+    const warns = supportWarns()
+    expect(warns).toHaveLength(1)
+    assert.ok(warns[0] !== undefined)
+    expect(warns[0]['contextId']).toBe('ctx-warn-anomaly')
+    expect(warns[0]['outputTokens']).toBe(200)
+    expect(warns[0]['finishReason']).toBe('stop')
+    expect(JSON.stringify(warns)).not.toContain(CANARY_USER_TEXT)
+  })
+
+  test('a turn with non-empty text produces no anomaly warn', async () => {
+    const model = makeTurnModel([{ type: 'text', text: 'All overdue tasks are listed.' }], 200, 'stop')
+    await runWithCapture('ctx-warn-text', model, 'none')
+    expect(supportWarns()).toHaveLength(0)
+  })
+
+  test('a turn that ended with a pending tool call produces no anomaly warn', async () => {
+    const model = makeTurnModel(
+      [{ type: 'tool-call', toolCallId: 'call-tc', toolName: 'get_current_time', input: '{}' }],
+      200,
+      'tool-calls',
+    )
+    await runWithCapture('ctx-warn-toolcall', model, 'time')
+    expect(supportWarns()).toHaveLength(0)
+  })
+
+  test('a cheap empty turn below the output threshold produces no anomaly warn', async () => {
+    const model = makeTurnModel([], 5, 'stop')
+    await runWithCapture('ctx-warn-cheap', model, 'none')
+    expect(supportWarns()).toHaveLength(0)
   })
 })
