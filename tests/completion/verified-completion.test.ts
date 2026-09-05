@@ -63,6 +63,14 @@ describe('selectReadOnlyTools', () => {
     expect(Object.keys(result!).sort()).toEqual(['get_task', 'list_tasks', 'search_tools'])
   })
 
+  test('keeps read_-prefixed tools and still drops expand_result and mutating tools', () => {
+    const result = selectReadOnlyTools(
+      fakeTools('get_task', 'read_recent_logs', 'create_task', 'update_task', 'delete_project', 'expand_result'),
+    )
+    expect(result).not.toBeUndefined()
+    expect(Object.keys(result!).sort()).toEqual(['get_task', 'read_recent_logs'])
+  })
+
   test('returns undefined when no read-only tools are present', () => {
     expect(selectReadOnlyTools(fakeTools('create_task', 'delete_project'))).toBeUndefined()
   })

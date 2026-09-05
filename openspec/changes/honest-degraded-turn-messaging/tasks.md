@@ -13,7 +13,7 @@
 
 ## 3. Verifier read-only set includes `read_`
 
-- [ ] 3.1 Write failing test in `tests/completion/verified-completion.test.ts` (`selectReadOnlyTools`): keeps `read_recent_logs`-style names, still drops create/update/delete names, still returns `undefined` when nothing matches. Verify: `bun test tests/completion/verified-completion.test.ts` (expect fail)
+- [x] 3.1 Write failing test in `tests/completion/verified-completion.test.ts` (`selectReadOnlyTools`): keeps `read_recent_logs`-style names, still drops create/update/delete names, still returns `undefined` when nothing matches. Verify: `bun test tests/completion/verified-completion.test.ts` (expect fail)
 - [ ] 3.2 Add `'read_'` to `READ_ONLY_PREFIXES` in `src/completion/verified-completion.ts` (design D4; `expand_result` stays excluded). Verify: `bun test tests/completion/verified-completion.test.ts`
 
 ## 4. Truthful send logging
