@@ -473,7 +473,17 @@ else
       echo ""
       echo "✗ $check failed (exit code $exit_code):"
       echo "---"
-      cat "$CHECKS_REPORT_DIR/$fname.log"
+      # `|| true`, and not because a missing log is acceptable — the log is
+      # always there, this script wrote it. It is that `cat`'s *write* fails.
+      # When stdout is a pipe carrying O_NONBLOCK (a captured parent, e.g. the
+      # review-loop build gate, or the Actions runner), a `cat` that outruns the
+      # reader gets EAGAIN, prints `cat: write error: Resource temporarily
+      # unavailable`, and exits 1 — and `set -e` then aborts this script before
+      # the `N/M checks passed` summary below, which is the one line that names
+      # what failed. Run 33974052563 is what that costs: a review-loop gate that
+      # reported 40 lines of vite warnings and no verdict at all. The body is
+      # best-effort; the summary is not.
+      cat "$CHECKS_REPORT_DIR/$fname.log" || echo "(log body truncated: $CHECKS_REPORT_DIR/$fname.log)"
       echo "---"
       # Where to look, rather than what to run again. The output above is the
       # whole of it, but a terminal scroll-back is not a place you can query.

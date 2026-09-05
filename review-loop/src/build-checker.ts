@@ -3,7 +3,10 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { execFile } from 'node:child_process'
+import { spawn } from 'node:child_process'
+import { mkdtemp, open, readFile, rm } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import path from 'node:path'
 
 import { scrubCredentialValue } from './backend-select.js'
 import { formatDuration } from './live-format.js'
@@ -38,28 +41,68 @@ interface RawExecResult {
 
 interface ExecOptions {
   cwd: string
-  maxBuffer: number
   timeout?: number
 }
 
-function runExec(file: string, args: string[], options: ExecOptions): Promise<RawExecResult> {
-  return new Promise((resolve) => {
-    execFile(file, args, options, (err, stdout, stderr) => {
-      let exitCode: number
-      let resolvedStderr = stderr
-      if (err === null) {
-        exitCode = 0
-      } else if (typeof err.code === 'number') {
-        exitCode = err.code
-      } else if (err.killed === true && options.timeout !== undefined && options.timeout > 0) {
-        exitCode = 1
-        resolvedStderr = `${stderr}Process timed out after ${options.timeout}ms\n`
-      } else {
-        exitCode = 1
+/**
+ * Runs `sh -c command` with the child's stdout and stderr pointed at regular
+ * files rather than pipes, then reads them back.
+ *
+ * Pipes are what broke run 33974052563. The check command is `bun check:full`,
+ * and `check.sh` reports a failing check by `cat`-ing that check's whole log to
+ * stdout. When stdout is the parent's captured pipe, the fd carries O_NONBLOCK
+ * — it is a property of the shared open file description, not of our end — so a
+ * `cat` that outruns the parent's reader gets EAGAIN, prints
+ * `cat: write error: Resource temporarily unavailable`, and exits 1. Under
+ * `set -euo pipefail` that aborts `check.sh` before it prints the one line that
+ * names which check failed, and the exit code the loop reports is `cat`'s, not
+ * the check's. The same bug is already documented against the `Checks` CI job
+ * (`.github/workflows/ci.yml`, run 33153391880).
+ *
+ * A regular file has no such failure mode: writes to it never return EAGAIN, so
+ * the report always completes. It also retires the `maxBuffer` ceiling — the
+ * former 10 MB cap silently truncated a big run — since nothing is buffered in
+ * this process until the child has exited.
+ */
+async function runExec(file: string, args: string[], options: ExecOptions): Promise<RawExecResult> {
+  const dir = await mkdtemp(path.join(tmpdir(), 'review-loop-check-'))
+  const outPath = path.join(dir, 'stdout.log')
+  const errPath = path.join(dir, 'stderr.log')
+  const outHandle = await open(outPath, 'w')
+  const errHandle = await open(errPath, 'w')
+  try {
+    const { code, timedOut } = await new Promise<{ code: number; timedOut: boolean }>((resolve) => {
+      const child = spawn(file, args, { cwd: options.cwd, stdio: ['ignore', outHandle.fd, errHandle.fd] })
+      let killed = false
+      const timer =
+        options.timeout !== undefined && options.timeout > 0
+          ? setTimeout(() => {
+              killed = true
+              child.kill('SIGKILL')
+            }, options.timeout)
+          : undefined
+      const settle = (exitCode: number): void => {
+        if (timer !== undefined) clearTimeout(timer)
+        resolve({ code: exitCode, timedOut: killed })
       }
-      resolve({ exitCode, stdout, stderr: resolvedStderr })
+      child.on('error', () => {
+        settle(1)
+      })
+      child.on('close', (exitCode) => {
+        settle(exitCode ?? 1)
+      })
     })
-  })
+    const stdout = await readFile(outPath, 'utf8')
+    const stderr = await readFile(errPath, 'utf8')
+    if (timedOut) {
+      return { exitCode: 1, stdout, stderr: `${stderr}Process timed out after ${String(options.timeout)}ms\n` }
+    }
+    return { exitCode: code, stdout, stderr }
+  } finally {
+    await outHandle.close()
+    await errHandle.close()
+    await rm(dir, { recursive: true, force: true })
+  }
 }
 
 export async function runBuildCheck(deps: BuildCheckDeps): Promise<BuildCheckResult> {
@@ -74,7 +117,7 @@ export async function runBuildCheck(deps: BuildCheckDeps): Promise<BuildCheckRes
 
 export function createShellExec(cwd: string, command: string, timeoutMs?: number): ShellExecFn {
   return (overrideCwd?: string): Promise<RawExecResult> =>
-    runExec('sh', ['-c', command], { cwd: overrideCwd ?? cwd, maxBuffer: 10 * 1024 * 1024, timeout: timeoutMs })
+    runExec('sh', ['-c', command], { cwd: overrideCwd ?? cwd, timeout: timeoutMs })
 }
 
 export async function runBuildWithLogging(
