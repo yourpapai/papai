@@ -58,7 +58,7 @@
         )
           .then((resolved) => {
             if (requestId !== latestRequest) return
-            cache.set(key, resolved)
+            if (resolved.snapshotFetchedAt !== null) cache.set(key, resolved)
             result = resolved
           })
           .catch(() => {

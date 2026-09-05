@@ -62,6 +62,11 @@ const payloadFor = (model: string): unknown => {
   }
 }
 
+const loadedHitsFor = (model: string): unknown => {
+  if (model === 'pending-model') return hitPayload('openai', 'pending-hit', 64_000, 8_000)
+  return hitPayload('openai', 'other-hit', 64_000, 8_000)
+}
+
 const installFetch = (): void => {
   setMockFetch((url, init) => {
     const parsed = new URL(url, 'https://x')
@@ -240,4 +245,32 @@ test('a per-key cache serves a repeated input without a second fetch', async () 
   await waitFor(() => hintShows('cached-hit'))
 
   expect(captured).toHaveLength(2)
+})
+
+test('an unavailable answer is not cached, so a loaded snapshot is picked up on re-lookup', async () => {
+  installFetch()
+
+  const { component } = mountFixture({ model: 'pending-model' })
+  await waitFor(() => hintShows('catalogue unavailable'))
+
+  setMockFetch((url, init) => {
+    const parsed = new URL(url, 'https://x')
+    captured.push({ url: parsed.pathname + parsed.search, signal: init.signal })
+    return Promise.resolve(jsonResponse(loadedHitsFor(String(parsed.searchParams.get('model')))))
+  })
+
+  component.setModel('other-model')
+  flushSync()
+  await waitFor(() => hintShows('other-hit'))
+
+  component.setModel('pending-model')
+  flushSync()
+  await waitFor(() => hintShows('pending-hit'))
+
+  expect(hintOf()).not.toContain('catalogue unavailable')
+  expect(captured.map((call) => call.url)).toEqual([
+    '/settings/api/llm-model-metadata?model=pending-model',
+    '/settings/api/llm-model-metadata?model=other-model',
+    '/settings/api/llm-model-metadata?model=pending-model',
+  ])
 })
