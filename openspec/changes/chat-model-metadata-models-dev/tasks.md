@@ -1,0 +1,36 @@
+## 1. Catalogue foundation (src/models-dev/)
+
+- [ ] 1.1 Write failing tests for `resolveModelMetadata` precedence (override > inferred > prefix-table > none, `via` marking, ambiguous-name tiebreak, empty-snapshot behavior) in `tests/models-dev/resolve.test.ts`, then implement the pure resolver `src/models-dev/resolve.ts` per design D1 with an injected snapshot getter. Verify: `bun test tests/models-dev/resolve.test.ts`
+- [ ] 1.2 Write failing tests for provider-id inference (providerType 1:1 map, baseUrl-host map for custom, unknown → null) in `tests/models-dev/provider-id.test.ts`, then implement `src/models-dev/provider-id.ts` per design D3. Verify: `bun test tests/models-dev/provider-id.test.ts`
+- [ ] 1.3 Write failing tests for the catalogue client (injected `fetchImpl`, 10s timeout, 60-min TTL, malformed-body degradation, failed refresh keeps last snapshot, empty snapshot `fetchedAt: null`, disk-cache round-trip at `~/.cache/papai/models.json`, boot prewarm + background refresh) in `tests/models-dev/client.test.ts`, then implement the snapshot singleton `src/models-dev/client.ts` per design D2 — tests never reach models.dev. Verify: `bun test tests/models-dev/client.test.ts`
+
+## 2. Persistence for base references
+
+- [ ] 2.1 Write failing tests for migration `083_llm_provider_base_refs` (nullable `base_provider`/`base_model` columns, existing rows decode as null, idempotent re-run) in `tests/db/` next to the existing migration tests, then add the migration and the two columns to `src/db/llm-providers-schema.ts` per design D5. Verify: `bun test tests/db/`
+- [ ] 2.2 Write failing store tests (create/patch accept and echo `baseProvider`/`baseModel`, clearing restores null) in `tests/llm-providers/store.test.ts`, then extend `NewLlmProviderInput` + `updateLlmProvider` in `src/llm-providers/store.ts` and `LlmProviderAccount` in `src/llm-providers/types.ts`. Verify: `bun test tests/llm-providers/store.test.ts`
+- [ ] 2.3 Write failing blob-codec tests (v2 blob gains optional base fields, legacy blob decodes unchanged, new blob decodes on old shape) in `tests/byok-llm/blob-codec.test.ts`, then extend `ByokBlobV2` providers in `src/byok-llm/blob-codec.ts` — version stays 2, additive only. Verify: `bun test tests/byok-llm/blob-codec.test.ts`
+- [ ] 2.4 Write failing tests for the admin and BYOK routes accepting/echoing base refs with `PublicProviderAccount` extended and the public shape staying credential-free, then update `src/debug/settings/admin/llm-providers-routes.ts` (`publicAccount`, `ProviderBodySchema`, `ProviderPatchSchema`) and `src/debug/settings/byok-routes.ts` (`ProviderInBlobSchema`, upsert path). Verify: `bun test tests/debug/settings/`
+- [ ] 2.5 Write failing tests for `LLM_BASE_PROVIDER`/`LLM_BASE_MODEL` env bootstrap (applied only when the env seed creates the provider, absent/empty ignored) in `tests/llm-providers/env-bootstrap.test.ts`, then extend `src/llm-providers/env-bootstrap.ts`. Verify: `bun test tests/llm-providers/env-bootstrap.test.ts`
+
+## 3. Runtime application
+
+- [ ] 3.1 Write failing tests for the snapshot-consulting `resolveMaxTokens` (unique-name catalogue hit, disagreement falls back to prefix table, empty snapshot unchanged) in `tests/model-context.test.ts`, then update `src/model-context.ts` per design D4. Verify: `bun test tests/model-context.test.ts`
+- [ ] 3.2 Write failing resolver tests (`ResolvedRole` carries `metadata`, computed via `resolveModelMetadata` with the account's declared refs, for both admin and BYOK sources) in `tests/llm-providers/resolver.test.ts`, then extend `resolveLlmConfig`/`resolveAdminLlmConfig` in `src/llm-providers/resolver.ts`. Verify: `bun test tests/llm-providers/resolver.test.ts`
+- [ ] 3.3 Write failing builder tests (known model's generation request carries the catalogue `maxOutputTokens`, `none` model sends byte-identical requests, override entry's cap honored, `(apiKey, baseUrl)` provider cache untouched) in `tests/` next to the existing llm-model-builder tests, then add the optional trailing `metadata` parameter with `wrapLanguageModel`/`defaultSettingsMiddleware` to `src/llm-model-builder.ts` per design D6. Verify: `bun test tests/llm-model-builder.test.ts`
+- [ ] 3.4 Thread `resolved.<role>.metadata` as the new argument at all eleven `buildChatModel` call sites (conversation, web/distill, compaction/summarizer, lookup-group-history, proactive-llm, context-vault/summarizer, announcements/humanize, long-term-memory runner/promotion/capture), keeping DI signatures intact. Verify: `bun test tests/conversation/ tests/commands/context-collector.test.ts` then `bun run typecheck`
+
+## 4. Preview endpoint
+
+- [ ] 4.1 Write failing route tests for `GET /settings/api/llm-model-metadata` (unauthenticated rejected, authenticated non-admin member allowed with no context scope, precedence echoed, empty snapshot → `source: 'none'` + `snapshotFetchedAt: null`, credential-free contract, zero outbound fetches during a request) in `tests/debug/settings/`, then implement `src/debug/settings/llm-model-metadata-routes.ts` per design D7 and mount it in `src/debug/settings-api-router.ts`. Verify: `bun test tests/debug/settings/`
+- [ ] 4.2 Add `LlmModelMetadataResponseSchema`, the GET fetcher, and the nullable base fields on `PublicProviderAccountSchema` in `client/settings/fetcher-schemas-llm-providers.ts`, with schema round-trip tests in `tests/client/settings/`. Verify: `bun test tests/client/settings/`
+
+## 5. Settings UI preview
+
+- [ ] 5.1 Write component tests for `ModelMetadataHint.svelte` (four states: catalogue hit, prefix guess, no limits known, catalogue unavailable; `via override` marker; superseded lookup never overwrites a newer result), then implement the component with ~300 ms debounce, AbortController supersede, and per-key cache per design D8. Verify: `bun test tests/client/settings/`
+- [ ] 5.2 Wire the hint into `RoleBindingBlock.svelte` (under the model Combobox when a provider is selected and the model field is non-empty) and `ProviderForm.svelte` (under the base-reference fields, resolving `baseProvider ?? inferred` + `baseModel` pre-save), plus the two optional base-ref inputs on the provider forms; update the admin providers section, BYOK section, and BYOK provider fetchers for the echoed fields. Verify: `bun test tests/client/settings/` then `bun run typecheck`
+- [ ] 5.3 Add a Storybook story for `ModelMetadataHint` covering the four states for the screenshot lane. Verify: `bun test tests/client/settings/`
+
+## 6. Full verification and docs
+
+- [ ] 6.1 Run the affected suites and the mutation ratchet for the new files (`bun run test tests/models-dev/ tests/debug/settings/ tests/client/settings/ tests/llm-providers/ tests/byok-llm/ && bun run test:mutate:changed --base=HEAD~1 --update-baseline`), then `bun run lint` and `bun run typecheck`. Verify: all four commands exit 0
+- [ ] 6.2 Update `docs/architecture/environment.md` (LLM_BASE_PROVIDER/LLM_BASE_MODEL, models.dev outbound host + cache path) and `docs/architecture/behaviors.md` (catalogue-driven limits, trim-trigger change, settings preview at selection, preview endpoint auth model), then run the full `bun test` and `bun check:full` before finishing. Verify: `bun test` and `bun check:full` exit 0
