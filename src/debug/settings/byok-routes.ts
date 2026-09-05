@@ -62,6 +62,8 @@ const ProviderInBlobSchema = z.object({
   providerType: z.enum(LLM_PROVIDER_TYPES),
   baseUrl: z.string().min(1),
   apiKey: z.string().min(1),
+  baseProvider: z.string().nullable().default(null),
+  baseModel: z.string().nullable().default(null),
   verification: VerificationSchema,
 })
 const RoleBindingSchema = z.object({ providerId: z.string().min(1), model: z.string().min(1) }).nullable()

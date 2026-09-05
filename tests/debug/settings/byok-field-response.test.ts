@@ -63,6 +63,8 @@ const makeProvider = (overrides: Partial<LlmProviderAccount> = {}): LlmProviderA
   providerType: 'ollama',
   baseUrl: 'http://localhost:11434/v1',
   apiKey: 'sk-test-key',
+  baseProvider: null,
+  baseModel: null,
   verification: unverified(),
   ...overrides,
 })

@@ -98,6 +98,8 @@ const makeProvider = (overrides: Partial<LlmProviderAccount> = {}): LlmProviderA
   providerType: 'custom',
   baseUrl: 'https://byok.invalid/v1',
   apiKey: 'sk-test-1234',
+  baseProvider: null,
+  baseModel: null,
   verification: unverified(),
   ...overrides,
 })

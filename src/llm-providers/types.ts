@@ -30,6 +30,8 @@ export type LlmProviderAccount = {
   readonly providerType: LlmProviderType
   readonly baseUrl: string
   readonly apiKey: string
+  readonly baseProvider: string | null
+  readonly baseModel: string | null
   readonly verification: Verification
 }
 

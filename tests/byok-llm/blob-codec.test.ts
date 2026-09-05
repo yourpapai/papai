@@ -32,6 +32,8 @@ describe('byok blob codec', () => {
           providerType: 'ollama' as const,
           baseUrl: 'http://x/v1',
           apiKey: 'k',
+          baseProvider: null,
+          baseModel: null,
           verification: { status: 'unverified' as const, error: null, at: null, models: [], modelsFetchedAt: null },
         },
       ],

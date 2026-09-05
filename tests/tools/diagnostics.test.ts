@@ -594,6 +594,8 @@ describe('run_diagnostics llm_config probe', () => {
     providerType: 'custom',
     baseUrl: 'https://byok.invalid/v1',
     apiKey: 'sk-byok',
+    baseProvider: null,
+    baseModel: null,
     verification: { status: 'unverified', error: null, at: null, models: [], modelsFetchedAt: null },
   })
 

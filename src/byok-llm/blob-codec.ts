@@ -45,6 +45,8 @@ const fromLegacy = (legacy: LegacyBlob): ByokBlobV2 => {
     providerType: 'custom',
     baseUrl: legacy['llm_baseurl'] ?? '',
     apiKey: legacy['llm_apikey'] ?? '',
+    baseProvider: null,
+    baseModel: null,
     verification: emptyVerification(),
   }
   const smallModel = legacy['small_model']
