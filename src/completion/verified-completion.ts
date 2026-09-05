@@ -61,7 +61,7 @@ export type CompletionTurn = {
   finishReason?: string
   hadToolFailure: boolean
   /** True when the turn executed at least one tool; the call sites fill it from the messages they collect. */
-  hadToolActivity?: boolean
+  hadToolActivity: boolean
   /** The turn's own final model text; undefined when the model produced none. */
   finalText?: string
   /** Locale of the turn's config context; the verifier prompt and fallback localize to it. */
@@ -89,7 +89,7 @@ const buildVerifierPrompt = (turn: CompletionTurn): VerifierPrompt => {
 export const deriveVerdict = (turn: CompletionTurn): CompletionVerdict => {
   if (turn.finishReason === 'tool-calls') return 'truncated'
   if (turn.hadToolFailure) return 'partial'
-  if (turn.hadToolActivity !== true && (turn.finalText === undefined || turn.finalText === '')) return 'no-op'
+  if (!turn.hadToolActivity && (turn.finalText === undefined || turn.finalText === '')) return 'no-op'
   return 'confirmed'
 }
 
@@ -104,7 +104,7 @@ export const buildVerifiedCompletion = async (
 ): Promise<VerifiedCompletion> => {
   const verdict = deriveVerdict(turn)
   const texts = getDictionary(turn.locale ?? 'en').completion
-  const lastResortFallback = turn.hadToolActivity === true ? texts.neutralFallback : texts.noopFallback
+  const lastResortFallback = turn.hadToolActivity ? texts.neutralFallback : texts.noopFallback
   log.debug({ verdict, readBack: deps.readOnlyToolset !== undefined }, 'Building verified completion')
   const prompt = buildVerifierPrompt(turn)
   try {

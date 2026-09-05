@@ -21,7 +21,7 @@ const deps = (captured: VerifierPrompt[]): VerifierDeps => ({
   readOnlyToolset: undefined,
 })
 
-const turn = (locale?: 'en' | 'ru', hadToolActivity?: boolean): CompletionTurn => ({
+const turn = (locale?: 'en' | 'ru', hadToolActivity: boolean = false): CompletionTurn => ({
   history: [],
   finishReason: 'stop',
   hadToolFailure: false,
