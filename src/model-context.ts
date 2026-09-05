@@ -65,13 +65,15 @@ export const prefixTableContextWindow = (modelName: string): number | null => {
  * this model id agrees, the prefix table on disagreement or a miss — conservative, deterministic,
  * and unchanged when the snapshot is empty. Context-window agreement is the shared ambiguous-name
  * tie-break with `resolveModelMetadata` (src/models-dev/resolve.ts, design D4): both surfaces
- * report the same window for the same name.
+ * report the same window for the same name. An entry without a declared context counts as `null`
+ * in the agreement — a catalogue-known model with no window yields no ceiling, never the prefix
+ * guess the preview would not show.
  */
 export const resolveMaxTokens = (modelName: string): number | null => {
-  const windows: number[] = []
+  const windows: (number | null)[] = []
   for (const provider of Object.values(getModelsDevSnapshot().providers)) {
-    const context = provider.models[modelName]?.limit?.context
-    if (context !== undefined) windows.push(context)
+    const entry = provider.models[modelName]
+    if (entry !== undefined) windows.push(entry.limit?.context ?? null)
   }
   const first = windows[0]
   if (first !== undefined && windows.every((window) => window === first)) return first

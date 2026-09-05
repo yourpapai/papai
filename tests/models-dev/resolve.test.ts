@@ -273,4 +273,22 @@ describe('resolveModelMetadata with the process snapshot default', () => {
 
     resetModelsDevSnapshotForTest()
   })
+
+  test('the name-only ceiling and the resolver agree for an entry without a context limit', async () => {
+    const body = JSON.stringify({ acme: { models: { 'gpt-4o-pro': { limit: { output: 4_096 } } } } })
+    await prewarmModelsDevSnapshot({
+      fetchImpl: () => Promise.resolve(body),
+      cachePath: `/tmp/opencode/models-dev-no-context-${crypto.randomUUID()}/models.json`,
+      now: () => 1,
+    })
+
+    expect(resolveMaxTokens('gpt-4o-pro')).toBeNull()
+    expect(resolveModelMetadata({ model: 'gpt-4o-pro' })).toMatchObject({
+      contextWindow: null,
+      maxOutputTokens: 4_096,
+      source: 'models-dev',
+    })
+
+    resetModelsDevSnapshotForTest()
+  })
 })

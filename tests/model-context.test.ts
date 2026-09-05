@@ -73,8 +73,17 @@ describe('resolveMaxTokens with the catalogue snapshot', () => {
     expect(resolveMaxTokens('some-unknown-model')).toBeNull()
   })
 
-  test('a catalogue entry without a context limit falls back to the prefix table', async () => {
-    await seedSnapshot({ acme: { models: { 'gpt-4o-pro': {} } } })
+  test('a catalogue-known model without a context limit yields no ceiling, matching the preview', async () => {
+    await seedSnapshot({ acme: { models: { 'gpt-4o-pro': { limit: { output: 4_096 } } } } })
+
+    expect(resolveMaxTokens('gpt-4o-pro')).toBeNull()
+  })
+
+  test('an entry without a context limit breaks the agreement and falls back to the prefix table', async () => {
+    await seedSnapshot({
+      alpha: { models: { 'gpt-4o-pro': { limit: { context: 100_000 } } } },
+      beta: { models: { 'gpt-4o-pro': {} } },
+    })
 
     expect(resolveMaxTokens('gpt-4o-pro')).toBe(128_000)
   })
