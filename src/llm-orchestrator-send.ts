@@ -75,9 +75,15 @@ export const sendLlmResponse = async (
   const hadToolActivity = turnHasToolActivity(turnMessages)
   const textToFormat = await resolveFinalText(result, hadToolFailure, hadToolActivity, verification, contextId)
 
-  const responseLength = result.text === undefined ? 0 : result.text.length
+  const modelTextLength = result.text === undefined ? 0 : result.text.length
   const toolCallCount = result.toolCalls === undefined ? 0 : result.toolCalls.length
-  const meta = { contextId, responseLength, toolCalls: toolCallCount, finishReason: result.finishReason }
+  const meta = {
+    contextId,
+    sentTextLength: textToFormat.length,
+    modelTextLength,
+    toolCalls: toolCallCount,
+    finishReason: result.finishReason,
+  }
   if (result.finishReason === 'tool-calls') {
     log.warn(meta, 'LLM turn ended on a pending tool call (step cap reached); reply may be incomplete')
   }

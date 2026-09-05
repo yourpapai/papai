@@ -19,7 +19,7 @@
 ## 4. Truthful send logging
 
 - [x] 4.1 Write failing test in `tests/llm-orchestrator-send.test.ts`: the "Response sent successfully" meta carries `sentTextLength` equal to the delivered text length and `modelTextLength` (renamed from `responseLength`) equal to the model's own final text length; a verifier-delivered ~1200-char reply with empty model text logs `sentTextLength ≈ 1200, modelTextLength: 0`; the step-cap warn carries the same fields. Verify: `bun test tests/llm-orchestrator-send.test.ts` (expect fail)
-- [ ] 4.2 Implement the rename + `sentTextLength: textToFormat.length` in `src/llm-orchestrator-send.ts`; sweep for other readers of the old field name. Verify: `bun test tests/llm-orchestrator-send.test.ts`
+- [x] 4.2 Implement the rename + `sentTextLength: textToFormat.length` in `src/llm-orchestrator-send.ts`; sweep for other readers of the old field name. Verify: `bun test tests/llm-orchestrator-send.test.ts`
 
 ## 5. Full verification and docs
 
