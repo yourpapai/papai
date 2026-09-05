@@ -3,7 +3,7 @@
 ## 1. Repair builder (core)
 
 - [x] 1.1 Write failing unit tests in `tests/tools/disclosure/repair-tool-call.test.ts`: builder over a real `createDisclosureSession` fixture — (a) `NoSuchToolError` for a registered-but-inactive name returns `{ toolCallId: original, toolName: 'load_tool', input: JSON.stringify({ names: [name] }) }` and the session reports the name active; (b) unregistered name returns `null` and activates nothing; (c) already-active name returns `null`; (d) `InvalidToolInputError` returns `null`; (e) two repairs for the same name are idempotent. Verify: `bun test tests/tools/disclosure/repair-tool-call.test.ts` (expect fail — module missing)
-- [ ] 1.2 Implement `src/tools/disclosure/repair-tool-call.ts` (`createRepairToolCall(session, contextId)` per design D1; debug log per repair with the repaired name, no payloads). Verify: `bun test tests/tools/disclosure/repair-tool-call.test.ts`
+- [x] 1.2 Implement `src/tools/disclosure/repair-tool-call.ts` (`createRepairToolCall(session, contextId)` per design D1; debug log per repair with the repaired name, no payloads). Verify: `bun test tests/tools/disclosure/repair-tool-call.test.ts`
 
 ## 2. Wire the repair into both generation paths
 

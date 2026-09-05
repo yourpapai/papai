@@ -13,15 +13,16 @@ const log = logger.child({ scope: 'disclosure:repair-tool-call' })
 export function createRepairToolCall(session: DisclosureSession, contextId: string): ToolCallRepairFunction<ToolSet> {
   return ({ toolCall, error }) => {
     if (!NoSuchToolError.isInstance(error)) return Promise.resolve(null)
-    const name = error.toolName
-    if (!session.allNames.has(name) || session.activeToolNames().includes(name)) return Promise.resolve(null)
-    session.markLoaded([name])
-    log.debug({ contextId, repairedName: name }, 'misdirected tool call redirected into load_tool')
+    const repairedName = error.toolName
+    const repairable = session.allNames.has(repairedName) && !session.activeToolNames().includes(repairedName)
+    if (!repairable) return Promise.resolve(null)
+    session.markLoaded([repairedName])
+    log.debug({ contextId, repairedName }, 'misdirected tool call redirected into load_tool')
     return Promise.resolve({
       type: 'tool-call',
       toolCallId: toolCall.toolCallId,
       toolName: 'load_tool',
-      input: JSON.stringify({ names: [name] }),
+      input: JSON.stringify({ names: [repairedName] }),
     })
   }
 }
