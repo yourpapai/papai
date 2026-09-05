@@ -4,6 +4,7 @@
 // See LICENSE in the project root for details.
 
 import { prefixTableContextWindow } from '../model-context.js'
+import { inferProviderId } from './provider-id.js'
 
 export type ModelsDevLimit = {
   readonly context?: number
@@ -46,16 +47,6 @@ export type ResolveModelMetadataDeps = {
   readonly getSnapshot: SnapshotGetter
 }
 
-/** providerType → catalogue provider id for the typed providers; custom gateways resolve via baseUrl (D3). */
-const TYPED_PROVIDER_IDS: ReadonlySet<string> = new Set([
-  'openai',
-  'anthropic',
-  'google',
-  'openrouter',
-  'groq',
-  'ollama',
-])
-
 const limitsOf = (
   entry: ModelsDevModelEntry | undefined,
 ): { contextWindow: number | null; maxOutputTokens: number | null } => ({
@@ -92,8 +83,7 @@ export function resolveModelMetadata(input: ModelMetadataInput, deps: ResolveMod
     return prefixTableResult(model)
   }
 
-  const providerId =
-    isDeclared(input.providerType) && TYPED_PROVIDER_IDS.has(input.providerType) ? input.providerType : null
+  const providerId = inferProviderId({ providerType: input.providerType, baseUrl: input.baseUrl })
   if (providerId !== null) {
     const entry = providers[providerId]?.models[model]
     if (entry !== undefined) {

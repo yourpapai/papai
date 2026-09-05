@@ -137,6 +137,23 @@ describe('resolveModelMetadata', () => {
     })
   })
 
+  test('a custom gateway host pins the provider for an otherwise ambiguous name', () => {
+    const snapshot = snapshotWith({
+      openrouter: { models: { 'shared-model': { limit: { context: 100_000, output: 1_000 } } } },
+      beta: { models: { 'shared-model': { limit: { context: 200_000, output: 2_000 } } } },
+    })
+    expect(
+      resolve({ providerType: 'custom', baseUrl: 'https://openrouter.ai/api/v1', model: 'shared-model' }, snapshot),
+    ).toEqual({
+      providerId: 'openrouter',
+      modelId: 'shared-model',
+      contextWindow: 100_000,
+      maxOutputTokens: 1_000,
+      source: 'models-dev',
+      via: 'inferred',
+    })
+  })
+
   test('disagreeing duplicate names fall back to the prefix table', () => {
     const snapshot = snapshotWith({
       alpha: { models: { 'gpt-4o': { limit: { context: 111_111, output: 1_000 } } } },
