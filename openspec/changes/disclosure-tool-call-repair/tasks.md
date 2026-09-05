@@ -23,5 +23,5 @@
 
 ## 5. Full verification and docs
 
-- [ ] 5.1 Update the disclosure section of `docs/architecture/tools.md`: misdirected-call repair, anomaly warn, protocol expiry line. Verify: `bun run lint`
+- [x] 5.1 Update the disclosure section of `docs/architecture/tools.md`: misdirected-call repair, anomaly warn, protocol expiry line. Verify: `bun run lint`
 - [ ] 5.2 Run the full gate: `bun run test`, `bun run typecheck`, `bun run lint`; fix fallout, then `bun run test:mutate:changed` for the touched `src/` files and ratchet the mutation baseline if scores regressed. Verify: `bun run test && bun run typecheck && bun run lint`
