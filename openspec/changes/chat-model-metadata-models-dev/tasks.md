@@ -28,7 +28,7 @@
 
 - [x] 5.1 Write component tests for `ModelMetadataHint.svelte` (four states: catalogue hit, prefix guess, no limits known, catalogue unavailable; `via override` marker; superseded lookup never overwrites a newer result), then implement the component with ~300 ms debounce, AbortController supersede, and per-key cache per design D8. Verify: `bun test tests/client/settings/`
 - [x] 5.2 Wire the hint into `RoleBindingBlock.svelte` (under the model Combobox when a provider is selected and the model field is non-empty) and `ProviderForm.svelte` (under the base-reference fields, resolving `baseProvider ?? inferred` + `baseModel` pre-save), plus the two optional base-ref inputs on the provider forms; update the admin providers section, BYOK section, and BYOK provider fetchers for the echoed fields. Verify: `bun test tests/client/settings/` then `bun run typecheck`
-- [ ] 5.3 Add a Storybook story for `ModelMetadataHint` covering the four states for the screenshot lane. Verify: `bun test tests/client/settings/`
+- [x] 5.3 Add a Storybook story for `ModelMetadataHint` covering the four states for the screenshot lane. Verify: `bun test tests/client/settings/`
 
 ## 6. Full verification and docs
 
