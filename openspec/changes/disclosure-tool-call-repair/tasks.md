@@ -19,7 +19,7 @@
 ## 4. Disclosure protocol expiry line
 
 - [x] 4.1 Write failing test in `tests/system-prompt-disclosure.test.ts`: the assembled disclosure fragment states in en (and ru, where a locale fixture exists) that activations do not persist across turns and a tool must be re-activated before reuse. Verify: `bun test tests/system-prompt-disclosure.test.ts` (expect fail)
-- [ ] 4.2 Append the expiry sentence to `disclosureProtocol` in `src/i18n/locales/en-system-prompt.ts` and `ru-system-prompt.ts`. Verify: `bun test tests/system-prompt-disclosure.test.ts`
+- [x] 4.2 Append the expiry sentence to `disclosureProtocol` in `src/i18n/locales/en-system-prompt.ts` and `ru-system-prompt.ts`. Verify: `bun test tests/system-prompt-disclosure.test.ts`
 
 ## 5. Full verification and docs
 
