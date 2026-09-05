@@ -21,6 +21,14 @@ const role = (model: string): ResolvedRole => ({
   baseUrl: 'u',
   model,
   source: 'global',
+  metadata: {
+    providerId: null,
+    modelId: null,
+    contextWindow: null,
+    maxOutputTokens: null,
+    source: 'none',
+    via: null,
+  },
 })
 
 const okConfig = (model: string): LlmConfigResult => ({

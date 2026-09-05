@@ -9,7 +9,7 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { beforeEach, describe, expect, test } from 'bun:test'
+import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
 
 import { encodeByokBlob, type ByokBlobV2 } from '../../src/byok-llm/blob-codec.js'
 import {
@@ -24,6 +24,7 @@ import { resolveAdminLlmConfig, resolveLlmConfig } from '../../src/llm-providers
 import { createLlmProvider, setAdminRoleBindings } from '../../src/llm-providers/store.js'
 import { clearLlmAdminCacheForTesting } from '../../src/llm-providers/store.testing.js'
 import type { EffectiveLlmConfig, LlmConfigResult } from '../../src/llm-providers/types.js'
+import { prewarmModelsDevSnapshot, resetModelsDevSnapshotForTest } from '../../src/models-dev/client.js'
 import { encryptSecretPayload } from '../../src/secret-payload-crypto.js'
 import { mockLogger, setupTestDb } from '../utils/test-helpers.js'
 
@@ -235,5 +236,138 @@ describe('resolveAdminLlmConfig', () => {
     expect(r.small.model).toBe('gpt-small')
     expect(r.embedding.model).toBe('gpt-main')
     expect(r.embedding.apiKey).toBe('sk-admin')
+  })
+})
+
+describe('resolved role metadata', () => {
+  afterEach(() => {
+    resetModelsDevSnapshotForTest()
+  })
+
+  const seedSnapshot = async (providers: unknown): Promise<void> => {
+    resetModelsDevSnapshotForTest()
+    await prewarmModelsDevSnapshot({
+      fetchImpl: () => Promise.resolve(JSON.stringify(providers)),
+      cachePath: `/tmp/opencode/resolver-${crypto.randomUUID()}/models.json`,
+      now: () => 1,
+    })
+  }
+
+  test('admin roles carry metadata inferred from the account type and bound model', async () => {
+    await seedSnapshot({ openai: { models: { 'gpt-main': { limit: { context: 111_222, output: 3_000 } } } } })
+    seedAdmin()
+
+    const r = unwrapOk(resolveAdminLlmConfig())
+
+    expect(r.main.metadata).toEqual({
+      providerId: 'openai',
+      modelId: 'gpt-main',
+      contextWindow: 111_222,
+      maxOutputTokens: 3_000,
+      source: 'models-dev',
+      via: 'inferred',
+    })
+  })
+
+  test('admin roles carry override metadata from the account declared base references', async () => {
+    await seedSnapshot({ anthropic: { models: { 'claude-declared': { limit: { context: 200_000, output: 8_000 } } } } })
+    const provider = createLlmProvider(
+      {
+        label: 'gw',
+        providerType: 'custom',
+        baseUrl: 'https://gw.example.com/v1',
+        apiKey: 'sk-gw',
+        baseProvider: 'anthropic',
+        baseModel: 'claude-declared',
+      },
+      'admin',
+    )
+    setAdminRoleBindings(
+      { main: { providerId: provider.id, model: 'gateway-model' }, small: null, embedding: null },
+      'admin',
+    )
+
+    const r = unwrapOk(resolveAdminLlmConfig())
+
+    expect(r.main.metadata).toEqual({
+      providerId: 'anthropic',
+      modelId: 'claude-declared',
+      contextWindow: 200_000,
+      maxOutputTokens: 8_000,
+      source: 'models-dev',
+      via: 'override',
+    })
+  })
+
+  test('byok roles carry metadata from the byok account declared base references', async () => {
+    await seedSnapshot({ openai: { models: { 'gpt-byok': { limit: { context: 64_000, output: 2_000 } } } } })
+    seedByok('ctx', {
+      v: 2,
+      providers: [
+        {
+          id: 'prov_byok',
+          label: 'gateway',
+          providerType: 'custom',
+          baseUrl: 'https://byok-gw/v1',
+          apiKey: 'local',
+          baseProvider: 'openai',
+          baseModel: 'gpt-byok',
+          verification: UNVERIFIED,
+        },
+      ],
+      roles: { main: { providerId: 'prov_byok', model: 'byok-model' }, small: null, embedding: null },
+    })
+
+    const r = unwrapOk(resolveLlmConfig('ctx'))
+
+    expect(r.main.source).toBe('byok')
+    expect(r.main.metadata).toEqual({
+      providerId: 'openai',
+      modelId: 'gpt-byok',
+      contextWindow: 64_000,
+      maxOutputTokens: 2_000,
+      source: 'models-dev',
+      via: 'override',
+    })
+  })
+
+  test('each role carries its own metadata', async () => {
+    await seedSnapshot({
+      openai: { models: { 'gpt-main': { limit: { context: 111_222 } } } },
+      groq: { models: { 'gpt-small': { limit: { context: 222_333 } } } },
+    })
+    const main = createLlmProvider(
+      { label: 'main', providerType: 'openai', baseUrl: 'https://main/v1', apiKey: 'sk-main' },
+      'admin',
+    )
+    const small = createLlmProvider(
+      { label: 'small', providerType: 'groq', baseUrl: 'https://small/v1', apiKey: 'sk-small' },
+      'admin',
+    )
+    setAdminRoleBindings(
+      {
+        main: { providerId: main.id, model: 'gpt-main' },
+        small: { providerId: small.id, model: 'gpt-small' },
+        embedding: null,
+      },
+      'admin',
+    )
+
+    const r = unwrapOk(resolveAdminLlmConfig())
+
+    expect(r.main.metadata.modelId).toBe('gpt-main')
+    expect(r.main.metadata.contextWindow).toBe(111_222)
+    expect(r.small.metadata.modelId).toBe('gpt-small')
+    expect(r.small.metadata.contextWindow).toBe(222_333)
+    expect(r.embedding.metadata).toEqual(r.main.metadata)
+  })
+
+  test('metadata degrades to none when the snapshot is empty', () => {
+    seedAdmin()
+
+    const r = unwrapOk(resolveAdminLlmConfig())
+
+    expect(r.main.metadata.source).toBe('none')
+    expect(r.main.metadata.contextWindow).toBeNull()
   })
 })

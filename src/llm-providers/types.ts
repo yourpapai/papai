@@ -9,6 +9,8 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
+import type { ModelMetadata } from '../models-dev/resolve.js'
+
 export const LLM_PROVIDER_TYPES = ['openai', 'anthropic', 'google', 'openrouter', 'ollama', 'groq', 'custom'] as const
 export type LlmProviderType = (typeof LLM_PROVIDER_TYPES)[number]
 
@@ -48,6 +50,7 @@ export type ResolvedRole = {
   readonly baseUrl: string
   readonly model: string
   readonly source: 'global' | 'byok'
+  readonly metadata: ModelMetadata
 }
 
 export type EffectiveLlmConfig = {

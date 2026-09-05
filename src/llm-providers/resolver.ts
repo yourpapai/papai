@@ -10,30 +10,41 @@
 // See LICENSE in the project root for details.
 
 import { type ByokBundle, getByokBundle } from '../byok-llm/store.js'
+import { resolveModelMetadata, type ModelMetadata } from '../models-dev/resolve.js'
 import { getAdminRoleBindings, getLlmProvider } from './store.js'
-import type { EffectiveLlmConfig, LlmConfigResult, ResolvedRole, RoleBinding } from './types.js'
+import type { EffectiveLlmConfig, LlmConfigResult, LlmProviderAccount, ResolvedRole, RoleBinding } from './types.js'
 
 const UNREADABLE_ERROR = 'stored BYOK LLM credentials are unreadable'
 
-type Creds = { readonly apiKey: string; readonly baseUrl: string }
-type ProviderLookup = ReadonlyMap<string, Creds>
+type ProviderLookup = ReadonlyMap<string, LlmProviderAccount>
 
 const byokProviderMap = (bundle: ByokBundle): ProviderLookup => {
   const providers = bundle.blob === null ? [] : bundle.blob.providers
-  return new Map(providers.map((p): [string, Creds] => [p.id, { apiKey: p.apiKey, baseUrl: p.baseUrl }]))
+  return new Map(providers.map((p): [string, LlmProviderAccount] => [p.id, p]))
 }
 
-const adminCredsFor = (providerId: string): Creds | null => {
-  const provider = getLlmProvider(providerId)
-  if (provider === null) return null
-  return { apiKey: provider.apiKey, baseUrl: provider.baseUrl }
-}
+const adminAccountFor = (providerId: string): LlmProviderAccount | null => getLlmProvider(providerId)
+
+const metadataFor = (account: LlmProviderAccount, model: string): ModelMetadata =>
+  resolveModelMetadata({
+    providerType: account.providerType,
+    baseUrl: account.baseUrl,
+    baseProvider: account.baseProvider,
+    baseModel: account.baseModel,
+    model,
+  })
 
 const resolveAdminRole = (adminBinding: RoleBinding): ResolvedRole | null => {
   if (adminBinding !== null && adminBinding.providerId !== '') {
-    const creds = adminCredsFor(adminBinding.providerId)
-    if (creds !== null) {
-      return { apiKey: creds.apiKey, baseUrl: creds.baseUrl, model: adminBinding.model, source: 'global' }
+    const account = adminAccountFor(adminBinding.providerId)
+    if (account !== null) {
+      return {
+        apiKey: account.apiKey,
+        baseUrl: account.baseUrl,
+        model: adminBinding.model,
+        source: 'global',
+        metadata: metadataFor(account, adminBinding.model),
+      }
     }
   }
   return null
@@ -45,9 +56,15 @@ const resolveRole = (
   byokProviders: ProviderLookup,
 ): ResolvedRole | null => {
   if (byokBinding !== null && byokBinding.providerId !== '') {
-    const creds = byokProviders.get(byokBinding.providerId)
-    if (creds !== undefined) {
-      return { apiKey: creds.apiKey, baseUrl: creds.baseUrl, model: byokBinding.model, source: 'byok' }
+    const account = byokProviders.get(byokBinding.providerId)
+    if (account !== undefined) {
+      return {
+        apiKey: account.apiKey,
+        baseUrl: account.baseUrl,
+        model: byokBinding.model,
+        source: 'byok',
+        metadata: metadataFor(account, byokBinding.model),
+      }
     }
   }
   return resolveAdminRole(adminBinding)

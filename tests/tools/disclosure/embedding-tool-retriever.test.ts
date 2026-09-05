@@ -556,12 +556,39 @@ describe('EmbeddingToolRetriever', () => {
   })
 })
 
+const noneMetadata = {
+  providerId: null,
+  modelId: null,
+  contextWindow: null,
+  maxOutputTokens: null,
+  source: 'none' as const,
+  via: null,
+}
+
 const okConfig: LlmConfigResult = {
   ok: true,
   source: 'byok',
-  main: { apiKey: 'byok-key', baseUrl: 'http://byok-llm', model: 'main-1', source: 'byok' },
-  small: { apiKey: 'byok-key', baseUrl: 'http://byok-llm', model: 'small-1', source: 'byok' },
-  embedding: { apiKey: 'byok-key', baseUrl: 'http://byok-llm', model: 'embed-1', source: 'byok' },
+  main: {
+    apiKey: 'byok-key',
+    baseUrl: 'http://byok-llm',
+    model: 'main-1',
+    source: 'byok',
+    metadata: noneMetadata,
+  },
+  small: {
+    apiKey: 'byok-key',
+    baseUrl: 'http://byok-llm',
+    model: 'small-1',
+    source: 'byok',
+    metadata: noneMetadata,
+  },
+  embedding: {
+    apiKey: 'byok-key',
+    baseUrl: 'http://byok-llm',
+    model: 'embed-1',
+    source: 'byok',
+    metadata: noneMetadata,
+  },
 }
 
 const missingConfig: LlmConfigResult = {

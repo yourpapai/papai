@@ -58,11 +58,29 @@ const soleWarn = (): Record<string, unknown> => {
   return warn
 }
 
-const role = (model: string): { apiKey: string; baseUrl: string; model: string; source: 'global' } => ({
+const noneMetadata = {
+  providerId: null,
+  modelId: null,
+  contextWindow: null,
+  maxOutputTokens: null,
+  source: 'none' as const,
+  via: null,
+}
+
+const role = (
+  model: string,
+): {
+  apiKey: string
+  baseUrl: string
+  model: string
+  source: 'global'
+  metadata: typeof noneMetadata
+} => ({
   apiKey: 'k',
   baseUrl: 'https://llm.example',
   model,
   source: 'global',
+  metadata: noneMetadata,
 })
 
 const okConfig = {

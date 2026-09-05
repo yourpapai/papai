@@ -11,16 +11,38 @@ import { mockLogger } from '../utils/test-helpers.js'
 
 mockLogger()
 
+const noneMetadata = {
+  providerId: null,
+  modelId: null,
+  contextWindow: null,
+  maxOutputTokens: null,
+  source: 'none' as const,
+  via: null,
+}
+
 const okResult: LlmConfigResult = {
   ok: true,
   source: 'global',
-  main: { apiKey: 'sk-main', baseUrl: 'https://main.invalid/v1', model: 'main-model', source: 'global' },
-  small: { apiKey: 'sk-small', baseUrl: 'https://small.invalid/v1', model: 'small-model', source: 'global' },
+  main: {
+    apiKey: 'sk-main',
+    baseUrl: 'https://main.invalid/v1',
+    model: 'main-model',
+    source: 'global',
+    metadata: noneMetadata,
+  },
+  small: {
+    apiKey: 'sk-small',
+    baseUrl: 'https://small.invalid/v1',
+    model: 'small-model',
+    source: 'global',
+    metadata: noneMetadata,
+  },
   embedding: {
     apiKey: 'sk-embed',
     baseUrl: 'https://embed.invalid/v1',
     model: 'embed-model',
     source: 'global',
+    metadata: noneMetadata,
   },
 }
 
