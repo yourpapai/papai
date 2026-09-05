@@ -3,16 +3,31 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { beforeEach, describe, expect, test } from 'bun:test'
+import { beforeEach, describe, expect, mock, test } from 'bun:test'
 
 import type { ModelMessage } from 'ai'
 
 import type { ReplyTarget } from '../src/chat/types.js'
 import type { VerifierPrompt } from '../src/completion/verified-completion.js'
 import { setConfigValue } from '../src/config.js'
-import { sendLlmResponse } from '../src/llm-orchestrator-send.js'
 import { runRegistry } from '../src/run-control/registry.js'
+import { createTrackedLoggerMock } from './utils/logger-mock.js'
 import { createMockReply, mockLogger, setupTestDb } from './utils/test-helpers.js'
+
+const tracked = createTrackedLoggerMock()
+void mock.module('../src/logger.js', () => ({ logger: tracked.logger, getLogLevel: tracked.getLogLevel }))
+
+// src/llm-orchestrator-send.ts binds `logger.child({ scope })` at module-eval time and the
+// preload graph evaluates it with the real logger, so force a fresh evaluation under the
+// tracked mock with a cache-busting query (mirrors tests/history.test.ts).
+type SendModule = typeof import('../src/llm-orchestrator-send.js')
+const isSendModule = (value: unknown): value is SendModule =>
+  typeof value === 'object' && value !== null && typeof Reflect.get(value, 'sendLlmResponse') === 'function'
+const loadedSend: unknown = await import(`../src/llm-orchestrator-send.js?t=${crypto.randomUUID()}`)
+if (!isSendModule(loadedSend)) {
+  throw new Error('send module did not export expected shape')
+}
+const { sendLlmResponse } = loadedSend
 
 const baseResult = {
   text: undefined as string | undefined,
@@ -223,5 +238,71 @@ describe('sendLlmResponse reply-target capture', () => {
     await sendLlmResponse(reply.reply, 'ctx-no-target', { ...baseResult, text: 'Done.' }, undefined)
 
     expect(runRegistry.get('ctx-no-target')!.replyTarget).toBeUndefined()
+  })
+})
+
+describe('sendLlmResponse send logging', () => {
+  type SendLogMeta = { sentTextLength: number; modelTextLength: number }
+
+  const isSendLogMeta = (value: unknown): value is SendLogMeta =>
+    typeof value === 'object' &&
+    value !== null &&
+    typeof Reflect.get(value, 'sentTextLength') === 'number' &&
+    typeof Reflect.get(value, 'modelTextLength') === 'number'
+
+  const findLogMeta = (level: 'info' | 'warn', message: string): SendLogMeta | undefined => {
+    const call = tracked.getCallsByLevel(level).find((entry) => entry.args[1] === message)
+    return call !== undefined && isSendLogMeta(call.args[0]) ? call.args[0] : undefined
+  }
+
+  beforeEach(() => {
+    tracked.clearCalls()
+  })
+
+  test('send log reports the delivered length and the model text length', async () => {
+    mockLogger()
+    const reply = createMockReply()
+    const modelText = 'All set — moved to Done.'
+    await sendLlmResponse(reply.reply, 'ctx-log-1', { ...baseResult, text: modelText }, undefined)
+    expect(reply.textCalls).toContain(modelText)
+
+    const meta = findLogMeta('info', 'Response sent successfully')
+    expect(meta).toBeDefined()
+    expect(meta?.sentTextLength).toBe(modelText.length)
+    expect(meta?.modelTextLength).toBe(modelText.length)
+  })
+
+  test('a verifier-delivered long reply logs the delivered length and a zero model text length', async () => {
+    mockLogger()
+    const reply = createMockReply()
+    const verifierText = `Completed. ${'Details follow. '.repeat(75)}`.trimEnd()
+    await sendLlmResponse(reply.reply, 'ctx-log-2', { ...baseResult }, undefined, {
+      history: [],
+      verifier: {
+        readOnlyToolset: undefined,
+        invokeVerifier: (): Promise<{ text: string | undefined }> => Promise.resolve({ text: verifierText }),
+      },
+    })
+    expect(reply.textCalls).toContain(verifierText)
+
+    const meta = findLogMeta('info', 'Response sent successfully')
+    expect(meta).toBeDefined()
+    expect(meta?.sentTextLength).toBe(verifierText.length)
+    expect(meta?.sentTextLength).toBeGreaterThan(1000)
+    expect(meta?.modelTextLength).toBe(0)
+  })
+
+  test('the step-cap warn carries the same delivered and model text lengths', async () => {
+    mockLogger()
+    const reply = createMockReply()
+    await sendLlmResponse(reply.reply, 'ctx-log-3', { ...baseResult, finishReason: 'tool-calls' }, undefined)
+
+    const meta = findLogMeta(
+      'warn',
+      'LLM turn ended on a pending tool call (step cap reached); reply may be incomplete',
+    )
+    expect(meta).toBeDefined()
+    expect(meta?.sentTextLength).toBe('Done.'.length)
+    expect(meta?.modelTextLength).toBe(0)
   })
 })
