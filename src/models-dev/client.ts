@@ -62,6 +62,9 @@ const normalizeProviders = (
 const parseProviders = (body: string): Readonly<Record<string, ModelsDevProvider>> =>
   normalizeProviders(ProviderRecordSchema.parse(JSON.parse(body)))
 
+const hasAnyModel = (providers: Readonly<Record<string, ModelsDevProvider>>): boolean =>
+  Object.values(providers).some((provider) => Object.keys(provider.models).length > 0)
+
 const defaultFetchImpl = async (signal: AbortSignal): Promise<string> => {
   const response = await fetch(MODELS_DEV_URL, { signal })
   return response.text()
@@ -85,7 +88,7 @@ const readCache = async (cachePath: string): Promise<CachedProviders | null> => 
     const raw = await readFile(cachePath, 'utf8')
     const { mtimeMs } = await stat(cachePath)
     const providers = parseProviders(raw)
-    if (Object.keys(providers).length === 0) return null
+    if (!hasAnyModel(providers)) return null
     return { providers, mtime: mtimeMs }
   } catch {
     return null
@@ -119,7 +122,7 @@ const runCycle = async (deps: ModelsDevClientDeps): Promise<void> => {
   try {
     const body = await deps.fetchImpl(AbortSignal.timeout(deps.fetchTimeoutMs))
     const providers = parseProviders(body)
-    if (Object.keys(providers).length === 0) {
+    if (!hasAnyModel(providers)) {
       log.warn('models.dev response parsed to an empty catalogue; keeping previous snapshot')
       return
     }

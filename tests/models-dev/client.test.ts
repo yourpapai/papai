@@ -128,6 +128,36 @@ describe('models-dev client', () => {
     expect(existsSync(cachePath)).toBe(false)
   })
 
+  test('a model-less catalogue degrades to the previous snapshot and cache', async () => {
+    await prewarmModelsDevSnapshot({ fetchImpl: staticFetch(catalogueBody), cachePath, now: () => NOW })
+    const before = getModelsDevSnapshot()
+
+    await refreshModelsDevSnapshot({ fetchImpl: staticFetch('{"openai":{"models":{}}}'), now: () => NOW + 5 })
+
+    expect(getModelsDevSnapshot()).toEqual(before)
+    expect(getModelsDevSnapshot().fetchedAt).toBe(NOW)
+    expect(JSON.parse(readFileSync(cachePath, 'utf8'))).toEqual(before.providers)
+  })
+
+  test('a model-less first fetch leaves the empty snapshot without writing the cache', async () => {
+    await prewarmModelsDevSnapshot({ fetchImpl: staticFetch('{"openai":{"models":{}}}'), cachePath, now: () => NOW })
+
+    expect(getModelsDevSnapshot()).toEqual({ fetchedAt: null, providers: {} })
+    expect(existsSync(cachePath)).toBe(false)
+  })
+
+  test('a model-less disk cache is ignored and refetched', async () => {
+    writeFileSync(cachePath, '{"openai":{"models":{}}}')
+
+    await prewarmModelsDevSnapshot({ fetchImpl: staticFetch(catalogueBody), cachePath, now: () => NOW })
+
+    expect(getModelsDevSnapshot().fetchedAt).toBe(NOW)
+    expect(getModelsDevSnapshot().providers).toEqual({
+      openai: { models: { 'gpt-4o': { limit: { context: 128_000, output: 16_384 } } } },
+      anthropic: { models: { 'claude-opus-4': { limit: { context: 200_000, output: 32_000 } } } },
+    })
+  })
+
   test('an empty disk cache is ignored and refetched', async () => {
     writeFileSync(cachePath, '{}')
 
