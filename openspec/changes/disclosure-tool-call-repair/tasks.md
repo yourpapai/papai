@@ -14,7 +14,7 @@
 ## 3. Anomalous empty-turn warn
 
 - [x] 3.1 Write failing test in `tests/llm-orchestrator-support.test.ts`: after `invokeWithLiveStatus`, a synthetic result with `usage.outputTokens >= 64`, empty `text`, and `toolCalls: []` produces one warn-level entry carrying `{ outputTokens, finishReason }` and no message content; a result with non-empty text or a tool call or `outputTokens < 64` produces none. Verify: `bun test tests/llm-orchestrator-support.test.ts` (expect fail)
-- [ ] 3.2 Implement the warn in `src/llm-orchestrator-support.ts` next to "LLM response received" (design D2: fixed threshold 64, counts only). Verify: `bun test tests/llm-orchestrator-support.test.ts`
+- [x] 3.2 Implement the warn in `src/llm-orchestrator-support.ts` next to "LLM response received" (design D2: fixed threshold 64, counts only). Verify: `bun test tests/llm-orchestrator-support.test.ts`
 
 ## 4. Disclosure protocol expiry line
 
