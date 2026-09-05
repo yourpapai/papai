@@ -3,8 +3,9 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { describe, expect, test } from 'bun:test'
+import { afterEach, describe, expect, test } from 'bun:test'
 
+import { prewarmModelsDevSnapshot, resetModelsDevSnapshotForTest } from '../../src/models-dev/client.js'
 import type { ModelMetadata, ModelMetadataInput, ModelsDevSnapshot } from '../../src/models-dev/resolve.js'
 import { resolveModelMetadata } from '../../src/models-dev/resolve.js'
 
@@ -226,5 +227,28 @@ describe('resolveModelMetadata', () => {
       source: 'none',
       via: null,
     })
+  })
+})
+
+describe('resolveModelMetadata with the process snapshot default', () => {
+  afterEach(() => {
+    resetModelsDevSnapshotForTest()
+  })
+
+  test('reads the models.dev singleton when no snapshot getter is injected', async () => {
+    const body = JSON.stringify({ acme: { models: { 'acme-ultra': { limit: { context: 123_456, output: 4_321 } } } } })
+    const cachePath = `/tmp/opencode/models-dev-default-${crypto.randomUUID()}/models.json`
+    await prewarmModelsDevSnapshot({ fetchImpl: () => Promise.resolve(body), cachePath, now: () => 1 })
+
+    expect(resolveModelMetadata({ model: 'acme-ultra' })).toEqual({
+      providerId: 'acme',
+      modelId: 'acme-ultra',
+      contextWindow: 123_456,
+      maxOutputTokens: 4_321,
+      source: 'models-dev',
+      via: 'inferred',
+    })
+
+    resetModelsDevSnapshotForTest()
   })
 })

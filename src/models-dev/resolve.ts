@@ -4,6 +4,7 @@
 // See LICENSE in the project root for details.
 
 import { prefixTableContextWindow } from '../model-context.js'
+import { getModelsDevSnapshot } from './client.js'
 import { inferProviderId } from './provider-id.js'
 
 export type ModelsDevLimit = {
@@ -65,8 +66,8 @@ const prefixTableResult = (model: string): ModelMetadata => {
 const isDeclared = (value: string | null | undefined): value is string =>
   value !== undefined && value !== null && value !== ''
 
-export function resolveModelMetadata(input: ModelMetadataInput, deps: ResolveModelMetadataDeps): ModelMetadata {
-  const { providers } = deps.getSnapshot()
+export function resolveModelMetadata(input: ModelMetadataInput, deps?: ResolveModelMetadataDeps): ModelMetadata {
+  const { providers } = (deps?.getSnapshot ?? getModelsDevSnapshot)()
   const model = input.model
 
   if (isDeclared(input.baseProvider) && isDeclared(input.baseModel)) {

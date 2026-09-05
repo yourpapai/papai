@@ -2,7 +2,7 @@
 
 - [x] 1.1 Write failing tests for `resolveModelMetadata` precedence (override > inferred > prefix-table > none, `via` marking, ambiguous-name tiebreak, empty-snapshot behavior) in `tests/models-dev/resolve.test.ts`, then implement the pure resolver `src/models-dev/resolve.ts` per design D1 with an injected snapshot getter. Verify: `bun test tests/models-dev/resolve.test.ts`
 - [x] 1.2 Write failing tests for provider-id inference (providerType 1:1 map, baseUrl-host map for custom, unknown → null) in `tests/models-dev/provider-id.test.ts`, then implement `src/models-dev/provider-id.ts` per design D3. Verify: `bun test tests/models-dev/provider-id.test.ts`
-- [ ] 1.3 Write failing tests for the catalogue client (injected `fetchImpl`, 10s timeout, 60-min TTL, malformed-body degradation, failed refresh keeps last snapshot, empty snapshot `fetchedAt: null`, disk-cache round-trip at `~/.cache/papai/models.json`, boot prewarm + background refresh) in `tests/models-dev/client.test.ts`, then implement the snapshot singleton `src/models-dev/client.ts` per design D2 — tests never reach models.dev. Verify: `bun test tests/models-dev/client.test.ts`
+- [x] 1.3 Write failing tests for the catalogue client (injected `fetchImpl`, 10s timeout, 60-min TTL, malformed-body degradation, failed refresh keeps last snapshot, empty snapshot `fetchedAt: null`, disk-cache round-trip at `~/.cache/papai/models.json`, boot prewarm + background refresh) in `tests/models-dev/client.test.ts`, then implement the snapshot singleton `src/models-dev/client.ts` per design D2 — tests never reach models.dev. Verify: `bun test tests/models-dev/client.test.ts`
 
 ## 2. Persistence for base references
 
