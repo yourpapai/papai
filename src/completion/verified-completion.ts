@@ -11,7 +11,7 @@ import { isToolFailureResult } from '../tool-failure.js'
 
 const log = logger.child({ scope: 'completion:verified' })
 
-const READ_ONLY_PREFIXES = ['get_', 'list_', 'search_'] as const
+const READ_ONLY_PREFIXES = ['get_', 'list_', 'search_', 'read_'] as const
 
 /** Filter an assembled toolset to a read-only subset by name prefix. Returns undefined when none match. */
 export const selectReadOnlyTools = (tools: ToolSet): ToolSet | undefined => {
