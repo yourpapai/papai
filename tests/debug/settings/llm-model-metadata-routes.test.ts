@@ -9,7 +9,8 @@ import { z } from 'zod'
 
 import { handleLlmModelMetadataRoutes } from '../../../src/debug/settings/llm-model-metadata-routes.js'
 import { addAdmin } from '../../../src/instances/admin-store.js'
-import { prewarmModelsDevSnapshot, resetModelsDevSnapshotForTest } from '../../../src/models-dev/client.js'
+import { prewarmModelsDevSnapshot } from '../../../src/models-dev/client.js'
+import { resetModelsDevSnapshotForTest } from '../../../src/models-dev/client.testing.js'
 import { addUser } from '../../../src/users.js'
 import {
   mockLogger,

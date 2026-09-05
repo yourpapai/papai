@@ -79,11 +79,6 @@ export const KNIP_ENTRY_POINTS: readonly string[] = [
   // usage-failure-queries change (openspec/changes/usage-failure-queries);
   // the follow-up dashboard/settings wiring consumes its exports.
   'src/usage/failures.ts!',
-  // Model-metadata catalogue foundation (openspec/changes/chat-model-metadata-models-dev):
-  // resolve/provider-id/client are seam modules whose runtime consumers (role
-  // resolver, preview endpoint, model builder) land in later tasks of the same
-  // change; until then only tests read them.
-  'src/models-dev/*.ts!',
   // First-party plugin entry points are loaded dynamically by the plugin
   // loader, so they have no static importer.
   'plugins/*/index.ts!',

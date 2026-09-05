@@ -6,7 +6,8 @@
 import { afterEach, describe, expect, test } from 'bun:test'
 
 import { resolveMaxTokens } from '../../src/model-context.js'
-import { prewarmModelsDevSnapshot, resetModelsDevSnapshotForTest } from '../../src/models-dev/client.js'
+import { prewarmModelsDevSnapshot } from '../../src/models-dev/client.js'
+import { resetModelsDevSnapshotForTest } from '../../src/models-dev/client.testing.js'
 import type { ModelMetadata, ModelMetadataInput, ModelsDevSnapshot } from '../../src/models-dev/resolve.js'
 import { resolveModelMetadata } from '../../src/models-dev/resolve.js'
 

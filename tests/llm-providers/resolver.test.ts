@@ -24,7 +24,8 @@ import { resolveAdminLlmConfig, resolveLlmConfig } from '../../src/llm-providers
 import { createLlmProvider, setAdminRoleBindings } from '../../src/llm-providers/store.js'
 import { clearLlmAdminCacheForTesting } from '../../src/llm-providers/store.testing.js'
 import type { EffectiveLlmConfig, LlmConfigResult } from '../../src/llm-providers/types.js'
-import { prewarmModelsDevSnapshot, resetModelsDevSnapshotForTest } from '../../src/models-dev/client.js'
+import { prewarmModelsDevSnapshot } from '../../src/models-dev/client.js'
+import { resetModelsDevSnapshotForTest } from '../../src/models-dev/client.testing.js'
 import { encryptSecretPayload } from '../../src/secret-payload-crypto.js'
 import { mockLogger, setupTestDb } from '../utils/test-helpers.js'
 

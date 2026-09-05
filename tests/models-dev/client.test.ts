@@ -15,9 +15,8 @@ import {
   defaultModelsDevCachePath,
   getModelsDevSnapshot,
   prewarmModelsDevSnapshot,
-  refreshModelsDevSnapshot,
-  resetModelsDevSnapshotForTest,
 } from '../../src/models-dev/client.js'
+import { refreshModelsDevSnapshot, resetModelsDevSnapshotForTest } from '../../src/models-dev/client.testing.js'
 import { mockLogger, waitFor } from '../utils/test-helpers.js'
 
 const NOW = 1_700_000_000_000

@@ -8,7 +8,8 @@ import { afterEach, describe, expect, test } from 'bun:test'
 import type { ModelMessage } from 'ai'
 
 import { estimateMessagesTokens, estimateTokens, resolveMaxTokens } from '../src/model-context.js'
-import { prewarmModelsDevSnapshot, resetModelsDevSnapshotForTest } from '../src/models-dev/client.js'
+import { prewarmModelsDevSnapshot } from '../src/models-dev/client.js'
+import { resetModelsDevSnapshotForTest } from '../src/models-dev/client.testing.js'
 
 describe('resolveMaxTokens', () => {
   test('resolves known model families by prefix', () => {
