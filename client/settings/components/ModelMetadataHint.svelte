@@ -52,7 +52,7 @@
             baseUrl,
             baseProvider: baseProvider ?? undefined,
             baseModel: baseModel ?? undefined,
-            model,
+            model: model.trim(),
           },
           { signal: controller.signal },
         )

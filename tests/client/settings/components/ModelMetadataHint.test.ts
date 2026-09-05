@@ -41,6 +41,17 @@ const payloadFor = (model: string): unknown => {
     }
   if (model === 'cached-model') return hitPayload('openai', 'cached-hit', 3, 4)
   if (model === 'gpt-4o') return hitPayload('openai', 'gpt-4o', 128_000, 16_384)
+  if (model === 'padded-model') return hitPayload('openai', 'padded-hit', 128_000, 16_384)
+  if (model === ' padded-model')
+    return {
+      providerId: null,
+      modelId: null,
+      contextWindow: null,
+      maxOutputTokens: null,
+      source: 'none',
+      via: null,
+      snapshotFetchedAt: 1_700_000_000_000,
+    }
   if (model === 'mystery')
     return {
       providerId: null,
@@ -245,6 +256,23 @@ test('a per-key cache serves a repeated input without a second fetch', async () 
   await waitFor(() => hintShows('cached-hit'))
 
   expect(captured).toHaveLength(2)
+})
+
+test('a padded model input fetches and caches under the trimmed model key', async () => {
+  installFetch()
+
+  const { component } = mountFixture({ model: ' padded-model' })
+  await waitFor(() => hintShows('padded-hit'))
+  expect(captured[0]?.url).toBe('/settings/api/llm-model-metadata?model=padded-model')
+
+  component.setModel('padded-model')
+  flushSync()
+  await new Promise((resolve) => {
+    setTimeout(resolve, 20)
+  })
+
+  expect(hintOf()).toContain('padded-hit')
+  expect(captured).toHaveLength(1)
 })
 
 test('an unavailable answer is not cached, so a loaded snapshot is picked up on re-lookup', async () => {
