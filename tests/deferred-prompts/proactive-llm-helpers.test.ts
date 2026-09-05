@@ -103,7 +103,7 @@ describe('finalizeAndLog verification', () => {
     expect(text).toBe('Reminder delivered.')
   })
 
-  test('ru locale → ru verifier prompt and neutral fallback', async () => {
+  test('ru locale → ru verifier prompt and no-op fallback', async () => {
     mockLogger()
     const prompts: VerifierPrompt[] = []
     const text = await finalizeAndLog(
@@ -122,7 +122,7 @@ describe('finalizeAndLog verification', () => {
       'ru',
     )
     expect(prompts[0]?.system).toContain('Отвечай на русском языке')
-    expect(text).toBe('Я выполнил запрошенные действия, но не смог подтвердить результат — пожалуйста, перепроверьте.')
+    expect(text).toBe('Похоже, в этот раз я ничего не выполнил — ход прервался. Пожалуйста, повтори запрос.')
   })
 
   test('no verification arg → legacy Done. fallback preserved', async () => {

@@ -62,7 +62,7 @@ describe('sendLlmResponse verification wiring', () => {
     expect(reply.textCalls).toContain('All set — moved to Done.')
   })
 
-  test('risky turn in a ru context gets the ru verifier prompt and neutral fallback', async () => {
+  test('risky turn in a ru context gets the ru verifier prompt and no-op fallback', async () => {
     mockLogger()
     setConfigValue('ctx-ru', 'language', 'ru')
     const reply = createMockReply()
@@ -79,7 +79,7 @@ describe('sendLlmResponse verification wiring', () => {
     })
     expect(prompts[0]?.system).toContain('Отвечай на русском языке')
     expect(reply.textCalls).toContain(
-      'Я выполнил запрошенные действия, но не смог подтвердить результат — пожалуйста, перепроверьте.',
+      'Похоже, в этот раз я ничего не выполнил — ход прервался. Пожалуйста, повтори запрос.',
     )
   })
 

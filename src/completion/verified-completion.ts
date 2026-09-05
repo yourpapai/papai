@@ -105,29 +105,31 @@ export const deriveVerdict = (turn: CompletionTurn): CompletionVerdict => {
 
 /**
  * On a risky turn, run a verification LLM call and return a truthful user-facing message.
- * Never returns a bare "Done."; degrades to a neutral honest message if verification fails.
+ * Never returns a bare "Done."; degrades to an honest last-resort message — actions-ran vs
+ * nothing-executed, selected by the turn's tool activity — if verification fails.
  */
 export const buildVerifiedCompletion = async (
   turn: CompletionTurn,
   deps: VerifierDeps,
 ): Promise<VerifiedCompletion> => {
   const verdict = deriveVerdict(turn)
-  const neutralFallback = getDictionary(turn.locale ?? 'en').completion.neutralFallback
+  const texts = getDictionary(turn.locale ?? 'en').completion
+  const lastResortFallback = turn.hadToolActivity === true ? texts.neutralFallback : texts.noopFallback
   log.debug({ verdict, readBack: deps.readOnlyToolset !== undefined }, 'Building verified completion')
   const prompt = buildVerifierPrompt(turn)
   try {
     const res = await deps.invokeVerifier(prompt)
     if (res.text === undefined || res.text === '') {
-      log.warn({ verdict }, 'Verifier returned empty text; using neutral fallback')
-      return { text: neutralFallback, verdict: 'unconfirmed' }
+      log.warn({ verdict }, 'Verifier returned empty text; using last-resort fallback')
+      return { text: lastResortFallback, verdict: 'unconfirmed' }
     }
     log.info({ verdict }, 'Verified completion built')
     return { text: res.text, verdict }
   } catch (error) {
     log.warn(
       { err: error instanceof Error ? error.message : String(error) },
-      'Verifier call failed; using neutral fallback',
+      'Verifier call failed; using last-resort fallback',
     )
-    return { text: neutralFallback, verdict: 'unconfirmed' }
+    return { text: lastResortFallback, verdict: 'unconfirmed' }
   }
 }
