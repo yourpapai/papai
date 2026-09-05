@@ -8,7 +8,7 @@
 ## 2. Wire the repair into both generation paths
 
 - [x] 2.1 Write failing test in `tests/llm-orchestrator-invoke.test.ts`: `callGenerateText`/`invokeModel` options include `repairToolCall` when `disclosure` is present and omit the key when `disclosure` is undefined (DI `generateText` spy captures options). Verify: `bun test tests/llm-orchestrator-invoke.test.ts` (expect fail)
-- [ ] 2.2 Write failing test in `tests/deferred-prompts/proactive-llm.test.ts`: the proactive full-generation `generateText` options include `repairToolCall` bound to the prepared disclosure session. Verify: `bun test tests/deferred-prompts/proactive-llm.test.ts` (expect fail)
+- [x] 2.2 Write failing test in `tests/deferred-prompts/proactive-llm.test.ts`: the proactive full-generation `generateText` options include `repairToolCall` bound to the prepared disclosure session. Verify: `bun test tests/deferred-prompts/proactive-llm.test.ts` (expect fail)
 - [ ] 2.3 Attach the repair in `src/llm-orchestrator-invoke.ts` (`callGenerateText`, only when `disclosure !== undefined`) and `src/deferred-prompts/proactive-llm.ts` (`runFullGeneration`). Verify: `bun test tests/llm-orchestrator-invoke.test.ts tests/deferred-prompts/proactive-llm.test.ts`
 
 ## 3. Anomalous empty-turn warn
