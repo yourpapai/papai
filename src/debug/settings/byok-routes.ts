@@ -56,14 +56,20 @@ const VerificationSchema = z.object({
   models: z.array(z.string()),
   modelsFetchedAt: z.number().nullable(),
 })
+const baseRefSchema = z
+  .string()
+  .nullable()
+  .default(null)
+  .transform((value) => (value === '' ? null : value))
+
 const ProviderInBlobSchema = z.object({
   id: z.string().min(1),
   label: z.string().min(1),
   providerType: z.enum(LLM_PROVIDER_TYPES),
   baseUrl: z.string().min(1),
   apiKey: z.string().min(1),
-  baseProvider: z.string().nullable().default(null),
-  baseModel: z.string().nullable().default(null),
+  baseProvider: baseRefSchema,
+  baseModel: baseRefSchema,
   verification: VerificationSchema,
 })
 const RoleBindingSchema = z.object({ providerId: z.string().min(1), model: z.string().min(1) }).nullable()

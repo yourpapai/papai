@@ -51,6 +51,8 @@ const ProviderSchema = z.object({
   providerType: z.string(),
   baseUrl: z.string(),
   apiKeyMasked: z.string(),
+  baseProvider: z.string().nullable(),
+  baseModel: z.string().nullable(),
   verification: VerificationSchema,
 })
 
@@ -126,6 +128,81 @@ describe('settings admin llm-providers routes', () => {
     expect(body.provider.id.startsWith('prov_')).toBe(true)
     expect(body.provider.apiKeyMasked).toBe('****1234')
     expect(body.provider.verification.status).toBe('unverified')
+  })
+
+  test('POST create with base references echoes them publicly', async () => {
+    const res = await call('POST', PROVIDERS_PATH, adminSession, {
+      ...providerBody,
+      baseProvider: 'openai',
+      baseModel: 'gpt-4o',
+    })
+    expect(res.status).toBe(200)
+    const body = z.object({ provider: ProviderSchema }).parse(await res.json())
+    expect(body.provider.baseProvider).toBe('openai')
+    expect(body.provider.baseModel).toBe('gpt-4o')
+  })
+
+  test('POST create without base references echoes nulls', async () => {
+    const res = await call('POST', PROVIDERS_PATH, adminSession, providerBody)
+    expect(res.status).toBe(200)
+    const body = z.object({ provider: ProviderSchema }).parse(await res.json())
+    expect(body.provider.baseProvider).toBeNull()
+    expect(body.provider.baseModel).toBeNull()
+  })
+
+  test('PATCH sets base references and persists them', async () => {
+    const { id } = await createViaRoute()
+    const res = await call('PATCH', `${PROVIDERS_PATH}/${id}`, adminSession, {
+      baseProvider: 'anthropic',
+      baseModel: 'claude-opus-4',
+    })
+    expect(res.status).toBe(200)
+    const body = z.object({ provider: ProviderSchema }).parse(await res.json())
+    expect(body.provider.baseProvider).toBe('anthropic')
+    expect(body.provider.baseModel).toBe('claude-opus-4')
+    expect(getLlmProvider(id)?.baseProvider).toBe('anthropic')
+    expect(getLlmProvider(id)?.baseModel).toBe('claude-opus-4')
+  })
+
+  test('PATCH clears base references with nulls and with empty strings', async () => {
+    const { id } = await createViaRoute()
+    await call('PATCH', `${PROVIDERS_PATH}/${id}`, adminSession, { baseProvider: 'openai', baseModel: 'gpt-4o' })
+
+    const cleared = await call('PATCH', `${PROVIDERS_PATH}/${id}`, adminSession, {
+      baseProvider: null,
+      baseModel: null,
+    })
+    const clearedBody = z.object({ provider: ProviderSchema }).parse(await cleared.json())
+    expect(clearedBody.provider.baseProvider).toBeNull()
+    expect(clearedBody.provider.baseModel).toBeNull()
+
+    await call('PATCH', `${PROVIDERS_PATH}/${id}`, adminSession, { baseProvider: 'openai', baseModel: 'gpt-4o' })
+    const emptied = await call('PATCH', `${PROVIDERS_PATH}/${id}`, adminSession, { baseProvider: '', baseModel: '' })
+    const emptiedBody = z.object({ provider: ProviderSchema }).parse(await emptied.json())
+    expect(emptiedBody.provider.baseProvider).toBeNull()
+    expect(emptiedBody.provider.baseModel).toBeNull()
+  })
+
+  test('the public provider shape stays credential-free with base references present', async () => {
+    const res = await call('POST', PROVIDERS_PATH, adminSession, {
+      ...providerBody,
+      baseProvider: 'openai',
+      baseModel: 'gpt-4o',
+    })
+    expect(res.status).toBe(200)
+    const body = z
+      .object({
+        provider: z.looseObject({
+          ...ProviderSchema.shape,
+          apiKey: z.string().optional(),
+          encryptedApiKey: z.string().optional(),
+        }),
+      })
+      .parse(await res.json())
+    expect(body.provider.baseProvider).toBe('openai')
+    expect(body.provider.baseModel).toBe('gpt-4o')
+    expect(body.provider.apiKey).toBeUndefined()
+    expect(body.provider.encryptedApiKey).toBeUndefined()
   })
 
   test('GET providers reflects a created provider', async () => {

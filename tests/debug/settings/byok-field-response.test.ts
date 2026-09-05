@@ -21,6 +21,8 @@ const ProviderPublicSchema = z.object({
   providerType: z.string(),
   baseUrl: z.string(),
   apiKeyMasked: z.string(),
+  baseProvider: z.string().nullable(),
+  baseModel: z.string().nullable(),
 })
 
 const RolesSchema = z.object({
@@ -126,5 +128,50 @@ describe('buildByokFieldResponse', () => {
     expect(body.enabled).toBe(true)
     expect(body.providers).toEqual([])
     expect(body.roles).toEqual(emptyRoles)
+  })
+
+  test('echoes base references on stored providers and stays credential-free', () => {
+    const contextId = 'ctx:base-refs'
+    enableByokForContext(contextId, 'admin')
+    upsertByokProvider(contextId, makeProvider({ baseProvider: 'openai', baseModel: 'gpt-4o' }), 'admin')
+
+    const raw = buildByokFieldResponse(contextId)
+    const body = z
+      .object({
+        providers: z.array(
+          z.looseObject({
+            id: z.string(),
+            label: z.string(),
+            providerType: z.string(),
+            baseUrl: z.string(),
+            apiKeyMasked: z.string(),
+            baseProvider: z.string().nullable().optional(),
+            baseModel: z.string().nullable().optional(),
+            apiKey: z.string().optional(),
+            encryptedApiKey: z.string().optional(),
+          }),
+        ),
+      })
+      .parse(raw)
+
+    const provider = body.providers[0]
+    assert(provider !== undefined, 'provider should be present')
+    expect(provider.baseProvider).toBe('openai')
+    expect(provider.baseModel).toBe('gpt-4o')
+    expect(provider.apiKey).toBeUndefined()
+    expect(provider.encryptedApiKey).toBeUndefined()
+  })
+
+  test('echoes null base references for providers stored without them', () => {
+    const contextId = 'ctx:no-refs'
+    enableByokForContext(contextId, 'admin')
+    upsertByokProvider(contextId, makeProvider(), 'admin')
+
+    const body = FieldResponseSchema.parse(buildByokFieldResponse(contextId))
+
+    const provider = body.providers[0]
+    assert(provider !== undefined, 'provider should be present')
+    expect(provider.baseProvider).toBeNull()
+    expect(provider.baseModel).toBeNull()
   })
 })
