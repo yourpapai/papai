@@ -177,12 +177,12 @@ export const createGit = (options: GitOptions): Git => {
       ),
     commitAll: (message) => commitAll(gitOrThrow, options, message),
     salvageAll: (message) => salvageAll(gitOrThrow, options, message),
-    reconcile: (branch) => reconcile(git, gitOrThrow, options, branch),
+    reconcile: (branch) => reconcile(git, gitOrThrow, branch),
     push: async (branch, pushOptions) => {
       // The reconcile is what makes this push able to succeed at all after a
       // human moved the branch mid-phase; on a quiet remote it costs one fetch
       // and an ancestor check.
-      await reconcile(git, gitOrThrow, options, branch)
+      await reconcile(git, gitOrThrow, branch)
       const verify = pushOptions?.noVerify === true ? ['--no-verify'] : []
       await gitOrThrow('push', ...verify, '-u', 'origin', branch)
     },
@@ -197,8 +197,8 @@ export const createGit = (options: GitOptions): Git => {
       ),
     diffSince: (sha, paths) => gitOrThrow('diff', sha, '--', ...paths).then((result) => result.stdout),
     revertPaths: (sha, paths) => revertPaths(gitOrThrow, options, sha, paths),
-    mergeBase: (base) => mergeBase(git, gitOrThrow, options, base),
-    completeMerge: (message) => completeMerge(gitOrThrow, options, message),
+    mergeBase: (base) => mergeBase(git, gitOrThrow, base),
+    completeMerge: (message) => completeMerge(gitOrThrow, message),
     abortMerge: () => abortMerge(gitOrThrow),
   }
 }

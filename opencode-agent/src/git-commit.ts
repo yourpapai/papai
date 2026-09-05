@@ -209,26 +209,16 @@ export const stdoutLines = (stdout: string): string[] =>
     .map((line) => line.trim())
     .filter((line) => line.length > 0)
 
-/** The commit itself, identity stamped, with whatever extra flags the path needs. */
-export const commit = (
-  gitOrThrow: GitFn,
-  options: GitOptions,
-  message: string,
-  extra: readonly string[],
-): Promise<unknown> => {
-  const committerName = options.committerName ?? options.authorName
-  const committerEmail = options.committerEmail ?? options.authorEmail
-  return gitOrThrow(
-    '-c',
-    `user.name=${committerName}`,
-    '-c',
-    `user.email=${committerEmail}`,
-    'commit',
-    ...extra,
-    '-m',
-    message,
-  )
-}
+/**
+ * The commit itself, with whatever extra flags the path needs.
+ *
+ * No identity stamp here: both halves ride the environment `makeRunners` sets
+ * on every git child (`GIT_AUTHOR_*` / `GIT_COMMITTER_*` in `git.ts`), and
+ * those variables outrank any `-c user.*` config a command line could carry —
+ * argv stamps here could never take effect.
+ */
+export const commit = (gitOrThrow: GitFn, message: string, extra: readonly string[]): Promise<unknown> =>
+  gitOrThrow('commit', ...extra, '-m', message)
 
 export const commitAll = async (gitOrThrow: GitFn, options: GitOptions, message: string): Promise<CommitOutcome> => {
   const status = await gitOrThrow('status', '--porcelain')
@@ -240,7 +230,7 @@ export const commitAll = async (gitOrThrow: GitFn, options: GitOptions, message:
   if (staged.length === 0 && dropped.length > 0) return { kind: 'blocked', dropped }
 
   const totals = await guardStaged(gitOrThrow, options, staged)
-  await commit(gitOrThrow, options, message, [])
+  await commit(gitOrThrow, message, [])
   return { kind: 'committed', totals, dropped }
 }
 
@@ -276,7 +266,7 @@ export const salvageAll = async (gitOrThrow: GitFn, options: GitOptions, message
     return { kind: 'refused', reason: verdict.reason }
   }
 
-  await commit(gitOrThrow, options, message, ['--no-verify'])
+  await commit(gitOrThrow, message, ['--no-verify'])
   const { files, lines } = measure(staged)
   return { kind: 'committed', totals: { files, lines }, overCap: verdict.overCap }
 }

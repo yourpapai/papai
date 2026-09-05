@@ -3402,6 +3402,8 @@ describe('logger', () => {
 
 interface GitCapture {
   calls: string[][]
+  /** The env each call was handed, in call order — where the git identity rides. */
+  envs: (Record<string, string> | undefined)[]
   run: CommandRunner
 }
 
@@ -3412,9 +3414,11 @@ interface GitCapture {
  */
 const captureGit = (exitCodes: Record<string, number> = {}, stdouts: Record<string, string> = {}): GitCapture => {
   const calls: string[][] = []
+  const envs: (Record<string, string> | undefined)[] = []
 
-  const run: CommandRunner = (argv) => {
+  const run: CommandRunner = (argv, options) => {
     calls.push([...argv])
+    envs.push(options.env)
     const key = argv.join(' ')
     return Promise.resolve({
       command: key,
@@ -3424,7 +3428,7 @@ const captureGit = (exitCodes: Record<string, number> = {}, stdouts: Record<stri
     })
   }
 
-  return { calls, run }
+  return { calls, envs, run }
 }
 
 const gitOptions = (run: CommandRunner, overrides: Partial<GitOptions> = {}): GitOptions => ({
@@ -3477,14 +3481,20 @@ describe('createGit', () => {
     expect(calls.filter((call) => call[1] === 'status')).toHaveLength(1)
   })
 
-  test('stamps the configured identity on the commit', async () => {
-    const { calls, run } = captureGit({}, DIRTY_TREE)
+  test('stamps the configured identity on the git child env, never on the commit argv', async () => {
+    // The identity env outranks any `-c user.*` config, so the commit command
+    // carries no stamp of its own — `makeRunners` decides the identity once,
+    // for every git child.
+    const { calls, envs, run } = captureGit({}, DIRTY_TREE)
 
     expect(await createGit(gitOptions(run)).commitAll('msg')).not.toBeNull()
     const commit = calls.find((call) => call.includes('commit'))
-    expect(commit).toContain('user.name=agent')
-    expect(commit).toContain('user.email=agent@example.com')
-    expect(commit).toContain('msg')
+    expect(commit).toEqual(['git', 'commit', '-m', 'msg'])
+    const env = envs[0]
+    expect(env?.['GIT_AUTHOR_NAME']).toBe('agent')
+    expect(env?.['GIT_AUTHOR_EMAIL']).toBe('agent@example.com')
+    expect(env?.['GIT_COMMITTER_NAME']).toBe('agent')
+    expect(env?.['GIT_COMMITTER_EMAIL']).toBe('agent@example.com')
   })
 
   test('pushes with an upstream so a retry can fast-forward', async () => {
@@ -3539,7 +3549,7 @@ describe('createGit · the reconciling push', () => {
   const REMOTE = 'refs/remotes/origin/agent/issue-1'
   const FETCH = `git fetch origin +refs/heads/agent/issue-1:${REMOTE}`
   const ANCESTOR = `git merge-base --is-ancestor ${REMOTE} HEAD`
-  const MERGE = ['git', '-c', 'user.name=agent', '-c', 'user.email=agent@example.com', 'merge', '--no-edit', REMOTE]
+  const MERGE = ['git', 'merge', '--no-edit', REMOTE]
 
   test('merges a remote branch that advanced mid-run, then pushes (no --force)', async () => {
     // `merge-base` answers by exit code: 0 is ancestor, 1 is not. Here the
@@ -3572,15 +3582,20 @@ describe('createGit · the reconciling push', () => {
     expect(calls.some((call) => call.includes('merge-base'))).toBe(false)
   })
 
-  test('stamps the committer identity on the reconciling merge, as on every commit', async () => {
+  test('rides the runners\u2019 identity env on the reconciling merge, as on every git child', async () => {
     // A hosted runner has no user.name anywhere, and a merge makes a commit:
-    // without the stamp the merge dies on committer identity and the push
-    // fails with an error about a config file, not about the branch.
-    const { calls, run } = captureGit({ [ANCESTOR]: 1 })
+    // without the identity the merge dies on committer identity and the push
+    // fails with an error about a config file, not about the branch. The
+    // identity is the env `makeRunners` stamps on every call — never a `-c`
+    // argument, which an ambient GIT_COMMITTER_* would outrank anyway.
+    const { calls, envs, run } = captureGit({ [ANCESTOR]: 1 })
 
     await createGit(gitOptions(run)).push('agent/issue-1')
 
     expect(calls).toContainEqual(MERGE)
+    const env = envs[0]
+    expect(env?.['GIT_COMMITTER_NAME']).toBe('agent')
+    expect(env?.['GIT_COMMITTER_EMAIL']).toBe('agent@example.com')
   })
 
   test('reconciling a conflict aborts the merge and names the conflicted paths', async () => {
