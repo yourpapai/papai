@@ -5,6 +5,8 @@
 
 import type { ModelMessage } from 'ai'
 
+import { getModelsDevSnapshot } from './models-dev/client.js'
+
 /** Approximate context-window sizes (in tokens) keyed by model-name prefix. */
 const MODEL_CONTEXT_WINDOWS: ReadonlyArray<readonly [prefix: string, tokens: number]> = [
   // OpenAI GPT-4.1 family (1M context)
@@ -58,8 +60,21 @@ export const prefixTableContextWindow = (modelName: string): number | null => {
   return null
 }
 
-/** Resolve a model's context-window size in tokens, or null when the model is unknown. */
-export const resolveMaxTokens = (modelName: string): number | null => prefixTableContextWindow(modelName)
+/**
+ * Resolve a model's context window: the models.dev snapshot first when every catalogue entry with
+ * this model id agrees, the prefix table on disagreement or a miss — conservative, deterministic,
+ * and unchanged when the snapshot is empty.
+ */
+export const resolveMaxTokens = (modelName: string): number | null => {
+  const windows: number[] = []
+  for (const provider of Object.values(getModelsDevSnapshot().providers)) {
+    const context = provider.models[modelName]?.limit?.context
+    if (context !== undefined) windows.push(context)
+  }
+  const first = windows[0]
+  if (first !== undefined && windows.every((window) => window === first)) return first
+  return prefixTableContextWindow(modelName)
+}
 
 /**
  * Cheap, dependency-free token estimate (~4 characters per token). Accurate enough for
