@@ -7,17 +7,35 @@
   import Btn from '../../shared/ui/Btn.svelte'
   import Input from '../../shared/ui/Input.svelte'
   import Select from '../../shared/ui/Select.svelte'
+  import ModelMetadataHint from './ModelMetadataHint.svelte'
   import {
     PROVIDER_TYPE_BASE_URLS,
     PROVIDER_TYPE_OPTIONS,
     type LlmProviderType,
   } from '../fetcher-schemas-llm-providers.js'
 
+  export interface ProviderFormInput {
+    label: string
+    providerType: LlmProviderType
+    baseUrl: string
+    apiKey: string
+    baseProvider: string | null
+    baseModel: string | null
+  }
+
   interface Props {
-    onSave: (input: { label: string; providerType: LlmProviderType; baseUrl: string; apiKey: string }) => Promise<boolean>
+    onSave: (input: ProviderFormInput) => Promise<boolean>
     onCancel: () => void
     busy?: boolean
-    initial?: Partial<{ label: string; providerType: LlmProviderType; baseUrl: string }> | null
+    initial?:
+      | Partial<{
+          label: string
+          providerType: LlmProviderType
+          baseUrl: string
+          baseProvider: string | null
+          baseModel: string | null
+        }>
+      | null
     requireApiKey?: boolean
     editMode?: boolean
     testidPrefix?: string
@@ -37,6 +55,8 @@
   let providerType = $state<LlmProviderType>(initial?.providerType ?? 'openai')
   let baseUrl = $state(initial?.baseUrl ?? PROVIDER_TYPE_BASE_URLS.openai ?? '')
   let apiKey = $state('')
+  let baseProvider = $state(initial?.baseProvider ?? '')
+  let baseModel = $state(initial?.baseModel ?? '')
 
   function onTypeChange(next: string): void {
     providerType = next as LlmProviderType
@@ -52,7 +72,14 @@
 
   async function save(): Promise<void> {
     if (!canSave || busy) return
-    await onSave({ label: label.trim(), providerType, baseUrl: baseUrl.trim(), apiKey: apiKey.trim() })
+    await onSave({
+      label: label.trim(),
+      providerType,
+      baseUrl: baseUrl.trim(),
+      apiKey: apiKey.trim(),
+      baseProvider: baseProvider.trim().length > 0 ? baseProvider.trim() : null,
+      baseModel: baseModel.trim().length > 0 ? baseModel.trim() : null,
+    })
   }
 </script>
 
@@ -84,6 +111,32 @@
         testid={`${testidPrefix}-api-key`} />
     </label>
   {/if}
+  <label class="provider-form__field">
+    <span class="provider-form__label">Base provider (optional)</span>
+    <Input
+      value={baseProvider}
+      placeholder="catalogue provider id, e.g. openai"
+      onInput={(v) => (baseProvider = v)}
+      testid={`${testidPrefix}-base-provider`} />
+  </label>
+  <div class="provider-form__field">
+    <label>
+      <span class="provider-form__label">Base model (optional)</span>
+      <Input
+        value={baseModel}
+        placeholder="catalogue model id, e.g. gpt-4o"
+        onInput={(v) => (baseModel = v)}
+        testid={`${testidPrefix}-base-model`} />
+    </label>
+    {#if baseModel.trim().length > 0}
+      <ModelMetadataHint
+        providerType={providerType}
+        baseUrl={baseUrl}
+        baseProvider={baseProvider.trim().length > 0 ? baseProvider.trim() : undefined}
+        baseModel={baseModel.trim().length > 0 ? baseModel.trim() : undefined}
+        model={baseModel.trim()} />
+    {/if}
+  </div>
   <div class="provider-form__actions">
     <Btn variant="primary" size="sm" disabled={!canSave || busy} onClick={() => void save()} testid={`${testidPrefix}-save`}>
       {#snippet children()}{busy ? 'Saving…' : 'Save'}{/snippet}

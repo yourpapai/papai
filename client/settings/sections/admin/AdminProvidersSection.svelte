@@ -52,6 +52,8 @@
     providerType: string
     baseUrl: string
     apiKey: string
+    baseProvider: string | null
+    baseModel: string | null
   }): Promise<boolean> {
     saving = true
     try {
@@ -100,9 +102,22 @@
 
   async function onEdit(
     id: string,
-    input: { label: string; providerType: LlmProviderType; baseUrl: string; apiKey: string },
+    input: {
+      label: string
+      providerType: LlmProviderType
+      baseUrl: string
+      apiKey: string
+      baseProvider: string | null
+      baseModel: string | null
+    },
   ): Promise<boolean> {
-    const patch: ProviderPatch = { label: input.label, providerType: input.providerType, baseUrl: input.baseUrl }
+    const patch: ProviderPatch = {
+      label: input.label,
+      providerType: input.providerType,
+      baseUrl: input.baseUrl,
+      baseProvider: input.baseProvider,
+      baseModel: input.baseModel,
+    }
     if (input.apiKey.length > 0) patch.apiKey = input.apiKey
     const ok = await patchAndReload(id, patch)
     if (ok) editTarget = null
@@ -234,7 +249,13 @@
                 <td colspan="7">
                   <ProviderForm
                     editMode={true}
-                    initial={{ label: provider.label, providerType: provider.providerType, baseUrl: provider.baseUrl }}
+                    initial={{
+                      label: provider.label,
+                      providerType: provider.providerType,
+                      baseUrl: provider.baseUrl,
+                      baseProvider: provider.baseProvider,
+                      baseModel: provider.baseModel,
+                    }}
                     onSave={(input) => onEdit(provider.id, input)}
                     onCancel={() => (editTarget = null)}
                     busy={saving}

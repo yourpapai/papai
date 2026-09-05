@@ -66,6 +66,8 @@ export const ProviderInputSchema = z.object({
   providerType: LlmProviderTypesSchema,
   baseUrl: z.string().min(1),
   apiKey: z.string().min(1),
+  baseProvider: z.string().nullable().optional(),
+  baseModel: z.string().nullable().optional(),
 })
 export type ProviderInput = z.infer<typeof ProviderInputSchema>
 export type ProviderPatch = Partial<ProviderInput> & { models?: string[] }
