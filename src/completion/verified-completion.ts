@@ -45,7 +45,7 @@ export const turnHasToolActivity = (messages: readonly ModelMessage[]): boolean 
   return false
 }
 
-export type CompletionVerdict = 'confirmed' | 'truncated' | 'partial' | 'failed' | 'unconfirmed' | 'no-op'
+export type CompletionVerdict = 'confirmed' | 'truncated' | 'partial' | 'unconfirmed' | 'no-op'
 export type VerifiedCompletion = { text: string; verdict: CompletionVerdict }
 export type VerifierPrompt = { system: string; messages: ModelMessage[] }
 
