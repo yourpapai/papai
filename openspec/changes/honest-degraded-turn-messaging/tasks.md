@@ -24,4 +24,4 @@
 ## 5. Full verification and docs
 
 - [x] 5.1 Update the verified-completion behavior in `docs/architecture/behaviors.md`: `no-op` verdict, activity-based fallbacks, `read_` verifier tools, send-log fields. Verify: `bun run lint`
-- [ ] 5.2 Run the full gate: `bun run test`, `bun run typecheck`, `bun run lint`; fix fallout, then `bun run test:mutate:changed` for the touched `src/` files and ratchet the mutation baseline if scores regressed. Verify: `bun run test && bun run typecheck && bun run lint`
+- [x] 5.2 Run the full gate: `bun run test`, `bun run typecheck`, `bun run lint`; fix fallout, then `bun run test:mutate:changed` for the touched `src/` files and ratchet the mutation baseline if scores regressed. Verify: `bun run test && bun run typecheck && bun run lint`
