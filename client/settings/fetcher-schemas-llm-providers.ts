@@ -5,8 +5,6 @@
 
 import { z } from 'zod'
 
-import { getJson } from './fetchers.js'
-
 export const LlmProviderTypesSchema = z.enum([
   'openai',
   'anthropic',
@@ -99,14 +97,4 @@ export type LlmModelMetadataQuery = {
   readonly baseProvider?: string
   readonly baseModel?: string
   readonly model?: string
-}
-
-export const fetchLlmModelMetadata = (input: LlmModelMetadataQuery): Promise<LlmModelMetadata> => {
-  const params = new URLSearchParams()
-  for (const [key, value] of Object.entries(input)) {
-    if (value !== undefined && value !== '') params.set(key, value)
-  }
-  const query = params.toString()
-  const path = query.length > 0 ? `/settings/api/llm-model-metadata?${query}` : '/settings/api/llm-model-metadata'
-  return getJson(path, (body) => LlmModelMetadataResponseSchema.parse(body))
 }

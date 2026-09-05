@@ -84,6 +84,11 @@ export const KNIP_ENTRY_POINTS: readonly string[] = [
   // resolver, preview endpoint, model builder) land in later tasks of the same
   // change; until then only tests read them.
   'src/models-dev/*.ts!',
+  // Settings UI preview seam (same change): the hint component and its fetcher
+  // are wired into RoleBindingBlock/ProviderForm by the next task; until then
+  // only their component and schema tests read them.
+  'client/settings/components/ModelMetadataHint.svelte!',
+  'client/settings/llm-model-metadata-fetchers.ts!',
   // First-party plugin entry points are loaded dynamically by the plugin
   // loader, so they have no static importer.
   'plugins/*/index.ts!',

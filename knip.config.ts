@@ -179,6 +179,11 @@ export default {
     // Model-metadata catalogue modules: exports/types are consumed by later tasks
     // of chat-model-metadata-models-dev and by tests outside production scope.
     'src/models-dev/*.ts': ['exports', 'types'],
+    // The settings UI preview seam of chat-model-metadata-models-dev: the hint
+    // component and its fetcher are wired into RoleBindingBlock/ProviderForm by
+    // the next task of the same change; until then tests read their exports.
+    'client/settings/components/ModelMetadataHint.svelte': ['exports', 'types'],
+    'client/settings/llm-model-metadata-fetchers.ts': ['exports', 'types'],
     // Proof-check module exports: the later-task consumers landed (proof-check-run,
     // proof-checks-read, poller, diagnostics); this now covers only test-only exports
     // (resetProofChecksForTest, resetProofDeliveryRecords) and test-only consumption.
