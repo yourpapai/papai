@@ -99,14 +99,14 @@ export function resolveModelMetadata(input: ModelMetadataInput, deps?: ResolveMo
       const entry = providers[candidateId]?.models[model]
       return entry === undefined ? [] : [{ providerId: candidateId, ...limitsOf(entry) }]
     })
+  // Ambiguous-name tie-break shared with resolveMaxTokens (src/model-context.ts, design D4): trust
+  // the catalogue only when every provider carrying this id agrees on the context window. An output
+  // cap is kept only when it is unambiguous too — an unknown cap sends no cap (spec.md, generation
+  // without an output-cap setting), so both surfaces report the same window for the same name.
   const first = matches[0]
-  if (first !== undefined) {
-    const agreed = matches.every(
-      (match) => match.contextWindow === first.contextWindow && match.maxOutputTokens === first.maxOutputTokens,
-    )
-    if (agreed) {
-      return { ...first, modelId: model, source: 'models-dev', via: 'inferred' }
-    }
+  if (first !== undefined && matches.every((match) => match.contextWindow === first.contextWindow)) {
+    const cap = matches.every((match) => match.maxOutputTokens === first.maxOutputTokens) ? first.maxOutputTokens : null
+    return { ...first, maxOutputTokens: cap, modelId: model, source: 'models-dev', via: 'inferred' }
   }
 
   return prefixTableResult(model)

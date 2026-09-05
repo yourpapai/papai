@@ -5,6 +5,7 @@
 
 import { afterEach, describe, expect, test } from 'bun:test'
 
+import { resolveMaxTokens } from '../../src/model-context.js'
 import { prewarmModelsDevSnapshot, resetModelsDevSnapshotForTest } from '../../src/models-dev/client.js'
 import type { ModelMetadata, ModelMetadataInput, ModelsDevSnapshot } from '../../src/models-dev/resolve.js'
 import { resolveModelMetadata } from '../../src/models-dev/resolve.js'
@@ -170,18 +171,18 @@ describe('resolveModelMetadata', () => {
     })
   })
 
-  test('duplicate names agreeing on context but disagreeing on output resolve to none', () => {
+  test('duplicate names agreeing on context but disagreeing on output keep the window and drop the cap', () => {
     const snapshot = snapshotWith({
       alpha: { models: { 'shared-model': { limit: { context: 100_000, output: 1_000 } } } },
       beta: { models: { 'shared-model': { limit: { context: 100_000, output: 2_000 } } } },
     })
     expect(resolve({ model: 'shared-model' }, snapshot)).toEqual({
-      providerId: null,
-      modelId: null,
-      contextWindow: null,
+      providerId: 'alpha',
+      modelId: 'shared-model',
+      contextWindow: 100_000,
       maxOutputTokens: null,
-      source: 'none',
-      via: null,
+      source: 'models-dev',
+      via: 'inferred',
     })
   })
 
@@ -247,6 +248,26 @@ describe('resolveModelMetadata with the process snapshot default', () => {
       maxOutputTokens: 4_321,
       source: 'models-dev',
       via: 'inferred',
+    })
+
+    resetModelsDevSnapshotForTest()
+  })
+
+  test('the name-only ceiling and the resolver agree for an ambiguous name', async () => {
+    const body = JSON.stringify({
+      alpha: { models: { 'shared-model': { limit: { context: 100_000, output: 1_000 } } } },
+      beta: { models: { 'shared-model': { limit: { context: 100_000, output: 2_000 } } } },
+    })
+    await prewarmModelsDevSnapshot({
+      fetchImpl: () => Promise.resolve(body),
+      cachePath: `/tmp/opencode/models-dev-tiebreak-${crypto.randomUUID()}/models.json`,
+      now: () => 1,
+    })
+
+    expect(resolveMaxTokens('shared-model')).toBe(100_000)
+    expect(resolveModelMetadata({ model: 'shared-model' })).toMatchObject({
+      contextWindow: 100_000,
+      source: 'models-dev',
     })
 
     resetModelsDevSnapshotForTest()

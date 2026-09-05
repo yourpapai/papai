@@ -63,7 +63,9 @@ export const prefixTableContextWindow = (modelName: string): number | null => {
 /**
  * Resolve a model's context window: the models.dev snapshot first when every catalogue entry with
  * this model id agrees, the prefix table on disagreement or a miss — conservative, deterministic,
- * and unchanged when the snapshot is empty.
+ * and unchanged when the snapshot is empty. Context-window agreement is the shared ambiguous-name
+ * tie-break with `resolveModelMetadata` (src/models-dev/resolve.ts, design D4): both surfaces
+ * report the same window for the same name.
  */
 export const resolveMaxTokens = (modelName: string): number | null => {
   const windows: number[] = []
