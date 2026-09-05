@@ -200,6 +200,14 @@ describe('buildVerifiedCompletion', () => {
     },
   })
 
+  const fallbackDeps = (mode: 'empty' | 'throw'): VerifierDeps => ({
+    readOnlyToolset: undefined,
+    invokeVerifier: (): Promise<{ text: string | undefined }> => {
+      if (mode === 'throw') throw new Error('network')
+      return Promise.resolve({ text: '' })
+    },
+  })
+
   test('confirmed: passes through the verifier text', async () => {
     mockLogger()
     const result = await buildVerifiedCompletion(
@@ -244,7 +252,7 @@ describe('buildVerifiedCompletion', () => {
       },
     }
     const result = await buildVerifiedCompletion(
-      { history: [], finishReason: 'stop', hadToolFailure: false, hadToolActivity: false },
+      { history: [], finishReason: 'stop', hadToolFailure: false, hadToolActivity: true },
       deps,
     )
     expect(result.verdict).toBe('unconfirmed')
@@ -254,10 +262,48 @@ describe('buildVerifiedCompletion', () => {
   test('unconfirmed: neutral message when the verifier returns empty text', async () => {
     mockLogger()
     const result = await buildVerifiedCompletion(
-      { history: [], finishReason: 'stop', hadToolFailure: false, hadToolActivity: false },
+      { history: [], finishReason: 'stop', hadToolFailure: false, hadToolActivity: true },
       okDeps(''),
     )
     expect(result.verdict).toBe('unconfirmed')
     expect(result.text).toContain('could not confirm')
+  })
+
+  test('unconfirmed fallback selection matrix: activity picks the neutral vs the no-op message', async () => {
+    mockLogger()
+    const rows: readonly Row<{ mode: 'empty' | 'throw'; hadToolActivity: boolean; expectedText: string }>[] = [
+      {
+        label: 'verifier empty after an active turn reports the actions ran but were unconfirmed',
+        mode: 'empty',
+        hadToolActivity: true,
+        expectedText: 'I ran the requested actions but could not confirm the result — please double-check.',
+      },
+      {
+        label: 'verifier empty after a no-op turn says nothing was executed',
+        mode: 'empty',
+        hadToolActivity: false,
+        expectedText: 'It looks like nothing was actually executed this turn — it cut off. Please repeat your request.',
+      },
+      {
+        label: 'verifier throw after an active turn reports the actions ran but were unconfirmed',
+        mode: 'throw',
+        hadToolActivity: true,
+        expectedText: 'I ran the requested actions but could not confirm the result — please double-check.',
+      },
+      {
+        label: 'verifier throw after a no-op turn says nothing was executed',
+        mode: 'throw',
+        hadToolActivity: false,
+        expectedText: 'It looks like nothing was actually executed this turn — it cut off. Please repeat your request.',
+      },
+    ]
+    await assertEach(rows, async (row) => {
+      const result = await buildVerifiedCompletion(
+        { history: [], finishReason: 'stop', hadToolFailure: false, hadToolActivity: row.hadToolActivity },
+        fallbackDeps(row.mode),
+      )
+      expect(result.verdict).toBe('unconfirmed')
+      expect(result.text).toBe(row.expectedText)
+    })
   })
 })
