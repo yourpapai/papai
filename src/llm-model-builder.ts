@@ -4,8 +4,9 @@
 // See LICENSE in the project root for details.
 
 import { createOpenAICompatible, type OpenAICompatibleProvider } from '@ai-sdk/openai-compatible'
-import type { LanguageModel } from 'ai'
+import { defaultSettingsMiddleware, wrapLanguageModel, type LanguageModel } from 'ai'
 
+import { resolveModelMetadata, type ModelMetadata } from './models-dev/resolve.js'
 import { fetchWithoutTimeout } from './utils/fetch.js'
 
 export interface ModelBuilderDeps {
@@ -44,6 +45,13 @@ export function buildChatModel(
   baseUrl: string,
   modelName: string,
   deps: ModelBuilderDeps = defaultDeps,
+  metadata?: ModelMetadata,
 ): LanguageModel {
-  return getOpenAICompatibleProvider(apiKey, baseUrl, deps)(modelName)
+  const model = getOpenAICompatibleProvider(apiKey, baseUrl, deps)(modelName)
+  const resolved = metadata ?? resolveModelMetadata({ baseUrl, model: modelName })
+  if (resolved.maxOutputTokens === null) return model
+  return wrapLanguageModel({
+    model,
+    middleware: defaultSettingsMiddleware({ settings: { maxOutputTokens: resolved.maxOutputTokens } }),
+  })
 }
