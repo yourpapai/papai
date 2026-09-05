@@ -5,16 +5,24 @@
 
 import { describe, expect, test } from 'bun:test'
 
-import { tool, type ModelMessage, type ToolSet } from 'ai'
+import { tool, type ModelMessage, type ToolResultPart, type ToolSet } from 'ai'
 import { z } from 'zod'
 
 import {
   buildVerifiedCompletion,
+  deriveVerdict,
   detectToolFailure,
   selectReadOnlyTools,
+  turnHasToolActivity,
 } from '../../src/completion/verified-completion.js'
-import type { VerifierDeps, VerifierPrompt } from '../../src/completion/verified-completion.js'
+import type {
+  CompletionTurn,
+  CompletionVerdict,
+  VerifierDeps,
+  VerifierPrompt,
+} from '../../src/completion/verified-completion.js'
 import type { ToolFailureResult } from '../../src/tool-failure.js'
+import { assertEach, type Row } from '../utils/grouped-assertions.js'
 import { mockLogger } from '../utils/test-helpers.js'
 
 const stub = (): ToolSet[string] =>
@@ -40,6 +48,11 @@ const failure: ToolFailureResult = {
   agentMessage: 'It failed.',
   retryable: false,
 }
+
+const toolResultMessage = (toolName: string, output: ToolResultPart['output']): ModelMessage => ({
+  role: 'tool',
+  content: [{ type: 'tool-result', toolCallId: 'c1', toolName, output }],
+})
 
 describe('selectReadOnlyTools', () => {
   test('keeps get_/list_/search_ tools and drops mutating tools', () => {
@@ -87,6 +100,97 @@ describe('detectToolFailure', () => {
   })
 })
 
+describe('turnHasToolActivity', () => {
+  test('a tool-result message counts as tool activity', () => {
+    const messages: ModelMessage[] = [
+      { role: 'user', content: 'list open tasks' },
+      toolResultMessage('list_tasks', { type: 'json', value: { ok: true } }),
+    ]
+    expect(turnHasToolActivity(messages)).toBe(true)
+  })
+
+  test('an assistant-only history has no tool activity', () => {
+    const messages: ModelMessage[] = [{ role: 'assistant', content: 'All done.' }]
+    expect(turnHasToolActivity(messages)).toBe(false)
+  })
+})
+
+describe('deriveVerdict', () => {
+  const emptyTextHistory: ModelMessage[] = [
+    { role: 'user', content: 'list open tasks' },
+    { role: 'assistant', content: '' },
+  ]
+  const activeHistory: ModelMessage[] = [
+    { role: 'user', content: 'list open tasks' },
+    toolResultMessage('list_tasks', { type: 'json', value: { ok: true } }),
+    { role: 'assistant', content: '' },
+  ]
+  const failedHistory: ModelMessage[] = [
+    { role: 'user', content: 'list open tasks' },
+    toolResultMessage('update_task', { type: 'json', value: failure }),
+    { role: 'assistant', content: '' },
+  ]
+
+  test('verdict derivation matrix: truncated and partial precede no-op; activity keeps confirmed', async () => {
+    const rows: readonly Row<{ turn: CompletionTurn; expected: CompletionVerdict }>[] = [
+      {
+        label: 'empty text with no tool activity is a no-op',
+        turn: { history: emptyTextHistory, finishReason: 'stop', hadToolFailure: false, hadToolActivity: false },
+        expected: 'no-op',
+      },
+      {
+        label: 'empty text with tool activity stays on the confirmed path',
+        turn: { history: activeHistory, finishReason: 'stop', hadToolFailure: false, hadToolActivity: true },
+        expected: 'confirmed',
+      },
+      {
+        label: 'a pending tool call beats no-op (truncated)',
+        turn: { history: emptyTextHistory, finishReason: 'tool-calls', hadToolFailure: false, hadToolActivity: false },
+        expected: 'truncated',
+      },
+      {
+        label: 'a tool failure beats no-op (partial)',
+        turn: { history: emptyTextHistory, finishReason: 'stop', hadToolFailure: true, hadToolActivity: false },
+        expected: 'partial',
+      },
+      {
+        label: 'a pending tool call also beats a tool failure (truncated keeps priority)',
+        turn: { history: failedHistory, finishReason: 'tool-calls', hadToolFailure: true, hadToolActivity: true },
+        expected: 'truncated',
+      },
+      {
+        label: 'non-empty text with no activity stays confirmed',
+        turn: {
+          history: [
+            { role: 'user', content: 'hi' },
+            { role: 'assistant', content: 'All done.' },
+          ],
+          finishReason: 'stop',
+          hadToolFailure: false,
+          hadToolActivity: false,
+        },
+        expected: 'confirmed',
+      },
+      {
+        label: 'assistant text delivered as content parts still counts as text',
+        turn: {
+          history: [
+            { role: 'user', content: 'hi' },
+            { role: 'assistant', content: [{ type: 'text', text: 'All done.' }] },
+          ],
+          finishReason: 'stop',
+          hadToolFailure: false,
+          hadToolActivity: false,
+        },
+        expected: 'confirmed',
+      },
+    ]
+    await assertEach(rows, (row) => {
+      expect(deriveVerdict(row.turn)).toBe(row.expected)
+    })
+  })
+})
+
 describe('buildVerifiedCompletion', () => {
   const okDeps = (text: string | undefined, capture?: (p: VerifierPrompt) => void): VerifierDeps => ({
     readOnlyToolset: undefined,
@@ -99,7 +203,7 @@ describe('buildVerifiedCompletion', () => {
   test('confirmed: passes through the verifier text', async () => {
     mockLogger()
     const result = await buildVerifiedCompletion(
-      { history: [], finishReason: 'stop', hadToolFailure: false },
+      { history: [], finishReason: 'stop', hadToolFailure: false, hadToolActivity: true },
       okDeps('Created task TK-42.'),
     )
     expect(result).toEqual({ text: 'Created task TK-42.', verdict: 'confirmed' })
@@ -109,7 +213,7 @@ describe('buildVerifiedCompletion', () => {
     mockLogger()
     let seen: VerifierPrompt | undefined
     const result = await buildVerifiedCompletion(
-      { history: [], finishReason: 'tool-calls', hadToolFailure: false },
+      { history: [], finishReason: 'tool-calls', hadToolFailure: false, hadToolActivity: false },
       okDeps('Did A and B; C still pending — say continue to resume.', (p) => {
         seen = p
       }),
@@ -125,7 +229,7 @@ describe('buildVerifiedCompletion', () => {
   test('partial: a tool failure yields the partial verdict', async () => {
     mockLogger()
     const result = await buildVerifiedCompletion(
-      { history: [], finishReason: 'stop', hadToolFailure: true },
+      { history: [], finishReason: 'stop', hadToolFailure: true, hadToolActivity: true },
       okDeps('The update failed.'),
     )
     expect(result.verdict).toBe('partial')
@@ -139,7 +243,10 @@ describe('buildVerifiedCompletion', () => {
         throw new Error('network')
       },
     }
-    const result = await buildVerifiedCompletion({ history: [], finishReason: 'stop', hadToolFailure: false }, deps)
+    const result = await buildVerifiedCompletion(
+      { history: [], finishReason: 'stop', hadToolFailure: false, hadToolActivity: false },
+      deps,
+    )
     expect(result.verdict).toBe('unconfirmed')
     expect(result.text).toContain('could not confirm')
   })
@@ -147,7 +254,7 @@ describe('buildVerifiedCompletion', () => {
   test('unconfirmed: neutral message when the verifier returns empty text', async () => {
     mockLogger()
     const result = await buildVerifiedCompletion(
-      { history: [], finishReason: 'stop', hadToolFailure: false },
+      { history: [], finishReason: 'stop', hadToolFailure: false, hadToolActivity: false },
       okDeps(''),
     )
     expect(result.verdict).toBe('unconfirmed')

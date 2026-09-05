@@ -36,7 +36,28 @@ export const detectToolFailure = (messages: readonly ModelMessage[]): boolean =>
   return false
 }
 
-export type CompletionVerdict = 'confirmed' | 'truncated' | 'partial' | 'failed' | 'unconfirmed'
+/** True when the turn executed at least one tool: any tool message carries a tool-result part. */
+export const turnHasToolActivity = (messages: readonly ModelMessage[]): boolean => {
+  for (const message of messages) {
+    if (message.role !== 'tool') continue
+    if (message.content.some((part) => part.type === 'tool-result')) return true
+  }
+  return false
+}
+
+const hasAssistantText = (messages: readonly ModelMessage[]): boolean => {
+  for (const message of messages) {
+    if (message.role !== 'assistant') continue
+    if (typeof message.content === 'string') {
+      if (message.content !== '') return true
+      continue
+    }
+    if (message.content.some((part) => part.type === 'text' && part.text !== '')) return true
+  }
+  return false
+}
+
+export type CompletionVerdict = 'confirmed' | 'truncated' | 'partial' | 'failed' | 'unconfirmed' | 'no-op'
 export type VerifiedCompletion = { text: string; verdict: CompletionVerdict }
 export type VerifierPrompt = { system: string; messages: ModelMessage[] }
 
@@ -51,6 +72,8 @@ export type CompletionTurn = {
   history: readonly ModelMessage[]
   finishReason?: string
   hadToolFailure: boolean
+  /** True when the turn executed at least one tool; the call sites fill it from the messages they collect. */
+  hadToolActivity?: boolean
   /** Locale of the turn's config context; the verifier prompt and fallback localize to it. */
   locale?: Locale
 }
@@ -68,9 +91,15 @@ const buildVerifierPrompt = (turn: CompletionTurn): VerifierPrompt => {
   return { system, messages }
 }
 
-const deriveVerdict = (turn: CompletionTurn): CompletionVerdict => {
+/**
+ * Derive the verdict from observable turn shape (design D2 order):
+ * truncated (pending tool call) → partial (tool failure) → no-op (empty final
+ * text with no executed tool) → confirmed.
+ */
+export const deriveVerdict = (turn: CompletionTurn): CompletionVerdict => {
   if (turn.finishReason === 'tool-calls') return 'truncated'
   if (turn.hadToolFailure) return 'partial'
+  if (turn.hadToolActivity !== true && !hasAssistantText(turn.history)) return 'no-op'
   return 'confirmed'
 }
 

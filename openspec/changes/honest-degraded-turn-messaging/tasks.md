@@ -2,7 +2,7 @@
 
 ## 1. Activity predicate and `no-op` verdict
 
-- [ ] 1.1 Write failing tests in `tests/completion/verified-completion.test.ts`: `turnHasToolActivity` (tool-result message → true; assistant-only history → false); `deriveVerdict` matrix — empty text + no activity → `no-op`; empty text + activity → `confirmed` path unchanged; `finishReason: 'tool-calls'` beats `no-op` (truncated); tool failure beats `no-op` (partial); non-empty text + no activity stays `confirmed`. Verify: `bun test tests/completion/verified-completion.test.ts` (expect fail)
+- [x] 1.1 Write failing tests in `tests/completion/verified-completion.test.ts`: `turnHasToolActivity` (tool-result message → true; assistant-only history → false); `deriveVerdict` matrix — empty text + no activity → `no-op`; empty text + activity → `confirmed` path unchanged; `finishReason: 'tool-calls'` beats `no-op` (truncated); tool failure beats `no-op` (partial); non-empty text + no activity stays `confirmed`. Verify: `bun test tests/completion/verified-completion.test.ts` (expect fail)
 - [ ] 1.2 Implement: add `turnHasToolActivity` beside `detectToolFailure`, add `hadToolActivity` to `CompletionTurn`, extend `CompletionVerdict` with `'no-op'`, apply the derivation order from design D2. Verify: `bun test tests/completion/verified-completion.test.ts`
 
 ## 2. Honest last-resort fallbacks

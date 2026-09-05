@@ -258,6 +258,8 @@ export default {
     // (openspec/changes/usage-failure-queries) and by tests outside knip's
     // production project scope.
     'src/usage/failures.ts': ['exports'],
+    // turnHasToolActivity awaits its production consumers (honest-degraded-turn-messaging task 2.3 call-site wiring); tests consume it until then.
+    'src/completion/verified-completion.ts': ['exports'],
     // Proof-check module exports: the later-task consumers landed (proof-check-run,
     // proof-checks-read, poller, diagnostics); this now covers only test-only exports
     // (resetProofChecksForTest, resetProofDeliveryRecords) and test-only consumption.
