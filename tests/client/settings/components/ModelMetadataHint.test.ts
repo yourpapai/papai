@@ -94,6 +94,21 @@ const installFetch = (): void => {
   })
 }
 
+const installAbortableFetch = (): void => {
+  setMockFetch((url, init) => {
+    const parsed = new URL(url, 'https://x')
+    const model = parsed.searchParams.get('model') ?? ''
+    captured.push({ url: parsed.pathname + parsed.search, signal: init.signal })
+    return new Promise<Response>((resolve, reject) => {
+      const timer = setTimeout(() => resolve(jsonResponse(payloadFor(model))), 200)
+      init.signal?.addEventListener('abort', () => {
+        clearTimeout(timer)
+        reject(new DOMException('aborted', 'AbortError'))
+      })
+    })
+  })
+}
+
 afterEach(() => {
   restoreFetch()
   captured.length = 0
@@ -256,6 +271,31 @@ test('a per-key cache serves a repeated input without a second fetch', async () 
   await waitFor(() => hintShows('cached-hit'))
 
   expect(captured).toHaveLength(2)
+})
+
+test('a cache-hit run is not wiped by the aborted superseded lookup it just cancelled', async () => {
+  installFetch()
+
+  const { component } = mountFixture({ model: 'cached-model' })
+  await waitFor(() => hintShows('cached-hit'))
+
+  installAbortableFetch()
+
+  component.setModel('slow-model')
+  flushSync()
+  await waitFor(() => {
+    flushSync()
+    return captured.length >= 2
+  })
+
+  component.setModel('cached-model')
+  flushSync()
+  expect(hintShows('cached-hit')).toBe(true)
+
+  await new Promise((resolve) => {
+    setTimeout(resolve, 50)
+  })
+  expect(hintShows('cached-hit')).toBe(true)
 })
 
 test('a padded model input fetches and caches under the trimmed model key', async () => {

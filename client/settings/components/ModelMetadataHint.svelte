@@ -31,6 +31,7 @@
 
   $effect(() => {
     const key = lookupKey
+    const requestId = ++latestRequest
     if (model.trim() === '') {
       result = null
       return
@@ -40,7 +41,6 @@
       result = cached
       return
     }
-    const requestId = ++latestRequest
     const timer = setTimeout(
       () => {
         const controller = new AbortController()
