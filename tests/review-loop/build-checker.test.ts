@@ -42,6 +42,31 @@ describe('build-checker', () => {
     const result = await exec()
     expect(result.exitCode).toBe(0)
   })
+
+  test('separates the two streams', async () => {
+    const exec = createShellExec(process.cwd(), 'echo to-stdout; echo to-stderr >&2; exit 3')
+    const result = await exec()
+    expect(result.exitCode).toBe(3)
+    expect(result.stdout.trim()).toBe('to-stdout')
+    expect(result.stderr.trim()).toBe('to-stderr')
+  })
+
+  // The check command is `bun check:full`, whose failure path `cat`s a whole
+  // multi-thousand-line check log to stdout. Captured through a pipe that carries
+  // O_NONBLOCK, that `cat` dies on EAGAIN and `set -e` takes the verdict with it
+  // (run 33974052563); the old 10 MB `maxBuffer` silently truncated it in the
+  // other direction. Files have neither failure mode, so a big writer arrives
+  // whole and the child's own exit code is what comes back.
+  test('a child writing well past the retired 10MB maxBuffer arrives whole', async () => {
+    const emit = `awk 'BEGIN { s = sprintf("%*s", 200, ""); gsub(/ /, "x", s); for (i = 0; i < 60000; i++) print s; print "TAIL-MARKER" }'`
+    const exec = createShellExec(process.cwd(), `${emit}; exit 7`)
+
+    const result = await exec()
+
+    expect(result.exitCode).toBe(7)
+    expect(result.stdout.length).toBeGreaterThan(10 * 1024 * 1024)
+    expect(result.stdout.trimEnd().endsWith('TAIL-MARKER')).toBe(true)
+  })
 })
 
 describe('build-checker credential scrub', () => {
