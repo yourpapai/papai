@@ -207,6 +207,10 @@ export default {
     // Storybook fixture harness (client/stories/**, knip-ignored by config).
     // Zero production consumers today; the types pin the 5 live BYOK keys.
     'client/shared/api-types.ts': ['types'],
+    // fetchLlmModelMetadata is consumed by the ModelMetadataHint wiring of the
+    // in-flight chat-model-metadata-models-dev change (settings UI preview tasks);
+    // until that lands only its schema tests read it.
+    'client/settings/fetcher-schemas-llm-providers.ts': ['exports'],
   },
 
   includeEntryExports: true,

@@ -5,6 +5,8 @@
 
 import { z } from 'zod'
 
+import { getJson } from './fetchers.js'
+
 export const LlmProviderTypesSchema = z.enum([
   'openai',
   'anthropic',
@@ -40,6 +42,8 @@ export const PublicProviderAccountSchema = z.object({
   providerType: LlmProviderTypesSchema,
   baseUrl: z.string(),
   apiKeyMasked: z.string(),
+  baseProvider: z.string().nullable().default(null),
+  baseModel: z.string().nullable().default(null),
   verification: VerificationSchema,
 })
 export type PublicProviderAccount = z.infer<typeof PublicProviderAccountSchema>
@@ -77,3 +81,32 @@ export const PROVIDER_TYPE_OPTIONS: ReadonlyArray<{ value: LlmProviderType; labe
   { value: 'groq', label: 'Groq' },
   { value: 'custom', label: 'Custom' },
 ]
+
+export const LlmModelMetadataResponseSchema = z.object({
+  providerId: z.string().nullable(),
+  modelId: z.string().nullable(),
+  contextWindow: z.number().nullable(),
+  maxOutputTokens: z.number().nullable(),
+  source: z.enum(['models-dev', 'prefix-table', 'none']),
+  via: z.enum(['override', 'inferred']).nullable(),
+  snapshotFetchedAt: z.number().nullable(),
+})
+export type LlmModelMetadata = z.infer<typeof LlmModelMetadataResponseSchema>
+
+export type LlmModelMetadataQuery = {
+  readonly providerType?: string
+  readonly baseUrl?: string
+  readonly baseProvider?: string
+  readonly baseModel?: string
+  readonly model?: string
+}
+
+export const fetchLlmModelMetadata = (input: LlmModelMetadataQuery): Promise<LlmModelMetadata> => {
+  const params = new URLSearchParams()
+  for (const [key, value] of Object.entries(input)) {
+    if (value !== undefined && value !== '') params.set(key, value)
+  }
+  const query = params.toString()
+  const path = query.length > 0 ? `/settings/api/llm-model-metadata?${query}` : '/settings/api/llm-model-metadata'
+  return getJson(path, (body) => LlmModelMetadataResponseSchema.parse(body))
+}

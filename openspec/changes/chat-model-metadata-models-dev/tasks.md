@@ -22,7 +22,7 @@
 ## 4. Preview endpoint
 
 - [x] 4.1 Write failing route tests for `GET /settings/api/llm-model-metadata` (unauthenticated rejected, authenticated non-admin member allowed with no context scope, precedence echoed, empty snapshot → `source: 'none'` + `snapshotFetchedAt: null`, credential-free contract, zero outbound fetches during a request) in `tests/debug/settings/`, then implement `src/debug/settings/llm-model-metadata-routes.ts` per design D7 and mount it in `src/debug/settings-api-router.ts`. Verify: `bun test tests/debug/settings/`
-- [ ] 4.2 Add `LlmModelMetadataResponseSchema`, the GET fetcher, and the nullable base fields on `PublicProviderAccountSchema` in `client/settings/fetcher-schemas-llm-providers.ts`, with schema round-trip tests in `tests/client/settings/`. Verify: `bun test tests/client/settings/`
+- [x] 4.2 Add `LlmModelMetadataResponseSchema`, the GET fetcher, and the nullable base fields on `PublicProviderAccountSchema` in `client/settings/fetcher-schemas-llm-providers.ts`, with schema round-trip tests in `tests/client/settings/`. Verify: `bun test tests/client/settings/`
 
 ## 5. Settings UI preview
 
