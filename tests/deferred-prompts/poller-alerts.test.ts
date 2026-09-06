@@ -15,6 +15,7 @@ import {
   createAlertPrompt,
   getAlertPrompt,
   updateAlertActivityState,
+  updateAlertMatchState,
 } from '../../src/deferred-prompts/alerts.js'
 import * as alertsModule from '../../src/deferred-prompts/alerts.js'
 import { pollAlertsOnce } from '../../src/deferred-prompts/poller-alerts.js'
@@ -33,6 +34,14 @@ import {
   seedTestTaskInstance,
   setupTestDb,
 } from '../utils/test-helpers.js'
+
+const createPastBaselineAlert = (
+  ...args: Parameters<typeof createAlertPrompt>
+): ReturnType<typeof createAlertPrompt> => {
+  const alert = createAlertPrompt(...args)
+  updateAlertMatchState(alert.id, alert.createdByUserId, '2020-01-01T00:00:00.000Z', [])
+  return alert
+}
 
 // Module-scope factory: the unresolvable-pin branch stays outside test
 // bodies so the no-conditional-in-test rule keeps applying to them.
@@ -121,7 +130,7 @@ describe('pollAlertsOnce — task instance pinning', () => {
   })
 
   test('firing pinned alert dispatches its narration turn against the pinned instance provider', async () => {
-    createAlertPrompt(
+    createPastBaselineAlert(
       PIN_USER,
       'Notify on done',
       { field: 'task.status', op: 'eq', value: 'done' },
@@ -188,7 +197,7 @@ describe('pollAlertsOnce — task instance pinning', () => {
   })
 
   test('null-pinned alert evaluates against the context current instance as today', async () => {
-    createAlertPrompt(PIN_USER, 'Notify on done', { field: 'task.status', op: 'eq', value: 'done' })
+    createPastBaselineAlert(PIN_USER, 'Notify on done', { field: 'task.status', op: 'eq', value: 'done' })
     const providerCalls: Array<[string, string | null]> = []
     const buildProviderFn = recordingBuildProviderFn(providerCalls, tasksProvider('done'), new Set())
 
@@ -468,6 +477,7 @@ describe('pollAlertsOnce — alert task watch', () => {
     watch.setTask(watchTask('task-1'))
     const pureAlert = createWatchAlert({ field: 'task.id', op: 'eq', value: 'task-1' }, 'Watch specific task')
     const labelAlert = createWatchAlert({ field: 'task.labels', op: 'contains', value: 'bug' }, 'Notify on bug label')
+    updateAlertMatchState(labelAlert.id, WATCH_USER, '2020-01-01T00:00:00.000Z', [])
     const buildProviderFn = watchBuildProviderFn(watch)
 
     await pollAlertsOnce(chat, buildProviderFn)
@@ -513,7 +523,7 @@ describe('pollAlertsOnce — alert task watch', () => {
       threadDelivery('t-watch'),
       'ti-watch',
     )
-    createAlertPrompt(
+    createPastBaselineAlert(
       WATCH_USER,
       'Notify on bug label',
       { field: 'task.labels', op: 'contains', value: 'bug' },
@@ -591,7 +601,8 @@ describe('pollAlertsOnce — alert task watch', () => {
     watch.setTask(watchTask('task-1', { assignee: 'alice' }))
     watch.setTask(watchTask('task-2'))
     const pureAlert = createWatchAlert({ field: 'task.id', op: 'eq', value: 'task-1' }, 'Watch task-1')
-    createWatchAlert({ field: 'task.status', op: 'eq', value: 'done' }, 'Notify when done')
+    const cooldownAlert = createWatchAlert({ field: 'task.status', op: 'eq', value: 'done' }, 'Notify when done')
+    updateAlertMatchState(cooldownAlert.id, WATCH_USER, '2020-01-01T00:00:00.000Z', [])
     const buildProviderFn = watchBuildProviderFn(watch)
 
     await pollAlertsOnce(chat, buildProviderFn)
@@ -672,6 +683,7 @@ describe('pollAlertsOnce — alert task watch', () => {
         { field: 'task.status', op: 'eq', value: 'done' },
       ],
     })
+    updateAlertMatchState(alert.id, WATCH_USER, '2020-01-01T00:00:00.000Z', [])
     const buildProviderFn = watchBuildProviderFn(watch)
 
     await pollAlertsOnce(chat, buildProviderFn)
@@ -1020,7 +1032,7 @@ describe('pollAlertsOnce — alert task activity', () => {
     state.setHistory('task-1', [activity('e1', T1)])
     state.setTask({ id: 'task-5', title: 'Field task', url: 'http://test/task-5', status: 'done' })
     const activityAlert = createActivityAlert({ kind: 'activity', taskId: 'task-1' })
-    createAlertPrompt(
+    createPastBaselineAlert(
       ACTIVITY_USER,
       'Field alert',
       { field: 'task.status', op: 'eq', value: 'done' },

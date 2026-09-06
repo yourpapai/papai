@@ -50,7 +50,9 @@ export const watchTaskChanged = (
 }
 
 /** Whole-list field evaluation: pure watches inside a mixed instance report
- * on snapshot-visible changes; filter alerts fire on the match edge (newly
+ * on snapshot-visible changes; filter alerts baseline on their first
+ * evaluation cycle (empty matched set and never fired → record the matched
+ * set, fire nothing — no backlog replay), then fire on the match edge (newly
  * matched tasks) and keep matched-set bookkeeping on non-firing cycles. */
 export function collectFieldFirings(
   fieldAlerts: AlertPrompt[],
@@ -68,6 +70,10 @@ export function collectFieldFirings(
     const matchedNow = matchedTasks.map((t) => t.id)
     const previous = new Set(alert.matchedTaskIds)
     const newMatchedTasks = matchedTasks.filter((t) => !previous.has(t.id))
+    if (alert.matchedTaskIds.length === 0 && alert.lastTriggeredAt === null) {
+      updateAlertMatchedTaskIds(alert.id, alert.createdByUserId, matchedNow)
+      continue
+    }
     if (newMatchedTasks.length === 0) {
       updateAlertMatchedTaskIds(alert.id, alert.createdByUserId, matchedNow)
     } else {
