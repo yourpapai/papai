@@ -58,10 +58,7 @@ export type SweepOutcome = { embedded: number; contexts: number }
 
 type EmbedResult = { readonly embeddings: readonly number[][] }
 
-const defaultSleep = (ms: number): Promise<void> =>
-  new Promise<void>((resolve) => {
-    setTimeout(resolve, ms)
-  })
+const defaultSleep: (ms: number) => Promise<void> = (ms) => Bun.sleep(ms)
 
 /** Retry an exhausted embed batch with the injected backoff sleep; rethrows after the final attempt. */
 function embedWithRetries(
