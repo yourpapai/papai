@@ -91,3 +91,31 @@ export const alertConditionSchema: z.ZodType<AlertCondition> = z
   .describe(
     'Event-based trigger: watch task fields across tasks, or new activity entries on one task (kind: "activity" with a taskId).',
   )
+
+// --- Tool input: condition object or JSON-encoded string ---
+
+type ConditionInputParseResult = { success: true; data: AlertCondition } | { success: false; error: string }
+
+export const alertConditionInputSchema = z.union([
+  alertConditionSchema,
+  z
+    .string()
+    .describe(
+      'The same condition object, JSON-encoded as a string (e.g. \'{"kind":"activity","taskId":"417"}\'). Validated identically to the object form; prefer the object form.',
+    ),
+])
+
+export function parseConditionInput(condition: unknown): ConditionInputParseResult {
+  let value = condition
+  if (typeof value === 'string') {
+    try {
+      value = JSON.parse(value)
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : String(error)
+      return { success: false, error: `Invalid condition: value is not valid JSON: ${detail}` }
+    }
+  }
+  const parseResult = alertConditionSchema.safeParse(value)
+  if (parseResult.success) return { success: true, data: parseResult.data }
+  return { success: false, error: `Invalid condition: ${parseResult.error.message}` }
+}
