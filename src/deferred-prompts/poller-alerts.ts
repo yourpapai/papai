@@ -32,7 +32,7 @@ import {
 } from './poller-alerts-grouping.js'
 import { buildBatchSummary, mergeAlertPrompts } from './poller-alerts-summary.js'
 import type { AlertEvaluation } from './poller-alerts-watch.js'
-import { collectFieldFirings, collectPureWatchFiring } from './poller-alerts-watch.js'
+import { collectFieldFirings, collectPureWatchFiring, needsFirstCycleBaseline } from './poller-alerts-watch.js'
 import { mergeExecutionMetadata } from './poller-scheduled.js'
 import { resolveProactivePlatformInstanceId, sendProactiveMessage } from './proactive-delivery.js'
 import { dispatchExecution, type BuildProviderFn, type DeferredExecutionContext } from './proactive-llm.js'
@@ -149,7 +149,7 @@ async function executeAlertsForContext(
     // context must also count assignee/labels changes (spec: task-watch-alerts).
     tasks = enrichedTasks ?? lightTasks
     fields = enrichedTasks === null ? LIGHTWEIGHT_SNAPSHOT_FIELDS : RICH_SNAPSHOT_FIELDS
-    if (hasTaskChanges(tasks, snapshots, fields)) {
+    if (hasTaskChanges(tasks, snapshots, fields) || needsFirstCycleBaseline(fieldAlerts)) {
       snapshotEligible = true
       firing.push(...collectFieldFirings(fieldAlerts, tasks, snapshots, evalNow, fields))
     }

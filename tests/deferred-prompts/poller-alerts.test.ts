@@ -18,6 +18,7 @@ import {
   updateAlertMatchState,
 } from '../../src/deferred-prompts/alerts.js'
 import * as alertsModule from '../../src/deferred-prompts/alerts.js'
+import { LIGHTWEIGHT_SNAPSHOT_FIELDS } from '../../src/deferred-prompts/change-gate.js'
 import { pollAlertsOnce } from '../../src/deferred-prompts/poller-alerts.js'
 import type { BuildProviderFn } from '../../src/deferred-prompts/proactive-llm.js'
 import { getSnapshotsForUser, updateSnapshots } from '../../src/deferred-prompts/snapshots.js'
@@ -470,6 +471,28 @@ describe('pollAlertsOnce — alert task watch', () => {
 
     expect(sentMessages).toHaveLength(1)
     expect(getAlertPrompt(alert.id, WATCH_USER)!.lastTriggeredAt).not.toBeNull()
+  })
+
+  test('a fresh filter alert baselines on a quiet cycle and fires for the first later match', async () => {
+    const watch = makeWatchProvider()
+    watch.setTask(watchTask('task-1', { projectId: 'proj-1' }))
+    updateSnapshots(WATCH_USER, [watchTask('task-1', { projectId: 'proj-1' })], LIGHTWEIGHT_SNAPSHOT_FIELDS)
+    const alert = createWatchAlert({ field: 'task.status', op: 'eq', value: 'done' }, 'Notify when done')
+    const buildProviderFn = watchBuildProviderFn(watch)
+
+    await pollAlertsOnce(chat, buildProviderFn)
+
+    expect(sentMessages).toHaveLength(0)
+    expect(getAlertPrompt(alert.id, WATCH_USER)!.lastActivityCursor).not.toBeNull()
+
+    watch.setTask(watchTask('task-1', { projectId: 'proj-1', status: 'done' }))
+    await pollAlertsOnce(chat, buildProviderFn)
+
+    expect(sentMessages).toHaveLength(1)
+
+    await pollAlertsOnce(chat, buildProviderFn)
+
+    expect(sentMessages).toHaveLength(1)
   })
 
   test('mixed instance keeps the whole-list path with enrichment and pure watches still firing', async () => {

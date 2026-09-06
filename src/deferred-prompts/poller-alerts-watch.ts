@@ -85,6 +85,19 @@ export function collectFieldFirings(
   return firing
 }
 
+/** True when some filter alert has never been evaluated: never fired and
+ * never baselined (lastActivityCursor doubles as the filter alert's baseline
+ * marker). Such an alert must evaluate on its first cycle even when the
+ * tracker is quiet — deferring the baseline to the first change would
+ * swallow the very first match the alert was created for. Pure watches never
+ * set lastActivityCursor, so they are excluded or the change gate would
+ * never close again. */
+export const needsFirstCycleBaseline = (fieldAlerts: AlertPrompt[]): boolean =>
+  fieldAlerts.some(
+    (alert) =>
+      !isPureWatchCondition(alert.condition) && alert.lastTriggeredAt === null && alert.lastActivityCursor === null,
+  )
+
 /** Pure-watch evaluation: an alert fires when a task it matches has a
  * snapshot-visible change; matched-set bookkeeping is kept for non-firing
  * cycles. Missing watched tasks simply match nothing and never fire. */
