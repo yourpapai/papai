@@ -144,6 +144,7 @@ export const updateAlertPrompt = (
     alertConditionSchema.parse(updates.condition)
     set.condition = JSON.stringify(updates.condition)
     set.matchedTaskIds = '[]'
+    set.lastTriggeredAt = null
     set.lastActivityCursor = null
   }
   if (updates.cooldownMinutes !== undefined) set.cooldownMinutes = updates.cooldownMinutes

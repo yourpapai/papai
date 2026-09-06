@@ -5,7 +5,12 @@
 
 import { beforeEach, describe, expect, test } from 'bun:test'
 
-import { createAlertPrompt, getAlertPrompt, updateAlertMatchState } from '../../src/deferred-prompts/alerts.js'
+import {
+  createAlertPrompt,
+  getAlertPrompt,
+  updateAlertMatchState,
+  updateAlertPrompt,
+} from '../../src/deferred-prompts/alerts.js'
 import { LIGHTWEIGHT_SNAPSHOT_FIELDS, RICH_SNAPSHOT_FIELDS } from '../../src/deferred-prompts/change-gate.js'
 import {
   collectFieldFirings,
@@ -221,6 +226,24 @@ describe('collectFieldFirings — filter-alert baseline-on-create', () => {
 
     expect(firing).toHaveLength(1)
     expect(firing[0]!.newMatchedTasks.map((task) => task.id)).toEqual(['t1'])
+  })
+
+  test('a condition edit on an alert that has fired re-baselines instead of replaying the backlog', () => {
+    const alert = makeFilterAlert()
+    updateAlertMatchState(alert.id, USER, '2026-01-01T00:00:00.000Z', ['t1'])
+    updateAlertPrompt(alert.id, USER, { condition: { field: 'task.status', op: 'neq', value: 'done' } })
+    const edited = getAlertPrompt(alert.id, USER)!
+
+    const firing = collectFieldFirings(
+      [edited],
+      [makeTask('t1'), makeTask('t2')],
+      snapshotsFrom({}),
+      new Date(),
+      RICH_SNAPSHOT_FIELDS,
+    )
+
+    expect(firing).toHaveLength(0)
+    expect(getAlertPrompt(alert.id, USER)!.matchedTaskIds).toEqual(['t1', 't2'])
   })
 
   test('an alert baselined on an empty first cycle fires for the first task matching in a later cycle', () => {

@@ -166,6 +166,7 @@ describe('alert prompt CRUD', () => {
     expect(updated).not.toBeNull()
     expect(updated!.condition).toEqual(newCondition)
     expect(updated!.matchedTaskIds).toEqual([])
+    expect(updated!.lastTriggeredAt).toBeNull()
   })
 
   test('updateAlertPrompt preserves matched task ids when only prompt text changes', () => {
