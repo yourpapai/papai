@@ -4,7 +4,7 @@
 // See LICENSE in the project root for details.
 
 import type { Task } from '../providers/types.js'
-import { evaluateCondition, updateAlertMatchedTaskIds } from './alerts.js'
+import { evaluateCondition, updateAlertBaseline, updateAlertMatchedTaskIds } from './alerts.js'
 import { RICH_SNAPSHOT_FIELDS } from './change-gate.js'
 import { isPureWatchCondition } from './condition-eval.js'
 import { SNAPSHOT_FIELDS, TRACKED_FIELDS_ROW } from './snapshots.js'
@@ -50,8 +50,12 @@ export const watchTaskChanged = (
 }
 
 /** Whole-list field evaluation: pure watches inside a mixed instance report
- * on snapshot-visible changes; filter alerts fire on the match edge (newly
- * matched tasks) and keep matched-set bookkeeping on non-firing cycles. */
+ * on snapshot-visible changes; filter alerts baseline once per alert life on
+ * their first evaluation cycle (never fired and never baselined → record the
+ * matched set, fire nothing — no backlog replay), then fire on the match
+ * edge — including the first match after an empty episode, so a drained
+ * match set is never re-baselined — and keep matched-set bookkeeping on
+ * non-firing cycles. */
 export function collectFieldFirings(
   fieldAlerts: AlertPrompt[],
   tasks: Task[],
@@ -68,6 +72,10 @@ export function collectFieldFirings(
     const matchedNow = matchedTasks.map((t) => t.id)
     const previous = new Set(alert.matchedTaskIds)
     const newMatchedTasks = matchedTasks.filter((t) => !previous.has(t.id))
+    if (alert.lastTriggeredAt === null && alert.lastActivityCursor === null) {
+      updateAlertBaseline(alert.id, alert.createdByUserId, matchedNow, evalNow.toISOString())
+      continue
+    }
     if (newMatchedTasks.length === 0) {
       updateAlertMatchedTaskIds(alert.id, alert.createdByUserId, matchedNow)
     } else {
@@ -76,6 +84,19 @@ export function collectFieldFirings(
   }
   return firing
 }
+
+/** True when some filter alert has never been evaluated: never fired and
+ * never baselined (lastActivityCursor doubles as the filter alert's baseline
+ * marker). Such an alert must evaluate on its first cycle even when the
+ * tracker is quiet — deferring the baseline to the first change would
+ * swallow the very first match the alert was created for. Pure watches never
+ * set lastActivityCursor, so they are excluded or the change gate would
+ * never close again. */
+export const needsFirstCycleBaseline = (fieldAlerts: AlertPrompt[]): boolean =>
+  fieldAlerts.some(
+    (alert) =>
+      !isPureWatchCondition(alert.condition) && alert.lastTriggeredAt === null && alert.lastActivityCursor === null,
+  )
 
 /** Pure-watch evaluation: an alert fires when a task it matches has a
  * snapshot-visible change; matched-set bookkeeping is kept for non-firing

@@ -8,9 +8,9 @@ import { and, eq, gte, lt, or } from 'drizzle-orm'
 import { getDrizzleDb } from '../db/drizzle.js'
 import { alertPrompts, type AlertPromptRow } from '../db/schema.js'
 import { logger } from '../logger.js'
+import { alertConditionSchema } from './condition-schema.js'
 import { defaultDeliveryTarget, rowToDeliveryTarget, storageContextIdForTarget } from './delivery-target.js'
 import {
-  alertConditionSchema,
   DEFAULT_EXECUTION_METADATA,
   parseExecutionMetadata,
   parseMatchedTaskIds,
@@ -144,6 +144,7 @@ export const updateAlertPrompt = (
     alertConditionSchema.parse(updates.condition)
     set.condition = JSON.stringify(updates.condition)
     set.matchedTaskIds = '[]'
+    set.lastTriggeredAt = null
     set.lastActivityCursor = null
   }
   if (updates.cooldownMinutes !== undefined) set.cooldownMinutes = updates.cooldownMinutes
@@ -179,46 +180,6 @@ export const cancelAlertPrompt = (id: string, userId: string): AlertPrompt | nul
     .run()
   log.info({ id, userId }, 'Alert prompt cancelled')
   return getAlertPrompt(id, userId)
-}
-
-export const updateAlertMatchedTaskIds = (id: string, userId: string, matchedTaskIds: string[]): void => {
-  log.debug({ id, userId, count: matchedTaskIds.length }, 'updateAlertMatchedTaskIds called')
-  const db = getDrizzleDb()
-  db.update(alertPrompts)
-    .set({ matchedTaskIds: JSON.stringify(matchedTaskIds) })
-    .where(and(eq(alertPrompts.id, id), eq(alertPrompts.createdByUserId, userId)))
-    .run()
-  log.info({ id, userId }, 'Alert matched task ids updated')
-}
-
-export const updateAlertMatchState = (
-  id: string,
-  userId: string,
-  lastTriggeredAt: string,
-  matchedTaskIds: string[],
-): void => {
-  log.debug({ id, userId, lastTriggeredAt, count: matchedTaskIds.length }, 'updateAlertMatchState called')
-  const db = getDrizzleDb()
-  db.update(alertPrompts)
-    .set({ lastTriggeredAt, matchedTaskIds: JSON.stringify(matchedTaskIds) })
-    .where(and(eq(alertPrompts.id, id), eq(alertPrompts.createdByUserId, userId)))
-    .run()
-  log.info({ id, userId }, 'Alert match state updated')
-}
-
-export const updateAlertActivityState = (
-  id: string,
-  userId: string,
-  lastTriggeredAt: string | null,
-  lastActivityCursor: string,
-): void => {
-  log.debug({ id, userId, lastTriggeredAt, lastActivityCursor }, 'updateAlertActivityState called')
-  const db = getDrizzleDb()
-  db.update(alertPrompts)
-    .set({ lastTriggeredAt, lastActivityCursor })
-    .where(and(eq(alertPrompts.id, id), eq(alertPrompts.createdByUserId, userId)))
-    .run()
-  log.info({ id, userId }, 'Alert activity state updated')
 }
 
 export const getActiveAlertPrompts = (): AlertPrompt[] => {
@@ -286,3 +247,9 @@ export const cancelActiveAlertsPinnedToInstance = (taskInstanceId: string, confi
 }
 
 export { evaluateCondition, describeCondition } from './condition-eval.js'
+export {
+  updateAlertActivityState,
+  updateAlertBaseline,
+  updateAlertMatchState,
+  updateAlertMatchedTaskIds,
+} from './alert-state.js'

@@ -15,8 +15,10 @@ import {
   createAlertPrompt,
   getAlertPrompt,
   updateAlertActivityState,
+  updateAlertMatchState,
 } from '../../src/deferred-prompts/alerts.js'
 import * as alertsModule from '../../src/deferred-prompts/alerts.js'
+import { LIGHTWEIGHT_SNAPSHOT_FIELDS } from '../../src/deferred-prompts/change-gate.js'
 import { pollAlertsOnce } from '../../src/deferred-prompts/poller-alerts.js'
 import type { BuildProviderFn } from '../../src/deferred-prompts/proactive-llm.js'
 import { getSnapshotsForUser, updateSnapshots } from '../../src/deferred-prompts/snapshots.js'
@@ -33,6 +35,14 @@ import {
   seedTestTaskInstance,
   setupTestDb,
 } from '../utils/test-helpers.js'
+
+const createPastBaselineAlert = (
+  ...args: Parameters<typeof createAlertPrompt>
+): ReturnType<typeof createAlertPrompt> => {
+  const alert = createAlertPrompt(...args)
+  updateAlertMatchState(alert.id, alert.createdByUserId, '2020-01-01T00:00:00.000Z', [])
+  return alert
+}
 
 // Module-scope factory: the unresolvable-pin branch stays outside test
 // bodies so the no-conditional-in-test rule keeps applying to them.
@@ -121,7 +131,7 @@ describe('pollAlertsOnce — task instance pinning', () => {
   })
 
   test('firing pinned alert dispatches its narration turn against the pinned instance provider', async () => {
-    createAlertPrompt(
+    createPastBaselineAlert(
       PIN_USER,
       'Notify on done',
       { field: 'task.status', op: 'eq', value: 'done' },
@@ -188,7 +198,7 @@ describe('pollAlertsOnce — task instance pinning', () => {
   })
 
   test('null-pinned alert evaluates against the context current instance as today', async () => {
-    createAlertPrompt(PIN_USER, 'Notify on done', { field: 'task.status', op: 'eq', value: 'done' })
+    createPastBaselineAlert(PIN_USER, 'Notify on done', { field: 'task.status', op: 'eq', value: 'done' })
     const providerCalls: Array<[string, string | null]> = []
     const buildProviderFn = recordingBuildProviderFn(providerCalls, tasksProvider('done'), new Set())
 
@@ -463,11 +473,34 @@ describe('pollAlertsOnce — alert task watch', () => {
     expect(getAlertPrompt(alert.id, WATCH_USER)!.lastTriggeredAt).not.toBeNull()
   })
 
+  test('a fresh filter alert baselines on a quiet cycle and fires for the first later match', async () => {
+    const watch = makeWatchProvider()
+    watch.setTask(watchTask('task-1', { projectId: 'proj-1' }))
+    updateSnapshots(WATCH_USER, [watchTask('task-1', { projectId: 'proj-1' })], LIGHTWEIGHT_SNAPSHOT_FIELDS)
+    const alert = createWatchAlert({ field: 'task.status', op: 'eq', value: 'done' }, 'Notify when done')
+    const buildProviderFn = watchBuildProviderFn(watch)
+
+    await pollAlertsOnce(chat, buildProviderFn)
+
+    expect(sentMessages).toHaveLength(0)
+    expect(getAlertPrompt(alert.id, WATCH_USER)!.lastActivityCursor).not.toBeNull()
+
+    watch.setTask(watchTask('task-1', { projectId: 'proj-1', status: 'done' }))
+    await pollAlertsOnce(chat, buildProviderFn)
+
+    expect(sentMessages).toHaveLength(1)
+
+    await pollAlertsOnce(chat, buildProviderFn)
+
+    expect(sentMessages).toHaveLength(1)
+  })
+
   test('mixed instance keeps the whole-list path with enrichment and pure watches still firing', async () => {
     const watch = makeWatchProvider()
     watch.setTask(watchTask('task-1'))
     const pureAlert = createWatchAlert({ field: 'task.id', op: 'eq', value: 'task-1' }, 'Watch specific task')
     const labelAlert = createWatchAlert({ field: 'task.labels', op: 'contains', value: 'bug' }, 'Notify on bug label')
+    updateAlertMatchState(labelAlert.id, WATCH_USER, '2020-01-01T00:00:00.000Z', [])
     const buildProviderFn = watchBuildProviderFn(watch)
 
     await pollAlertsOnce(chat, buildProviderFn)
@@ -513,7 +546,7 @@ describe('pollAlertsOnce — alert task watch', () => {
       threadDelivery('t-watch'),
       'ti-watch',
     )
-    createAlertPrompt(
+    createPastBaselineAlert(
       WATCH_USER,
       'Notify on bug label',
       { field: 'task.labels', op: 'contains', value: 'bug' },
@@ -591,7 +624,8 @@ describe('pollAlertsOnce — alert task watch', () => {
     watch.setTask(watchTask('task-1', { assignee: 'alice' }))
     watch.setTask(watchTask('task-2'))
     const pureAlert = createWatchAlert({ field: 'task.id', op: 'eq', value: 'task-1' }, 'Watch task-1')
-    createWatchAlert({ field: 'task.status', op: 'eq', value: 'done' }, 'Notify when done')
+    const cooldownAlert = createWatchAlert({ field: 'task.status', op: 'eq', value: 'done' }, 'Notify when done')
+    updateAlertMatchState(cooldownAlert.id, WATCH_USER, '2020-01-01T00:00:00.000Z', [])
     const buildProviderFn = watchBuildProviderFn(watch)
 
     await pollAlertsOnce(chat, buildProviderFn)
@@ -672,6 +706,7 @@ describe('pollAlertsOnce — alert task watch', () => {
         { field: 'task.status', op: 'eq', value: 'done' },
       ],
     })
+    updateAlertMatchState(alert.id, WATCH_USER, '2020-01-01T00:00:00.000Z', [])
     const buildProviderFn = watchBuildProviderFn(watch)
 
     await pollAlertsOnce(chat, buildProviderFn)
@@ -679,6 +714,23 @@ describe('pollAlertsOnce — alert task watch', () => {
     expect(watch.listCalls.length).toBeGreaterThan(0)
 
     await pollAlertsOnce(chat, buildProviderFn)
+    expect(sentMessages).toHaveLength(1)
+    expect(getAlertPrompt(alert.id, WATCH_USER)!.lastTriggeredAt).not.toBeNull()
+  })
+
+  test('a per-task watch observes a GitHub close via its targeted fetch and fires', async () => {
+    const watch = makeWatchProvider()
+    watch.setTask(watchTask('task-1', { status: 'open' }))
+    const alert = createWatchAlert({ field: 'task.id', op: 'eq', value: 'task-1' }, 'Watch task-1')
+    const buildProviderFn = watchBuildProviderFn(watch)
+
+    await pollAlertsOnce(chat, buildProviderFn)
+    expect(watch.getTaskCalls).toEqual(['task-1'])
+    expect(sentMessages).toHaveLength(0)
+
+    watch.setTask(watchTask('task-1', { status: 'closed' }))
+    await pollAlertsOnce(chat, buildProviderFn)
+
     expect(sentMessages).toHaveLength(1)
     expect(getAlertPrompt(alert.id, WATCH_USER)!.lastTriggeredAt).not.toBeNull()
   })
@@ -1020,7 +1072,7 @@ describe('pollAlertsOnce — alert task activity', () => {
     state.setHistory('task-1', [activity('e1', T1)])
     state.setTask({ id: 'task-5', title: 'Field task', url: 'http://test/task-5', status: 'done' })
     const activityAlert = createActivityAlert({ kind: 'activity', taskId: 'task-1' })
-    createAlertPrompt(
+    createPastBaselineAlert(
       ACTIVITY_USER,
       'Field alert',
       { field: 'task.status', op: 'eq', value: 'done' },
@@ -1037,5 +1089,25 @@ describe('pollAlertsOnce — alert task activity', () => {
     expect(state.historyCalls.map(([taskId]) => taskId)).toEqual(['task-1'])
     expect(sentMessages).toHaveLength(1)
     expect(getAlertPrompt(activityAlert.id, ACTIVITY_USER)!.lastActivityCursor).toBe(T1)
+  })
+
+  test('a GitHub close surfaces as status activity that fires an activity alert', async () => {
+    const state = makeActivityProvider()
+    state.setHistory('task-1', [activity('reopen-1', T1, { category: 'status', added: 'open' })])
+    const alert = createActivityAlert({ kind: 'activity', taskId: 'task-1', categories: ['status'] })
+
+    await pollAlertsOnce(chat, activityBuildProviderFn(state))
+
+    expect(sentMessages).toHaveLength(0)
+    expect(getAlertPrompt(alert.id, ACTIVITY_USER)!.lastActivityCursor).toBe(T1)
+
+    state.setHistory('task-1', [
+      activity('reopen-1', T1, { category: 'status', added: 'open' }),
+      activity('close-1', T2, { category: 'status', added: 'closed' }),
+    ])
+    await pollAlertsOnce(chat, activityBuildProviderFn(state))
+
+    expect(sentMessages).toHaveLength(1)
+    expect(getAlertPrompt(alert.id, ACTIVITY_USER)!.lastActivityCursor).toBe(T2)
   })
 })

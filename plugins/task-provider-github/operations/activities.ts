@@ -3,7 +3,7 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import type { Activity } from 'papai/plugin-types'
+import type { Activity, Comment } from 'papai/plugin-types'
 import { z } from 'zod'
 
 import { logger } from '../../../src/logger.js'
@@ -12,6 +12,7 @@ import type { GitHubConfig } from '../client.js'
 import { githubPaginate } from '../client.js'
 import { GitHubIssueEventSchema } from '../schemas/event.js'
 import type { GitHubIssueEvent } from '../schemas/event.js'
+import { githubListTaskComments } from './comments.js'
 
 const log = logger.child({ scope: 'provider:github:activities' })
 
@@ -26,6 +27,15 @@ export interface GitHubTaskEventsParams {
   end?: string
   author?: string
 }
+
+const mapCommentToActivity = (comment: Comment): Activity => ({
+  id: comment.id,
+  // GitHub's comment schema makes created_at mandatory; the domain type keeps
+  // it optional for other providers, so an absent value folds to the epoch.
+  timestamp: comment.createdAt ?? new Date(0).toISOString(),
+  author: comment.author,
+  category: 'comment',
+})
 
 /**
  * Maps a known issue event onto the normalized activity shape; unknown event
@@ -52,11 +62,13 @@ const mapEventToActivity = (event: GitHubIssueEvent): Activity | null => {
 }
 
 /**
- * Issue events → activity history. The endpoint has no server-side filters,
- * so every page is fetched (bounded by events-per-issue), unknown types are
- * dropped, and params apply client-side in a fixed order: author/category
- * equality, start/end instant bounds, deterministic ascending timestamp
- * sort, optional reverse, then the limit/offset slice.
+ * Issue activity history: issue events plus issue comments as `comment`
+ * activities (the events endpoint never emits `commented`). The comments
+ * fetch is skipped when the category filter excludes `comment`; both sources
+ * then run through one shared client-side pipeline in a fixed order:
+ * author/category equality, start/end instant bounds, deterministic ascending
+ * timestamp sort, optional reverse, then the limit/offset slice — sliced once
+ * after the merge.
  */
 export async function githubListTaskEvents(
   config: GitHubConfig,
@@ -68,7 +80,12 @@ export async function githubListTaskEvents(
     const events = await githubPaginate(config, `/repos/${config.repo}/issues/${taskId}/events`, {
       extractPage: (data: unknown): GitHubIssueEvent[] => eventPageSchema.parse(data),
     })
-    const activities = events.map(mapEventToActivity).filter((activity): activity is Activity => activity !== null)
+    const eventActivities = events.map(mapEventToActivity).filter((activity): activity is Activity => activity !== null)
+    const includeComments = params?.categories === undefined || params.categories.includes('comment')
+    const commentActivities: Activity[] = includeComments
+      ? (await githubListTaskComments(config, taskId)).map(mapCommentToActivity)
+      : []
+    const activities = [...eventActivities, ...commentActivities]
     const offset = params?.offset ?? 0
     const limit = params?.limit ?? Number.MAX_SAFE_INTEGER
     const filtered = activities.filter((activity) => {

@@ -9,7 +9,7 @@ import assert from 'node:assert/strict'
 import { tool } from 'ai'
 import { z } from 'zod'
 
-import { alertConditionSchema } from '../src/deferred-prompts/types.js'
+import { alertConditionSchema } from '../src/deferred-prompts/condition-schema.js'
 import { emitLlmStart, emitLlmEnd, type ResolvedStreamTextResult } from '../src/llm-orchestrator-events.js'
 import { makeTools } from '../src/tools/index.js'
 import { createMockProvider } from './tools/mock-provider.js'

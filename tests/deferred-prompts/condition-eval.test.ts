@@ -13,7 +13,7 @@ import {
   isPureActivityCondition,
   isPureWatchCondition,
 } from '../../src/deferred-prompts/condition-eval.js'
-import { alertConditionSchema } from '../../src/deferred-prompts/types.js'
+import { alertConditionSchema } from '../../src/deferred-prompts/condition-schema.js'
 import type { Task } from '../../src/providers/types.js'
 
 const task: Task = { id: 'task-1', title: 'Login work', url: 'https://tasks.invalid/task-1' }

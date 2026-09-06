@@ -19,7 +19,7 @@ import {
   defaultCountTokens,
   prepareDefaultCountTokens,
 } from '../../src/commands/context-collector.js'
-import { alertConditionSchema } from '../../src/deferred-prompts/types.js'
+import { alertConditionSchema } from '../../src/deferred-prompts/condition-schema.js'
 import { mockLogger } from '../utils/test-helpers.js'
 
 function makeDeps(overrides: Partial<ContextCollectorDeps> | null): ContextCollectorDeps {
