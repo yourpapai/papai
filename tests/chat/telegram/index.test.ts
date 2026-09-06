@@ -91,6 +91,10 @@ function requireAuth(auth: AuthorizationResult | undefined): AuthorizationResult
   return auth
 }
 
+function entitiesOf(options: Partial<{ entities: unknown[]; message_thread_id: number }> | undefined): unknown[] {
+  return options?.entities ?? []
+}
+
 function isBotWithSendMessage(
   value: unknown,
 ): value is { api: { sendMessage: (...args: SendMessageCall) => Promise<unknown> } } {
@@ -392,6 +396,50 @@ describe('TelegramChatProvider', () => {
           ],
         },
       ])
+    })
+
+    test('chunks over-limit delivery with the mention prefix on the first chunk only', async () => {
+      const provider = createTelegramProvider()
+      const bot = getProviderBot(provider)
+
+      const calls: SendMessageCall[] = []
+      bot.api.sendMessage = (...args: SendMessageCall): Promise<unknown> => {
+        calls.push(args)
+        return Promise.resolve(undefined)
+      }
+
+      const target: DeferredDeliveryTarget = {
+        contextId: '99',
+        contextType: 'group',
+        threadId: '123',
+        audience: 'personal',
+        mentionUserIds: ['42'],
+        createdByUserId: '42',
+        createdByUsername: 'alice',
+      }
+
+      await provider.sendMessage('telegram-default', target, 'x'.repeat(5000))
+
+      expect(calls.length).toBeGreaterThan(1)
+      const firstText = calls[0]![1]
+      expect(firstText.startsWith('@alice ')).toBe(true)
+      expect(calls[0]![2]?.entities).toContainEqual({
+        offset: 0,
+        length: 6,
+        type: 'text_mention',
+        user: { id: 42, is_bot: false, first_name: 'alice' },
+      })
+      for (const [, text, options] of calls.slice(1)) {
+        expect(text.includes('@alice')).toBe(false)
+        expect(entitiesOf(options)).toHaveLength(0)
+      }
+      for (const [, text, options] of calls) {
+        expect(text.length).toBeLessThanOrEqual(4096)
+        expect(options?.message_thread_id).toBe(123)
+      }
+      const joined = calls.map(([text]) => text).join('')
+      expect(joined.startsWith('@alice ')).toBe(true)
+      expect(joined.replace('@alice ', '')).toBe('x'.repeat(5000))
     })
   })
 

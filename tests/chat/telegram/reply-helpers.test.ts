@@ -25,6 +25,7 @@ import {
   sendReplacementButtonReply,
   sendReplacementTextReply,
 } from '../../../src/chat/telegram/reply-helpers.js'
+import { createTrackedLoggerMock } from '../../utils/logger-mock.js'
 import { mockLogger } from '../../utils/test-helpers.js'
 
 /** Create mock Context with message for tests */
@@ -286,5 +287,137 @@ describe('replacement reply helpers', () => {
     expect(replyMarkup).toBeDefined()
     assert(replyMarkup !== undefined)
     expect(replyMarkup.inline_keyboard).toEqual([])
+  })
+})
+
+/** Reply context whose sends resolve per-call outcomes (Error entries reject) — module scope for no-conditional-in-test. */
+function makeChunkReplyCtx(outcomes: ReadonlyArray<SentButtonMessage | Error>): {
+  ctx: ButtonReplyCapableContext
+  texts: string[]
+  optionCalls: Array<Record<string, unknown> | undefined>
+} {
+  const texts: string[] = []
+  const optionCalls: Array<Record<string, unknown> | undefined> = []
+  let callIndex = 0
+  const ctx: ButtonReplyCapableContext = {
+    reply: (text: string, opts?: Record<string, unknown>): Promise<SentButtonMessage> => {
+      const current = callIndex
+      callIndex += 1
+      texts.push(text)
+      optionCalls.push(opts)
+      const outcome = outcomes[current]
+      if (outcome === undefined) throw new Error(`No scripted reply outcome for call ${current}`)
+      return outcome instanceof Error ? Promise.reject(outcome) : Promise.resolve(outcome)
+    },
+  }
+  return { ctx, texts, optionCalls }
+}
+
+describe('sendFormattedReply chunked delivery', () => {
+  beforeEach(() => {
+    mockLogger()
+  })
+
+  test('sends ordered in-bounds chunks with the same reply parameters and returns the last send', async () => {
+    const { ctx, texts, optionCalls } = makeChunkReplyCtx([
+      { message_id: 11, chat: { id: 5 } },
+      { message_id: 22, chat: { id: 5 } },
+    ])
+    const buildReplyParams: ReplyParamsBuilder = () => ({ message_id: 77, message_thread_id: 44 })
+
+    const sent = await sendFormattedReply(ctx, 'x'.repeat(5000), buildReplyParams, undefined)
+
+    expect(texts.length).toBe(2)
+    for (const text of texts) {
+      expect(text.length).toBeLessThanOrEqual(4096)
+    }
+    expect(texts.join('')).toBe('x'.repeat(5000))
+    for (const opts of optionCalls) {
+      expect(opts?.['reply_parameters']).toEqual({ message_id: 77, message_thread_id: 44 })
+    }
+    expect(sent).toEqual({ messageId: 22, chatId: 5 })
+  })
+
+  test('carries the link-preview option on every chunk', async () => {
+    const { ctx, optionCalls } = makeChunkReplyCtx([
+      { message_id: 1, chat: { id: 1 } },
+      { message_id: 2, chat: { id: 1 } },
+    ])
+    await sendFormattedReply(ctx, 'x'.repeat(5000), () => undefined, { disableLinkPreview: true })
+    expect(optionCalls.length).toBe(2)
+    for (const opts of optionCalls) {
+      expect(opts?.['link_preview_options']).toEqual({ is_disabled: true })
+    }
+  })
+
+  test('sends a single message with entities when within the limit', async () => {
+    const { ctx, texts, optionCalls } = makeChunkReplyCtx([{ message_id: 42, chat: { id: 7 } }])
+    const sent = await sendFormattedReply(ctx, '**hello**', () => undefined, undefined)
+    expect(texts).toEqual(['hello'])
+    expect(optionCalls[0]?.['entities']).toEqual([{ offset: 0, length: 5, type: 'bold' }])
+    expect(sent).toEqual({ messageId: 42, chatId: 7 })
+  })
+
+  test('shifts entities fully inside a later chunk into its window', async () => {
+    const { ctx, texts, optionCalls } = makeChunkReplyCtx([
+      { message_id: 1, chat: { id: 1 } },
+      { message_id: 2, chat: { id: 1 } },
+    ])
+    const markdown = 'x'.repeat(4100) + '**bold**' + 'y'.repeat(200)
+
+    await sendFormattedReply(ctx, markdown, () => undefined, undefined)
+
+    expect(texts.length).toBe(2)
+    expect(optionCalls[0]?.['entities']).toEqual([])
+    expect(optionCalls[1]?.['entities']).toEqual([{ offset: 4, length: 4, type: 'bold' }])
+    expect(texts.join('')).toBe('x'.repeat(4100) + 'bold' + 'y'.repeat(200))
+  })
+
+  test('drops entities spanning a chunk cut', async () => {
+    const { ctx, texts, optionCalls } = makeChunkReplyCtx([
+      { message_id: 1, chat: { id: 1 } },
+      { message_id: 2, chat: { id: 1 } },
+    ])
+    const markdown = 'x'.repeat(4094) + '**abcdef**' + 'y'.repeat(200)
+
+    await sendFormattedReply(ctx, markdown, () => undefined, undefined)
+
+    expect(texts.length).toBe(2)
+    expect(texts[0]!.length).toBe(4096)
+    expect(optionCalls[0]?.['entities']).toEqual([])
+    expect(optionCalls[1]?.['entities']).toEqual([])
+    expect(texts.join('')).toBe('x'.repeat(4094) + 'abcdef' + 'y'.repeat(200))
+  })
+})
+
+// reply-helpers.ts binds its child logger at module-eval time, so force a fresh
+// evaluation under the tracked mock with a cache-busting query (mirrors
+// tests/llm-orchestrator-send.test.ts).
+const tracked = createTrackedLoggerMock()
+void mock.module('../../../src/logger.js', () => ({ logger: tracked.logger, getLogLevel: tracked.getLogLevel }))
+
+type HelpersModule = typeof import('../../../src/chat/telegram/reply-helpers.js')
+const isHelpersModule = (value: unknown): value is HelpersModule =>
+  typeof value === 'object' && value !== null && typeof Reflect.get(value, 'sendFormattedReply') === 'function'
+const loadedHelpers: unknown = await import(`../../../src/chat/telegram/reply-helpers.js?t=${crypto.randomUUID()}`)
+if (!isHelpersModule(loadedHelpers)) {
+  throw new Error('reply-helpers module did not export expected shape')
+}
+const { sendFormattedReply: bustedSendFormattedReply } = loadedHelpers
+
+describe('sendFormattedReply chunk failure (tracked logger, busted module)', () => {
+  test('a failing chunk logs a warn and later chunks still send', async () => {
+    const { ctx, texts } = makeChunkReplyCtx([
+      { message_id: 11, chat: { id: 5 } },
+      new Error('telegram down'),
+      { message_id: 33, chat: { id: 5 } },
+    ])
+
+    const sent = await bustedSendFormattedReply(ctx, 'x'.repeat(9000), () => undefined, undefined)
+
+    expect(texts.length).toBe(3)
+    expect(sent).toEqual({ messageId: 33, chatId: 5 })
+    const warn = tracked.getCallsByLevel('warn').find((entry) => entry.args[1] === 'Telegram chunk send failed')
+    expect(warn).toBeDefined()
   })
 })
