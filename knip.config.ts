@@ -176,6 +176,11 @@ export default {
     // (openspec/changes/usage-failure-queries) and by tests outside knip's
     // production project scope.
     'src/usage/failures.ts': ['exports'],
+    // The Telegram chunked-delivery splitter is the seam module of the in-flight
+    // response-delivery-path-fixes change (task 3.4): the sendFormattedReply and
+    // deferred sendMessage consumers land later in the same change; the unit
+    // suite consumes the export today. Remove together with the entry.
+    'src/chat/telegram/chunking.ts': ['exports'],
     // Proof-check module exports: the later-task consumers landed (proof-check-run,
     // proof-checks-read, poller, diagnostics); this now covers only test-only exports
     // (resetProofChecksForTest, resetProofDeliveryRecords) and test-only consumption.
