@@ -13,6 +13,8 @@ type ByokProviderEntry = {
   providerType: string
   baseUrl: string
   apiKey: string
+  baseProvider?: string | null
+  baseModel?: string | null
   verification: Verification
 }
 

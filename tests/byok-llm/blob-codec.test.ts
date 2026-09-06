@@ -12,6 +12,7 @@
 import { describe, expect, test } from 'bun:test'
 
 import { decodeByokBlob, encodeByokBlob } from '../../src/byok-llm/blob-codec.js'
+import type { LlmProviderAccount } from '../../src/llm-providers/types.js'
 
 describe('byok blob codec', () => {
   const legacyFull = {
@@ -32,6 +33,8 @@ describe('byok blob codec', () => {
           providerType: 'ollama' as const,
           baseUrl: 'http://x/v1',
           apiKey: 'k',
+          baseProvider: null,
+          baseModel: null,
           verification: { status: 'unverified' as const, error: null, at: null, models: [], modelsFetchedAt: null },
         },
       ],
@@ -115,5 +118,74 @@ describe('byok blob codec', () => {
       providerId: 'prov_legacy',
       model: '',
     })
+  })
+})
+
+describe('byok blob codec base references', () => {
+  const verification = { status: 'unverified' as const, error: null, at: null, models: [], modelsFetchedAt: null }
+
+  const providerWith = (base: { baseProvider: string | null; baseModel: string | null }): LlmProviderAccount => ({
+    id: 'prov_x',
+    label: 'm',
+    providerType: 'custom' as const,
+    baseUrl: 'http://x/v1',
+    apiKey: 'k',
+    ...base,
+    verification,
+  })
+
+  test('a v2 blob carries declared base references through encode and decode', () => {
+    const blob = {
+      v: 2 as const,
+      providers: [providerWith({ baseProvider: 'openai', baseModel: 'gpt-4o' })],
+      roles: { main: { providerId: 'prov_x', model: 'gpt-4o' }, small: null, embedding: null },
+    }
+
+    const decoded = decodeByokBlob(encodeByokBlob(blob))
+
+    expect(decoded.v).toBe(2)
+    expect(decoded.providers[0]?.baseProvider).toBe('openai')
+    expect(decoded.providers[0]?.baseModel).toBe('gpt-4o')
+  })
+
+  test('a legacy blob decodes with null base references', () => {
+    const decoded = decodeByokBlob({
+      llm_apikey: 'sk-x',
+      llm_baseurl: 'https://x/v1',
+      main_model: 'm',
+    })
+
+    expect(decoded.providers[0]?.baseProvider).toBeNull()
+    expect(decoded.providers[0]?.baseModel).toBeNull()
+  })
+
+  test('an old-shape v2 blob without base fields decodes additively unchanged', () => {
+    const legacyShapeProvider = {
+      id: 'prov_old',
+      label: 'old',
+      providerType: 'custom' as const,
+      baseUrl: 'http://old/v1',
+      apiKey: 'k',
+      verification,
+    }
+    const blob = {
+      v: 2 as const,
+      providers: [legacyShapeProvider],
+      roles: { main: { providerId: 'prov_old', model: 'm' }, small: null, embedding: null },
+    }
+
+    const decoded = decodeByokBlob(blob)
+
+    expect(decoded.v).toBe(2)
+    expect(decoded.roles).toEqual(blob.roles)
+    const decodedProvider = decoded.providers[0]!
+    expect(decodedProvider.id).toBe('prov_old')
+    expect(decodedProvider.label).toBe('old')
+    expect(decodedProvider.providerType).toBe('custom')
+    expect(decodedProvider.baseUrl).toBe('http://old/v1')
+    expect(decodedProvider.apiKey).toBe('k')
+    expect(decodedProvider.verification).toEqual(verification)
+    expect('baseProvider' in decodedProvider).toBe(false)
+    expect('baseModel' in decodedProvider).toBe(false)
   })
 })

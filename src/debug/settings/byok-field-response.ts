@@ -44,6 +44,8 @@ const publicByokProvider = (p: LlmProviderAccount): unknown => ({
   providerType: p.providerType,
   baseUrl: p.baseUrl,
   apiKeyMasked: maskApiKey(p.apiKey),
+  baseProvider: p.baseProvider ?? null,
+  baseModel: p.baseModel ?? null,
   verification: p.verification,
 })
 

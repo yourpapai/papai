@@ -5,6 +5,8 @@
 
 import type { ModelMessage } from 'ai'
 
+import { getModelsDevSnapshot } from './models-dev/client.js'
+
 /** Approximate context-window sizes (in tokens) keyed by model-name prefix. */
 const MODEL_CONTEXT_WINDOWS: ReadonlyArray<readonly [prefix: string, tokens: number]> = [
   // OpenAI GPT-4.1 family (1M context)
@@ -50,12 +52,32 @@ const MODEL_CONTEXT_WINDOWS: ReadonlyArray<readonly [prefix: string, tokens: num
   ['mixtral-8x7b', 32_000],
 ]
 
-/** Resolve a model's context-window size in tokens, or null when the model is unknown. */
-export const resolveMaxTokens = (modelName: string): number | null => {
+/** Resolve a model's context-window size from the built-in prefix table, or null when unknown. */
+export const prefixTableContextWindow = (modelName: string): number | null => {
   for (const [prefix, tokens] of MODEL_CONTEXT_WINDOWS) {
     if (modelName.startsWith(prefix)) return tokens
   }
   return null
+}
+
+/**
+ * Resolve a model's context window: the models.dev snapshot first when every catalogue entry with
+ * this model id agrees, the prefix table on disagreement or a miss — conservative, deterministic,
+ * and unchanged when the snapshot is empty. Context-window agreement is the shared ambiguous-name
+ * tie-break with `resolveModelMetadata` (src/models-dev/resolve.ts, design D4): both surfaces
+ * report the same window for the same name. An entry without a declared context counts as `null`
+ * in the agreement — a catalogue-known model with no window yields no ceiling, never the prefix
+ * guess the preview would not show.
+ */
+export const resolveMaxTokens = (modelName: string): number | null => {
+  const windows: (number | null)[] = []
+  for (const provider of Object.values(getModelsDevSnapshot().providers)) {
+    const entry = provider.models[modelName]
+    if (entry !== undefined) windows.push(entry.limit?.context ?? null)
+  }
+  const first = windows[0]
+  if (first !== undefined && windows.every((window) => window === first)) return first
+  return prefixTableContextWindow(modelName)
 }
 
 /**

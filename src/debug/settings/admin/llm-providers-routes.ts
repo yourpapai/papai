@@ -30,6 +30,8 @@ const ProviderBodySchema = z.object({
   providerType: z.enum(LLM_PROVIDER_TYPES),
   baseUrl: z.string().min(1),
   apiKey: z.string().min(1),
+  baseProvider: z.string().nullable().default(null),
+  baseModel: z.string().nullable().default(null),
 })
 const ProviderPatchSchema = ProviderBodySchema.partial().extend({
   models: z.array(z.string()).optional(),
@@ -49,6 +51,8 @@ type PublicProviderAccount = {
   readonly providerType: LlmProviderAccount['providerType']
   readonly baseUrl: string
   readonly apiKeyMasked: string
+  readonly baseProvider: string | null
+  readonly baseModel: string | null
   readonly verification: Verification
 }
 
@@ -58,6 +62,8 @@ const publicAccount = (p: LlmProviderAccount): PublicProviderAccount => ({
   providerType: p.providerType,
   baseUrl: p.baseUrl,
   apiKeyMasked: mask(p.apiKey),
+  baseProvider: p.baseProvider,
+  baseModel: p.baseModel,
   verification: p.verification,
 })
 

@@ -73,9 +73,11 @@ export const credentialEnv = (credential: GitCredential | null): Record<string, 
 const makeRunners = (options: GitOptions): { git: GitFn; gitOrThrow: GitFn } => {
   const credential = credentialEnv(options.credential)
   // Both identity halves ride the environment because it outranks every config
-  // source: `-c user.name` loses to an ambient `GIT_COMMITTER_NAME` (a runner
-  // harness exporting one would silently restamp the service identity), and a
-  // hosted runner has no `user.name` anywhere to fall back to.
+  // source: the `-c user.*` stamps `commit` uses lose to an ambient
+  // `GIT_COMMITTER_*`, so a launcher's or runner harness's exported identity
+  // would silently restamp the service one, and a hosted runner has no
+  // `user.name` anywhere to fall back to. Pin the same resolution `commit`
+  // uses, making the committer a fact of options rather than of the env.
   const identityEnv = {
     GIT_AUTHOR_NAME: options.authorName,
     GIT_AUTHOR_EMAIL: options.authorEmail,

@@ -14,6 +14,8 @@ describe('llmProviders schema', () => {
     expect(llmProviders.providerType).toBeDefined()
     expect(llmProviders.baseUrl).toBeDefined()
     expect(llmProviders.encryptedApiKey).toBeDefined()
+    expect(llmProviders.baseProvider).toBeDefined()
+    expect(llmProviders.baseModel).toBeDefined()
     expect(llmProviders.modelsCache).toBeDefined()
     expect(llmProviders.modelsFetchedAt).toBeDefined()
     expect(llmProviders.verificationStatus).toBeDefined()

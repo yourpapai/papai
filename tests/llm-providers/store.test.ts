@@ -137,3 +137,125 @@ describe('llm-providers store', () => {
     ).not.toThrow()
   })
 })
+
+describe('llm provider base references', () => {
+  test('createLlmProvider stores and echoes declared base references', () => {
+    const created = createLlmProvider(
+      {
+        label: 'gw',
+        providerType: 'custom',
+        baseUrl: 'https://gw.example.com/v1',
+        apiKey: 'k',
+        baseProvider: 'openai',
+        baseModel: 'gpt-4o',
+      },
+      'admin-1',
+    )
+
+    expect(created.baseProvider).toBe('openai')
+    expect(created.baseModel).toBe('gpt-4o')
+    expect(getLlmProvider(created.id)?.baseProvider).toBe('openai')
+    expect(getLlmProvider(created.id)?.baseModel).toBe('gpt-4o')
+  })
+
+  test('createLlmProvider defaults base references to null when absent', () => {
+    const created = createLlmProvider(
+      { label: 'a', providerType: 'openai', baseUrl: 'https://api.openai.com/v1', apiKey: 'k' },
+      'admin-1',
+    )
+
+    expect(created.baseProvider).toBeNull()
+    expect(created.baseModel).toBeNull()
+  })
+
+  test('empty base references normalize to null on create', () => {
+    const created = createLlmProvider(
+      {
+        label: 'a',
+        providerType: 'custom',
+        baseUrl: 'https://a/v1',
+        apiKey: 'k',
+        baseProvider: '',
+        baseModel: '',
+      },
+      'admin-1',
+    )
+
+    expect(created.baseProvider).toBeNull()
+    expect(created.baseModel).toBeNull()
+  })
+
+  test('updateLlmProvider sets and persists base references', () => {
+    const created = createLlmProvider(
+      { label: 'a', providerType: 'custom', baseUrl: 'https://a/v1', apiKey: 'k' },
+      'admin-1',
+    )
+
+    const updated = updateLlmProvider(created.id, { baseProvider: 'anthropic', baseModel: 'claude-opus-4' }, 'admin-1')
+
+    expect(updated?.baseProvider).toBe('anthropic')
+    expect(updated?.baseModel).toBe('claude-opus-4')
+    expect(getLlmProvider(created.id)?.baseProvider).toBe('anthropic')
+    expect(getLlmProvider(created.id)?.baseModel).toBe('claude-opus-4')
+  })
+
+  test('updateLlmProvider clears base references back to null', () => {
+    const created = createLlmProvider(
+      {
+        label: 'a',
+        providerType: 'custom',
+        baseUrl: 'https://a/v1',
+        apiKey: 'k',
+        baseProvider: 'openai',
+        baseModel: 'gpt-4o',
+      },
+      'admin-1',
+    )
+
+    const cleared = updateLlmProvider(created.id, { baseProvider: null, baseModel: null }, 'admin-1')
+
+    expect(cleared?.baseProvider).toBeNull()
+    expect(cleared?.baseModel).toBeNull()
+    expect(getLlmProvider(created.id)?.baseProvider).toBeNull()
+    expect(getLlmProvider(created.id)?.baseModel).toBeNull()
+  })
+
+  test('updateLlmProvider treats an empty string base reference as a clear', () => {
+    const created = createLlmProvider(
+      {
+        label: 'a',
+        providerType: 'custom',
+        baseUrl: 'https://a/v1',
+        apiKey: 'k',
+        baseProvider: 'openai',
+        baseModel: 'gpt-4o',
+      },
+      'admin-1',
+    )
+
+    const cleared = updateLlmProvider(created.id, { baseProvider: '', baseModel: '' }, 'admin-1')
+
+    expect(cleared?.baseProvider).toBeNull()
+    expect(cleared?.baseModel).toBeNull()
+  })
+
+  test('updateLlmProvider preserves base references omitted from the patch', () => {
+    const created = createLlmProvider(
+      {
+        label: 'a',
+        providerType: 'custom',
+        baseUrl: 'https://a/v1',
+        apiKey: 'k',
+        baseProvider: 'openai',
+        baseModel: 'gpt-4o',
+      },
+      'admin-1',
+    )
+
+    const relabeled = updateLlmProvider(created.id, { label: 'a2' }, 'admin-1')
+
+    expect(relabeled?.label).toBe('a2')
+    expect(relabeled?.baseProvider).toBe('openai')
+    expect(relabeled?.baseModel).toBe('gpt-4o')
+  })
+})

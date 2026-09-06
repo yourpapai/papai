@@ -73,7 +73,19 @@ type GenerateTextCall = {
   onToolExecutionEnd?: (event: ToolExecutionEndEvent) => void
   repairToolCall?: (arg: RepairToolCallArg) => Promise<unknown>
 }
-type BuildModelCall = { apiKey: string; baseURL: string; modelId: string }
+type BuildModelCall = {
+  apiKey: string
+  baseURL: string
+  modelId: string
+  metadata?: {
+    providerId: string | null
+    modelId: string | null
+    contextWindow: number | null
+    maxOutputTokens: number | null
+    source: 'models-dev' | 'prefix-table' | 'none'
+    via: 'override' | 'inferred' | null
+  }
+}
 
 // Helper defined outside test blocks — no-conditional-in-test requires predicate helpers at module scope
 function messageIncludesText(msgs: readonly ModelMessage[], text: string): boolean {
@@ -208,14 +220,23 @@ describe('dispatchExecution', () => {
       NoSuchToolError: realNoSuchToolError,
     }))
     void mock.module('../../src/llm-model-builder.js', () => ({
-      buildChatModel: (apiKey: string, baseUrl: string, modelId: string): string => {
-        buildModelCalls.push({ apiKey, baseURL: baseUrl, modelId })
+      buildChatModel: (
+        apiKey: string,
+        baseUrl: string,
+        modelId: string,
+        _deps: unknown,
+        metadata: BuildModelCall['metadata'],
+      ): string => {
+        buildModelCalls.push({ apiKey, baseURL: baseUrl, modelId, metadata })
         return `openai-compatible:${modelId}`
       },
       getOpenAICompatibleProvider:
-        (apiKey: string, baseUrl: string): ((modelId: string) => string) =>
-        (modelId: string): string => {
-          buildModelCalls.push({ apiKey, baseURL: baseUrl, modelId })
+        (
+          apiKey: string,
+          baseUrl: string,
+        ): ((modelId: string, _deps: unknown, metadata: BuildModelCall['metadata']) => string) =>
+        (modelId: string, _deps: unknown, metadata: BuildModelCall['metadata']): string => {
+          buildModelCalls.push({ apiKey, baseURL: baseUrl, modelId, metadata })
           return `openai-compatible:${modelId}`
         },
       clearModelBuilderCacheForTesting: (): void => {},
@@ -520,6 +541,14 @@ describe('dispatchExecution', () => {
           apiKey: 'sk-byok-deferred',
           baseURL: 'https://byok-deferred.invalid/v1',
           modelId: 'byok-main-deferred',
+          metadata: {
+            providerId: null,
+            modelId: null,
+            contextWindow: null,
+            maxOutputTokens: null,
+            source: 'none',
+            via: null,
+          },
         },
       ])
       expect(generateTextCalls[0]!.model).toBe('openai-compatible:byok-main-deferred')
@@ -772,10 +801,33 @@ describe('dispatchExecution', () => {
       )
       await flushMicrotasks()
 
+      const trimMetadata = {
+        providerId: null,
+        modelId: null,
+        contextWindow: null,
+        maxOutputTokens: null,
+        source: 'none' as const,
+        via: null,
+      }
       expect(buildModelCalls).toEqual([
-        { apiKey: 'sk-byok-full-trim', baseURL: 'https://byok-full-trim.invalid/v1', modelId: 'byok-full-main' },
-        { apiKey: 'sk-byok-full-trim', baseURL: 'https://byok-full-trim.invalid/v1', modelId: 'byok-full-small' },
-        { apiKey: 'sk-byok-full-trim', baseURL: 'https://byok-full-trim.invalid/v1', modelId: 'byok-full-small' },
+        {
+          apiKey: 'sk-byok-full-trim',
+          baseURL: 'https://byok-full-trim.invalid/v1',
+          modelId: 'byok-full-main',
+          metadata: trimMetadata,
+        },
+        {
+          apiKey: 'sk-byok-full-trim',
+          baseURL: 'https://byok-full-trim.invalid/v1',
+          modelId: 'byok-full-small',
+          metadata: trimMetadata,
+        },
+        {
+          apiKey: 'sk-byok-full-trim',
+          baseURL: 'https://byok-full-trim.invalid/v1',
+          modelId: 'byok-full-small',
+          metadata: trimMetadata,
+        },
       ])
     })
 

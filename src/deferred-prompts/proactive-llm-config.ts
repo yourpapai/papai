@@ -5,10 +5,16 @@
 
 import { resolveLlmConfig } from '../llm-providers/resolver.js'
 import { logger } from '../logger.js'
+import type { ModelMetadata } from '../models-dev/resolve.js'
 
 const log = logger.child({ scope: 'deferred:proactive-llm-config' })
 
-export type LlmConfig = { apiKey: string; baseURL: string; mainModel: string }
+export type LlmConfig = {
+  apiKey: string
+  baseURL: string
+  mainModel: string
+  metadata: ModelMetadata
+}
 
 export interface LlmConfigDeps {
   resolveLlmConfig: typeof resolveLlmConfig
@@ -41,5 +47,6 @@ export function getLlmConfig(configContextId: string, deps: LlmConfigDeps = defa
     apiKey: resolved.main.apiKey,
     baseURL: resolved.main.baseUrl,
     mainModel: resolved.main.model,
+    metadata: resolved.main.metadata,
   }
 }

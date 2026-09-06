@@ -19,6 +19,7 @@ import { collectTurnMessages } from '../llm-orchestrator-messages.js'
 import { handleToolCallFinish } from '../llm-orchestrator-support.js'
 import { adaptToolExecutionEnd } from '../llm-orchestrator-tool-events.js'
 import { logger } from '../logger.js'
+import type { ModelMetadata } from '../models-dev/resolve.js'
 import { createDisclosurePrepareStep } from '../tools/disclosure/prepare-step.js'
 import { createRepairToolCall } from '../tools/disclosure/repair-tool-call.js'
 import { buildToolsContextRecord } from '../tools/wrap-tool-execution.js'
@@ -49,7 +50,7 @@ export type DeferredExecutionContext = {
 export interface ProactiveLlmDeps {
   generateText: typeof generateText
   stepCountIs: typeof isStepCount
-  buildModel: (config: { apiKey: string; baseURL: string }, modelId: string) => LanguageModel
+  buildModel: (config: { apiKey: string; baseURL: string }, modelId: string, metadata: ModelMetadata) => LanguageModel
   /** Scope factory seam: production resolves from the active analytics runtime; tests inject fakes. */
   resolveScope?: (input: ProactiveScopeInput) => ProviderRequestScope
 }
@@ -57,7 +58,8 @@ export interface ProactiveLlmDeps {
 const defaultProactiveLlmDeps: ProactiveLlmDeps = {
   generateText: (...args) => generateText(...args),
   stepCountIs: (...args) => isStepCount(...args),
-  buildModel: (config, modelId) => buildChatModel(config.apiKey, config.baseURL, modelId),
+  buildModel: (config, modelId, metadata) =>
+    buildChatModel(config.apiKey, config.baseURL, modelId, undefined, metadata),
 }
 type DispatchExecutionArgs = ProactiveLlmDispatchArgs<Partial<ProactiveLlmDeps>, BuildProviderFn>
 export type { BuildProviderFn }
@@ -235,7 +237,7 @@ function runFullGeneration(
   deps: ProactiveLlmDeps,
 ): Promise<string> {
   const { createdByUserId } = execCtx
-  const model = deps.buildModel(config, config.mainModel)
+  const model = deps.buildModel(config, config.mainModel, config.metadata)
   // One independent immutable proactive scope per execution, established before
   // descriptor construction. Never reuses a normal-turn or prior-owner scope.
   const scope = (deps.resolveScope ?? resolveProactiveProviderRequestScope)({

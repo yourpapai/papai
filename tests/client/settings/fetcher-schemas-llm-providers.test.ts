@@ -8,6 +8,7 @@ import { describe, expect, test } from 'bun:test'
 import {
   AdminLlmRolesResponseSchema,
   AdminProvidersResponseSchema,
+  LlmModelMetadataResponseSchema,
   PROVIDER_TYPE_BASE_URLS,
   PublicProviderAccountSchema,
   VerificationSchema,
@@ -21,6 +22,8 @@ describe('LLM provider schemas', () => {
       providerType: 'openai',
       baseUrl: 'https://api.openai.com/v1',
       apiKeyMasked: '****abcd',
+      baseProvider: 'openai',
+      baseModel: 'gpt-4o',
       verification: {
         status: 'verified',
         error: null,
@@ -31,8 +34,40 @@ describe('LLM provider schemas', () => {
     })
 
     expect(parsed.id).toBe('prov_1')
+    expect(parsed.baseProvider).toBe('openai')
+    expect(parsed.baseModel).toBe('gpt-4o')
     expect(parsed.verification.status).toBe('verified')
     expect(parsed.verification.models).toEqual(['gpt-4o'])
+  })
+
+  test('parses a public provider account with null base references', () => {
+    const parsed = PublicProviderAccountSchema.parse({
+      id: 'prov_1',
+      label: 'OpenAI',
+      providerType: 'openai',
+      baseUrl: 'https://api.openai.com/v1',
+      apiKeyMasked: '****abcd',
+      baseProvider: null,
+      baseModel: null,
+      verification: { status: 'unverified', error: null, at: null, models: [], modelsFetchedAt: null },
+    })
+
+    expect(parsed.baseProvider).toBeNull()
+    expect(parsed.baseModel).toBeNull()
+  })
+
+  test('defaults absent base references to null', () => {
+    const parsed = PublicProviderAccountSchema.parse({
+      id: 'prov_1',
+      label: 'OpenAI',
+      providerType: 'openai',
+      baseUrl: 'https://api.openai.com/v1',
+      apiKeyMasked: '****abcd',
+      verification: { status: 'unverified', error: null, at: null, models: [], modelsFetchedAt: null },
+    })
+
+    expect(parsed.baseProvider).toBeNull()
+    expect(parsed.baseModel).toBeNull()
   })
 
   test('rejects an unknown provider type', () => {
@@ -43,6 +78,8 @@ describe('LLM provider schemas', () => {
         providerType: 'unknown',
         baseUrl: 'x',
         apiKeyMasked: '****x',
+        baseProvider: null,
+        baseModel: null,
         verification: { status: 'unverified', error: null, at: null, models: [], modelsFetchedAt: null },
       }),
     ).toThrow()
@@ -57,6 +94,8 @@ describe('LLM provider schemas', () => {
           providerType: 'openai',
           baseUrl: 'https://api.openai.com/v1',
           apiKeyMasked: '****abcd',
+          baseProvider: null,
+          baseModel: null,
           verification: { status: 'verified', error: null, at: null, models: [], modelsFetchedAt: null },
         },
       ],
@@ -91,5 +130,68 @@ describe('LLM provider schemas', () => {
     })
     expect(parsed.status).toBe('error')
     expect(parsed.error).toBe('boom')
+  })
+})
+
+describe('LlmModelMetadataResponseSchema', () => {
+  test('round-trips a catalogue hit payload', () => {
+    const parsed = LlmModelMetadataResponseSchema.parse({
+      providerId: 'openai',
+      modelId: 'gpt-4o',
+      contextWindow: 128_000,
+      maxOutputTokens: 16_384,
+      source: 'models-dev',
+      via: 'inferred',
+      snapshotFetchedAt: 1_700_000_000_000,
+    })
+
+    expect(parsed.source).toBe('models-dev')
+    expect(parsed.via).toBe('inferred')
+    expect(parsed.contextWindow).toBe(128_000)
+    expect(parsed.maxOutputTokens).toBe(16_384)
+    expect(parsed.snapshotFetchedAt).toBe(1_700_000_000_000)
+  })
+
+  test('accepts a none payload with a null snapshot fetch time', () => {
+    const parsed = LlmModelMetadataResponseSchema.parse({
+      providerId: null,
+      modelId: null,
+      contextWindow: null,
+      maxOutputTokens: null,
+      source: 'none',
+      via: null,
+      snapshotFetchedAt: null,
+    })
+
+    expect(parsed.source).toBe('none')
+    expect(parsed.snapshotFetchedAt).toBeNull()
+  })
+
+  test('accepts an override payload', () => {
+    const parsed = LlmModelMetadataResponseSchema.parse({
+      providerId: 'anthropic',
+      modelId: 'claude-declared',
+      contextWindow: 200_000,
+      maxOutputTokens: 8_000,
+      source: 'models-dev',
+      via: 'override',
+      snapshotFetchedAt: 1,
+    })
+
+    expect(parsed.via).toBe('override')
+  })
+
+  test('rejects an unknown source', () => {
+    expect(() =>
+      LlmModelMetadataResponseSchema.parse({
+        providerId: null,
+        modelId: null,
+        contextWindow: null,
+        maxOutputTokens: null,
+        source: 'guessed',
+        via: null,
+        snapshotFetchedAt: null,
+      }),
+    ).toThrow()
   })
 })

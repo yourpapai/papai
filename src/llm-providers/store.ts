@@ -34,6 +34,8 @@ export type NewLlmProviderInput = {
   readonly providerType: LlmProviderType
   readonly baseUrl: string
   readonly apiKey: string
+  readonly baseProvider?: string | null
+  readonly baseModel?: string | null
 }
 
 const isLlmProviderType = (value: string): value is LlmProviderType =>
@@ -55,12 +57,16 @@ const decryptApiKey = (stored: string): string => {
   return payload['apiKey'] ?? ''
 }
 
+const normalizeBaseRef = (value: string | null): string | null => (value === null || value === '' ? null : value)
+
 const toAccount = (row: LlmProviderRow): LlmProviderAccount => ({
   id: row.id,
   label: row.label,
   providerType: isLlmProviderType(row.providerType) ? row.providerType : 'custom',
   baseUrl: row.baseUrl,
   apiKey: decryptApiKey(row.encryptedApiKey),
+  baseProvider: row.baseProvider,
+  baseModel: row.baseModel,
   verification: {
     status: isVerificationStatus(row.verificationStatus) ? row.verificationStatus : 'unverified',
     error: row.verificationError,
@@ -118,6 +124,8 @@ export function createLlmProvider(input: NewLlmProviderInput, updatedBy: string)
       providerType: input.providerType,
       baseUrl: input.baseUrl,
       encryptedApiKey: encryptApiKey(input.apiKey),
+      baseProvider: normalizeBaseRef(input.baseProvider ?? null),
+      baseModel: normalizeBaseRef(input.baseModel ?? null),
       modelsCache: null,
       modelsFetchedAt: null,
       verificationStatus: 'unverified',
@@ -140,7 +148,14 @@ export function createLlmProvider(input: NewLlmProviderInput, updatedBy: string)
 
 export function updateLlmProvider(
   id: string,
-  patch: Partial<{ label: string; providerType: LlmProviderType; baseUrl: string; apiKey: string }>,
+  patch: Partial<{
+    label: string
+    providerType: LlmProviderType
+    baseUrl: string
+    apiKey: string
+    baseProvider: string | null
+    baseModel: string | null
+  }>,
   updatedBy: string,
 ): LlmProviderAccount | null {
   const current = getLlmProvider(id)
@@ -151,6 +166,8 @@ export function updateLlmProvider(
   if (patch.providerType !== undefined) set.providerType = patch.providerType
   if (patch.baseUrl !== undefined) set.baseUrl = patch.baseUrl
   if (patch.apiKey !== undefined) set.encryptedApiKey = encryptApiKey(patch.apiKey)
+  if (patch.baseProvider !== undefined) set.baseProvider = normalizeBaseRef(patch.baseProvider)
+  if (patch.baseModel !== undefined) set.baseModel = normalizeBaseRef(patch.baseModel)
   getDrizzleDb().update(llmProviders).set(set).where(eq(llmProviders.id, id)).run()
   const fresh = getDrizzleDb().select().from(llmProviders).where(eq(llmProviders.id, id)).get()
   if (fresh === undefined) return null

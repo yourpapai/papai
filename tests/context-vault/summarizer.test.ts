@@ -27,12 +27,21 @@ interface GenerateTextArgs {
   prompt: string
 }
 
+const noneMetadata = {
+  providerId: null,
+  modelId: null,
+  contextWindow: null,
+  maxOutputTokens: null,
+  source: 'none' as const,
+  via: null,
+}
+
 const llmConfig = (source: 'global' | 'byok'): EffectiveLlmConfig => ({
   ok: true,
   source,
-  main: { apiKey: 'central-key', baseUrl: 'https://llm.example', model: 'main', source },
-  small: { apiKey: 'small-key-0001', baseUrl: 'https://llm.example', model: 'small', source },
-  embedding: { apiKey: 'central-key', baseUrl: 'https://llm.example', model: 'emb', source },
+  main: { apiKey: 'central-key', baseUrl: 'https://llm.example', model: 'main', source, metadata: noneMetadata },
+  small: { apiKey: 'small-key-0001', baseUrl: 'https://llm.example', model: 'small', source, metadata: noneMetadata },
+  embedding: { apiKey: 'central-key', baseUrl: 'https://llm.example', model: 'emb', source, metadata: noneMetadata },
 })
 
 const makeScheduler = (): {
