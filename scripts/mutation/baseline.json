@@ -902,9 +902,15 @@
     "timeout": 0,
     "scored": 46
   },
+  "src/llm-orchestrator.ts": {
+    "score": 0.7105263157894737,
+    "killed": 54,
+    "timeout": 0,
+    "scored": 76
+  },
   "src/llm-providers/env-bootstrap.ts": {
-    "score": 0.35365853658536583,
-    "killed": 29,
+    "score": 0.5853658536585366,
+    "killed": 48,
     "timeout": 0,
     "scored": 82
   },
@@ -915,8 +921,8 @@
     "scored": 118
   },
   "src/llm-providers/store.ts": {
-    "score": 0.5787037037037037,
-    "killed": 125,
+    "score": 0.6111111111111112,
+    "killed": 132,
     "timeout": 0,
     "scored": 216
   },
@@ -940,16 +946,16 @@
   },
   "src/memory.ts": 0.6538461538461539,
   "src/model-context.ts": {
-    "score": 0.625,
+    "score": 0.6310679611650486,
     "killed": 65,
     "timeout": 0,
-    "scored": 104
+    "scored": 103
   },
   "src/models-dev/client.ts": {
-    "score": 0.7209302325581395,
-    "killed": 62,
+    "score": 0.7524752475247525,
+    "killed": 76,
     "timeout": 0,
-    "scored": 86
+    "scored": 101
   },
   "src/models-dev/provider-id.ts": {
     "score": 0.7254901960784313,
