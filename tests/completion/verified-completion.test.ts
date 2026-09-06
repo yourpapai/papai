@@ -259,6 +259,18 @@ describe('buildVerifiedCompletion', () => {
     },
   })
 
+  const outcomeVerifierAnswer = 'Verified: task moved to Done.'
+  const outcomeDeps = (mode: 'text' | 'undefined' | 'empty' | 'whitespace' | 'throw'): VerifierDeps => ({
+    readOnlyToolset: undefined,
+    invokeVerifier: (): Promise<{ text: string | undefined }> => {
+      if (mode === 'throw') throw new Error('network')
+      if (mode === 'text') return Promise.resolve({ text: outcomeVerifierAnswer })
+      if (mode === 'undefined') return Promise.resolve({ text: undefined })
+      if (mode === 'empty') return Promise.resolve({ text: '' })
+      return Promise.resolve({ text: '  \n\t ' })
+    },
+  })
+
   test('confirmed: passes through the verifier text', async () => {
     mockLogger()
     const result = await buildVerifiedCompletion(
@@ -607,6 +619,91 @@ describe('buildVerifiedCompletion', () => {
       )
       expect(result.verdict).toBe('unconfirmed')
       expect(result.text).toBe(row.expectedText)
+    })
+  })
+
+  test('verifierOutcome matrix: ok when the verifier produced text, empty for blank output, error when it threw', async () => {
+    mockLogger()
+    const modelAnswer = 'Task TK-42 moved to Done.'
+    const neutralStub = 'I ran the requested actions but could not confirm the result — please double-check.'
+    const rows: readonly Row<{
+      mode: 'text' | 'undefined' | 'empty' | 'whitespace' | 'throw'
+      finalText: string | undefined
+      expected: { text: string; verdict: CompletionVerdict; verifierOutcome: 'ok' | 'empty' | 'error' }
+    }>[] = [
+      {
+        label: 'verifier text with no model text is ok',
+        mode: 'text',
+        finalText: undefined,
+        expected: { text: outcomeVerifierAnswer, verdict: 'confirmed', verifierOutcome: 'ok' },
+      },
+      {
+        label: 'verifier text alongside model text is ok',
+        mode: 'text',
+        finalText: modelAnswer,
+        expected: { text: outcomeVerifierAnswer, verdict: 'confirmed', verifierOutcome: 'ok' },
+      },
+      {
+        label: 'undefined verifier output with model text is empty',
+        mode: 'undefined',
+        finalText: modelAnswer,
+        expected: { text: modelAnswer, verdict: 'confirmed', verifierOutcome: 'empty' },
+      },
+      {
+        label: 'empty verifier output with model text is empty',
+        mode: 'empty',
+        finalText: modelAnswer,
+        expected: { text: modelAnswer, verdict: 'confirmed', verifierOutcome: 'empty' },
+      },
+      {
+        label: 'whitespace-only verifier output with model text is empty',
+        mode: 'whitespace',
+        finalText: modelAnswer,
+        expected: { text: modelAnswer, verdict: 'confirmed', verifierOutcome: 'empty' },
+      },
+      {
+        label: 'undefined verifier output with no model text is empty',
+        mode: 'undefined',
+        finalText: undefined,
+        expected: { text: neutralStub, verdict: 'unconfirmed', verifierOutcome: 'empty' },
+      },
+      {
+        label: 'empty verifier output with no model text is empty',
+        mode: 'empty',
+        finalText: undefined,
+        expected: { text: neutralStub, verdict: 'unconfirmed', verifierOutcome: 'empty' },
+      },
+      {
+        label: 'whitespace-only verifier output with no model text is empty',
+        mode: 'whitespace',
+        finalText: undefined,
+        expected: { text: neutralStub, verdict: 'unconfirmed', verifierOutcome: 'empty' },
+      },
+      {
+        label: 'a throwing verifier with model text is error',
+        mode: 'throw',
+        finalText: modelAnswer,
+        expected: { text: modelAnswer, verdict: 'confirmed', verifierOutcome: 'error' },
+      },
+      {
+        label: 'a throwing verifier with no model text is error',
+        mode: 'throw',
+        finalText: undefined,
+        expected: { text: neutralStub, verdict: 'unconfirmed', verifierOutcome: 'error' },
+      },
+    ]
+    await assertEach(rows, async (row) => {
+      const result = await buildVerifiedCompletion(
+        {
+          history: [],
+          finishReason: 'stop',
+          hadToolFailure: false,
+          hadToolActivity: true,
+          finalText: row.finalText,
+        },
+        outcomeDeps(row.mode),
+      )
+      expect(result).toEqual(row.expected)
     })
   })
 })
