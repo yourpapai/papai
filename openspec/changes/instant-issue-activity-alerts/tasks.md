@@ -31,7 +31,7 @@ Design open questions: none (design.md resolves the only earlier unknown). Work 
 
 ## 5. Post-deploy ops checklist (no code; after rollout)
 
-- [ ] 5.1 Create per-issue comment alerts for #417/#401/#397/#400 and a `task.project eq yourpapai/papai` new-issues alert in the target chat; cancel each per-issue alert when its issue closes (per-issue watches also report closes). Verify: alerts listed via `list_reminders`
+- [x] 5.1 Create per-issue comment alerts for #417/#401/#397/#400 and a `task.project eq yourpapai/papai` new-issues alert in the target chat; cancel each per-issue alert when its issue closes (per-issue watches also report closes). Verify: alerts listed via `list_reminders`
 - [ ] 5.2 Verify one real comment on a watched issue delivers within one poll cycle (≤5 minutes, no reminder workaround), then cancel the polling reminder. Verify: live delivery observed and reminder cancelled via `cancel_reminder`
 
 ## 6. Full verification
