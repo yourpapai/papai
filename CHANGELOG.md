@@ -5,6 +5,91 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [6.14.6] - 2026-09-06
+
+### Added
+
+- **agent:** Implement issue #409 — step 1/19: 1.1 Write failing tests for `resolveModelMetadata` precedence (override
+- **agent:** Implement issue #409 — step 2/19: 1.2 Write failing tests for provider-id inference (providerType 1:1 map,
+- **agent:** Implement issue #409 — step 3/19: 1.3 Write failing tests for the catalogue client (injected `fetchImpl`,
+- **agent:** Implement issue #409 — step 4/19: 2.1 Write failing tests for migration `083_llm_provider_base_refs` (null
+- **agent:** Implement issue #409 — step 5/19: 2.2 Write failing store tests (create/patch accept and echo `baseProvide
+- **agent:** Implement issue #409 — step 6/19: 2.3 Write failing blob-codec tests (v2 blob gains optional base fields,
+- **agent:** Implement issue #409 — step 7/19: 2.4 Write failing tests for the admin and BYOK routes accepting/echoing
+- **agent:** Implement issue #409 — step 8/19: 2.5 Write failing tests for `LLM_BASE_PROVIDER`/`LLM_BASE_MODEL` env boo
+- **agent:** Implement issue #409 — step 9/19: 3.1 Write failing tests for the snapshot-consulting `resolveMaxTokens` (
+- **agent:** Implement issue #409 — step 10/19: 3.2 Write failing resolver tests (`ResolvedRole` carries `metadata`, com
+- **agent:** Implement issue #409 — step 11/19: 3.3 Write failing builder tests (known model's generation request carrie
+- **agent:** Implement issue #409 — step 12/19: 3.4 Thread `resolved.<role>.metadata` as the new argument at all eleven
+- **agent:** Implement issue #409 — step 13/19: 4.1 Write failing route tests for `GET /settings/api/llm-model-metadata`
+- **agent:** Implement issue #409 — step 14/19: 4.2 Add `LlmModelMetadataResponseSchema`, the GET fetcher, and the nulla
+- **agent:** Implement issue #409 — step 15/19: 5.1 Write component tests for `ModelMetadataHint.svelte` (four states: c
+- **agent:** Implement issue #409 — step 16/19: 5.2 Wire the hint into `RoleBindingBlock.svelte` (under the model Combob
+- **agent:** Implement issue #409 — step 17/19: 5.3 Add a Storybook story for `ModelMetadataHint` covering the four stat
+- **agent:** Implement issue #409 — step 18/19: 6.1 Run the affected suites and the mutation ratchet for the new files (
+- **agent:** Implement issue #409 — step 19/19: 6.2 Update `docs/architecture/environment.md` (LLM_BASE_PROVIDER/LLM_BAS
+- **agent:** Implement issue #412 — step 1/11: 1.1 Write failing unit tests in `tests/tools/disclosure/repair-tool-call
+- **agent:** Implement issue #412 — step 2/11: 1.2 Implement `src/tools/disclosure/repair-tool-call.ts` (`createRepairT
+- **agent:** Implement issue #412 — step 3/11: 2.1 Write failing test in `tests/llm-orchestrator-invoke.test.ts`: `call
+- **agent:** Implement issue #412 — step 4/11: 2.2 Write failing test in `tests/deferred-prompts/proactive-llm.test.ts`
+- **agent:** Implement issue #412 — step 5/11: 2.3 Attach the repair in `src/llm-orchestrator-invoke.ts` (`callGenerate
+- **agent:** Implement issue #412 — step 6/11: 3.1 Write failing test in `tests/llm-orchestrator-support.test.ts`: afte
+- **agent:** Implement issue #412 — step 7/11: 3.2 Implement the warn in `src/llm-orchestrator-support.ts` next to "LLM
+- **agent:** Implement issue #412 — step 8/11: 4.1 Write failing test in `tests/system-prompt-disclosure.test.ts`: the
+- **agent:** Implement issue #412 — step 9/11: 4.2 Append the expiry sentence to `disclosureProtocol` in `src/i18n/loca
+- **agent:** Implement issue #412 — step 10/11: 5.1 Update the disclosure section of `docs/architecture/tools.md`: misdi
+- **agent:** Implement issue #412 — step 11/11: 5.2 Run the full gate: `bun run test`, `bun run typecheck`, `bun run lin
+- **agent:** Implement issue #413 — step 1/11: 1.1 Write failing tests in `tests/completion/verified-completion.test.ts
+- **agent:** Implement issue #413 — step 2/11: 1.2 Implement: add `turnHasToolActivity` beside `detectToolFailure`, add
+- **agent:** Implement issue #413 — step 3/11: 2.1 Write failing tests: in `tests/completion/verified-completion.test.t
+- **agent:** Implement issue #413 — step 4/11: 2.2 Implement: add `noopFallback` to the completion dictionary type (`sr
+- **agent:** Implement issue #413 — step 5/11: 2.3 Fill `hadToolActivity` at both call sites — `sendLlmResponse` (`src/
+- **agent:** Implement issue #413 — step 6/11: 3.1 Write failing test in `tests/completion/verified-completion.test.ts`
+- **agent:** Implement issue #413 — step 7/11: 3.2 Add `'read_'` to `READ_ONLY_PREFIXES` in `src/completion/verified-co
+- **agent:** Implement issue #413 — step 8/11: 4.1 Write failing test in `tests/llm-orchestrator-send.test.ts`: the "Re
+- **agent:** Implement issue #413 — step 9/11: 4.2 Implement the rename + `sentTextLength: textToFormat.length` in `src
+- **agent:** Implement issue #413 — step 10/11: 5.1 Update the verified-completion behavior in `docs/architecture/behavi
+- **agent:** Implement issue #413 — step 11/11: 5.2 Run the full gate: `bun run test`, `bun run typecheck`, `bun run lin
+
+### Changed
+
+- **opencode-agent:** Drop inert -c user.* commit stamps; committer identity rides makeRunners e
+- **completion:** Drop unreachable failed from CompletionVerdict
+
+### Documentation
+
+- **openspec:** Draft artifacts for chat-model-metadata-models-dev
+- **openspec:** Draft artifacts for disclosure-tool-call-repair
+- **openspec:** Draft artifacts for honest-degraded-turn-messaging
+
+### Fixed
+
+- **llm:** Apply catalogue maxOutputTokens cap on the main chat-turn model
+- **models-dev:** Keep previous snapshot and cache on empty catalogue parse
+- **models-dev:** Unify ambiguous-name tie-break on context-window agreement per design D4
+- **models-dev:** Count a missing catalogue context as null in resolveMaxTokens agreement
+- **settings:** Dont cache catalogue-unavailable model metadata hints
+- **settings:** Send trimmed model in ModelMetadataHint fetch to match its cache key
+- **settings:** Supersede in-flight model-metadata lookups on cache-hit and empty-model effect runs
+- **models-dev:** Reject model-less catalogues in fetch and cache guards
+- **review-loop:** Make the build gate's failure report survivable and readable
+- **completion:** Base the no-op verdict on the turn's own final text
+- **completion:** Make hadToolActivity required on CompletionTurn per design D1
+
+### Miscellaneous
+
+- **mutation:** Ratchet baseline
+- **openspec:** Scaffold chat-model-metadata-models-dev
+- **knip:** Drop stale models-dev entry/ignore scaffolding and seam test-only exports via client.te
+- **mutation:** Ratchet baseline
+- **mutation:** Ratchet baseline
+- **agent:** Sync with master
+- **mutation:** Ratchet baseline
+
+### Testing
+
+- **llm:** Restore five deleted seed-behavior tests for seedDefaultLlmProviderFromEnv
+- **opencode-agent:** Pin ambient GIT_COMMITTER_* cannot restamp the service committer
 ## [6.14.5] - 2026-09-04
 
 ### Documentation
