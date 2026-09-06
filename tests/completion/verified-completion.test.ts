@@ -547,4 +547,66 @@ describe('buildVerifiedCompletion', () => {
       expect(result.text).toBe(row.expectedText)
     })
   })
+
+  test('whitespace-only final text counts as no model text: the activity-selected unconfirmed stub fires', async () => {
+    mockLogger()
+    const neutralStub = 'I ran the requested actions but could not confirm the result — please double-check.'
+    const noopStub = 'It looks like nothing was actually executed this turn — it cut off. Please repeat your request.'
+    const rows: readonly Row<{
+      mode: 'empty' | 'whitespace' | 'throw'
+      hadToolActivity: boolean
+      expectedText: string
+    }>[] = [
+      {
+        label: 'verifier empty after an active turn picks the neutral stub',
+        mode: 'empty',
+        hadToolActivity: true,
+        expectedText: neutralStub,
+      },
+      {
+        label: 'verifier empty after a no-op turn picks the no-op stub',
+        mode: 'empty',
+        hadToolActivity: false,
+        expectedText: noopStub,
+      },
+      {
+        label: 'whitespace verifier text after an active turn picks the neutral stub',
+        mode: 'whitespace',
+        hadToolActivity: true,
+        expectedText: neutralStub,
+      },
+      {
+        label: 'whitespace verifier text after a no-op turn picks the no-op stub',
+        mode: 'whitespace',
+        hadToolActivity: false,
+        expectedText: noopStub,
+      },
+      {
+        label: 'verifier throw after an active turn picks the neutral stub',
+        mode: 'throw',
+        hadToolActivity: true,
+        expectedText: neutralStub,
+      },
+      {
+        label: 'verifier throw after a no-op turn picks the no-op stub',
+        mode: 'throw',
+        hadToolActivity: false,
+        expectedText: noopStub,
+      },
+    ]
+    await assertEach(rows, async (row) => {
+      const result = await buildVerifiedCompletion(
+        {
+          history: [],
+          finishReason: 'stop',
+          hadToolFailure: false,
+          hadToolActivity: row.hadToolActivity,
+          finalText: '  \n\t ',
+        },
+        fallbackDeps(row.mode),
+      )
+      expect(result.verdict).toBe('unconfirmed')
+      expect(result.text).toBe(row.expectedText)
+    })
+  })
 })

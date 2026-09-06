@@ -95,8 +95,10 @@ export const deriveVerdict = (turn: CompletionTurn): CompletionVerdict => {
 
 /**
  * On a risky turn, run a verification LLM call and return a truthful user-facing message.
- * Never returns a bare "Done."; degrades to an honest last-resort message — actions-ran vs
- * nothing-executed, selected by the turn's tool activity — if verification fails.
+ * Never returns a bare "Done."; when verification degrades (verifier empty or throwing) it
+ * delivers the model's own final text when there is one, keeping the derived verdict, and
+ * falls back to the honest last-resort message — actions-ran vs nothing-executed, selected
+ * by the turn's tool activity — only when the model produced no text.
  */
 export const buildVerifiedCompletion = async (
   turn: CompletionTurn,
@@ -107,19 +109,23 @@ export const buildVerifiedCompletion = async (
   const lastResortFallback = turn.hadToolActivity ? texts.neutralFallback : texts.noopFallback
   log.debug({ verdict, readBack: deps.readOnlyToolset !== undefined }, 'Building verified completion')
   const prompt = buildVerifierPrompt(turn)
+  const degradedCompletion = (event: string, err?: string): VerifiedCompletion => {
+    const finalText = turn.finalText
+    if (finalText !== undefined && finalText.trim() !== '') {
+      log.warn({ verdict, delivered: 'model-final-text', err }, event)
+      return { text: finalText, verdict }
+    }
+    log.warn({ verdict, delivered: 'last-resort-fallback', err }, event)
+    return { text: lastResortFallback, verdict: 'unconfirmed' }
+  }
   try {
     const res = await deps.invokeVerifier(prompt)
-    if (res.text === undefined || res.text === '') {
-      log.warn({ verdict }, 'Verifier returned empty text; using last-resort fallback')
-      return { text: lastResortFallback, verdict: 'unconfirmed' }
+    if (res.text === undefined || res.text.trim() === '') {
+      return degradedCompletion('Verifier returned empty text')
     }
     log.info({ verdict }, 'Verified completion built')
     return { text: res.text, verdict }
   } catch (error) {
-    log.warn(
-      { err: error instanceof Error ? error.message : String(error) },
-      'Verifier call failed; using last-resort fallback',
-    )
-    return { text: lastResortFallback, verdict: 'unconfirmed' }
+    return degradedCompletion('Verifier call failed', error instanceof Error ? error.message : String(error))
   }
 }
