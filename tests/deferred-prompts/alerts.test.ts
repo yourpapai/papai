@@ -19,7 +19,6 @@ import {
   listAlertPrompts,
   updateAlertActivityState,
   updateAlertMatchState,
-  updateAlertMatchedTaskIds,
   updateAlertPrompt,
 } from '../../src/deferred-prompts/alerts.js'
 import { extractWatchedTaskIds, isPureWatchCondition } from '../../src/deferred-prompts/condition-eval.js'
@@ -194,31 +193,6 @@ describe('alert prompt CRUD', () => {
     expect(result).toBeNull()
   })
 
-  test('updateAlertMatchedTaskIds updates match set without touching trigger time', () => {
-    const condition: AlertCondition = { field: 'task.status', op: 'eq', value: 'done' }
-    const created = createAlertPrompt('user1', 'Alert', condition)
-
-    updateAlertMatchedTaskIds(created.id, 'user1', ['task-1', 'task-2'])
-
-    const found = getAlertPrompt(created.id, 'user1')
-    expect(found).not.toBeNull()
-    expect(found!.matchedTaskIds).toEqual(['task-1', 'task-2'])
-    expect(found!.lastTriggeredAt).toBeNull()
-  })
-
-  test('updateAlertMatchState updates trigger time and match set together', () => {
-    const condition: AlertCondition = { field: 'task.status', op: 'eq', value: 'done' }
-    const created = createAlertPrompt('user1', 'Alert', condition)
-    const now = new Date().toISOString()
-
-    updateAlertMatchState(created.id, 'user1', now, ['task-1'])
-
-    const found = getAlertPrompt(created.id, 'user1')
-    expect(found).not.toBeNull()
-    expect(found!.lastTriggeredAt).toBe(now)
-    expect(found!.matchedTaskIds).toEqual(['task-1'])
-  })
-
   test('getEligibleAlertPrompts returns alerts with no trigger history', () => {
     const condition: AlertCondition = { field: 'task.status', op: 'eq', value: 'done' }
     createAlertPrompt('user1', 'Never triggered', condition)
@@ -274,19 +248,6 @@ describe('alert activity cursor persistence', () => {
 
     expect(created.lastActivityCursor).toBeNull()
     expect(getAlertPrompt(created.id, 'user1')?.lastActivityCursor).toBeNull()
-  })
-
-  test('updateAlertActivityState writes the cursor and lastTriggeredAt', () => {
-    const condition: AlertCondition = { field: 'task.status', op: 'eq', value: 'done' }
-    const created = createAlertPrompt('user1', 'Alert', condition)
-    const firedAt = '2026-08-27T10:00:00.000Z'
-    const cursor = '2026-08-27T09:59:00.000Z'
-
-    updateAlertActivityState(created.id, 'user1', firedAt, cursor)
-
-    const reloaded = getAlertPrompt(created.id, 'user1')
-    expect(reloaded?.lastActivityCursor).toBe(cursor)
-    expect(reloaded?.lastTriggeredAt).toBe(firedAt)
   })
 
   test('condition update through updateAlertPrompt resets the cursor to null', () => {

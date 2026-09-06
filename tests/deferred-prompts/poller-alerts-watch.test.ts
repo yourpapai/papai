@@ -223,6 +223,37 @@ describe('collectFieldFirings — filter-alert baseline-on-create', () => {
     expect(firing[0]!.newMatchedTasks.map((task) => task.id)).toEqual(['t1'])
   })
 
+  test('an alert baselined on an empty first cycle fires for the first task matching in a later cycle', () => {
+    const alert = makeFilterAlert()
+
+    collectFieldFirings([alert], [], snapshotsFrom({}), new Date(), RICH_SNAPSHOT_FIELDS)
+    const persisted = getAlertPrompt(alert.id, USER)!
+    const firing = collectFieldFirings(
+      [persisted],
+      [makeTask('t1')],
+      snapshotsFrom({}),
+      new Date(),
+      RICH_SNAPSHOT_FIELDS,
+    )
+
+    expect(firing).toHaveLength(1)
+    expect(firing[0]!.newMatchedTasks.map((task) => task.id)).toEqual(['t1'])
+    expect(firing[0]!.matchedNow).toEqual(['t1'])
+  })
+
+  test('an alert whose match set drained to empty fires when a task re-enters', () => {
+    const alert = makeFilterAlert()
+
+    collectFieldFirings([alert], [makeTask('t1')], snapshotsFrom({}), new Date(), RICH_SNAPSHOT_FIELDS)
+    collectFieldFirings([getAlertPrompt(alert.id, USER)!], [], snapshotsFrom({}), new Date(), RICH_SNAPSHOT_FIELDS)
+    const drained = getAlertPrompt(alert.id, USER)!
+
+    const firing = collectFieldFirings([drained], [makeTask('t1')], snapshotsFrom({}), new Date(), RICH_SNAPSHOT_FIELDS)
+
+    expect(firing).toHaveLength(1)
+    expect(firing[0]!.newMatchedTasks.map((task) => task.id)).toEqual(['t1'])
+  })
+
   test('pure-watch alerts routed through collectFieldFirings keep the snapshot baseline', () => {
     const alert = createAlertPrompt(USER, 'Watch one task', { field: 'task.id', op: 'eq', value: 't1' })
 
