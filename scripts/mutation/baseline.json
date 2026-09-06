@@ -656,6 +656,12 @@
     "scored": 97
   },
   "src/coding-sessions/configure.ts": 0.6666666666666666,
+  "src/completion/verified-completion.ts": {
+    "score": 0.788135593220339,
+    "killed": 93,
+    "timeout": 0,
+    "scored": 118
+  },
   "src/config.ts": 0.6535433070866141,
   "src/conversation.ts": 0.6231884057971014,
   "src/db/deferred-schema.ts": 0.40540540540540543,
@@ -688,7 +694,12 @@
     "timeout": 0,
     "scored": 77
   },
-  "src/deferred-prompts/proactive-llm-helpers.ts": 0.6952380952380952,
+  "src/deferred-prompts/proactive-llm-helpers.ts": {
+    "score": 0.6952380952380952,
+    "killed": 73,
+    "timeout": 0,
+    "scored": 105
+  },
   "src/deferred-prompts/proactive-llm.ts": {
     "score": 0.7619047619047619,
     "killed": 32,
@@ -742,6 +753,12 @@
     "killed": 70,
     "timeout": 1,
     "scored": 100
+  },
+  "src/llm-orchestrator-send.ts": {
+    "score": 0.75,
+    "killed": 51,
+    "timeout": 0,
+    "scored": 68
   },
   "src/llm-orchestrator-support.ts": {
     "score": 0.5714285714285714,
