@@ -40,6 +40,23 @@ const sequenceResponder =
   (call: number): { data: unknown; status?: number } =>
     responses[call] ?? { data: [] }
 
+const routedRequests = (
+  sink: CapturedRequest[],
+  routes: Record<string, (call: number) => { data: unknown; status?: number }>,
+): { handler: (url: string, init: RequestInit) => Promise<Response> } => {
+  const counts = new Map<string, number>()
+  return {
+    handler: (url: string, init: RequestInit): Promise<Response> => {
+      const path = new URL(url).pathname
+      const call = counts.get(path) ?? 0
+      counts.set(path, call + 1)
+      const response = (routes[path] ?? ((): { data: unknown; status?: number } => ({ data: [] })))(call)
+      sink.push({ url: new URL(url), method: init.method ?? '' })
+      return Promise.resolve(jsonResponse(response.data, response.status ?? 200))
+    },
+  }
+}
+
 const octocat = {
   login: 'octocat',
   id: 583231,
@@ -73,6 +90,21 @@ const issueEvent = (overrides: EventOverrides = {}): Record<string, unknown> => 
 })
 
 const eventsPath = '/repos/octocat/Hello-World/issues/1347/events'
+const commentsPath = '/repos/octocat/Hello-World/issues/1347/comments'
+
+type CommentOverrides = Partial<{ id: number; created_at: string; user: Record<string, unknown> | null }>
+
+const issueComment = (overrides: CommentOverrides = {}): Record<string, unknown> => ({
+  id: 100,
+  body: 'A comment',
+  user: octocat,
+  created_at: '2011-04-11T16:00:00Z',
+  updated_at: '2011-04-11T16:00:00Z',
+  html_url: 'https://github.com/octocat/Hello-World/issues/1347#issuecomment-100',
+  issue_url: 'https://api.github.com/repos/octocat/Hello-World/issues/1347',
+  author_association: 'NONE',
+  ...overrides,
+})
 
 afterEach(() => {
   restoreFetch()
@@ -231,5 +263,88 @@ describe('githubListTaskEvents', () => {
     assert.ok(caught instanceof GitHubClassifiedError)
     expect(caught.appError).toHaveProperty('code', 'task-not-found')
     expect(caught.appError).toHaveProperty('taskId', '1347')
+  })
+})
+
+describe('githubListTaskEvents — comment activity merge', () => {
+  test('surfaces a comment as a comment activity entry', async () => {
+    mockLogger()
+    const calls: CapturedRequest[] = []
+    setMockFetch(
+      routedRequests(calls, {
+        [eventsPath]: (): { data: unknown } => ({
+          data: [issueEvent({ id: 1, event: 'closed', created_at: '2011-04-11T10:00:00Z' })],
+        }),
+        [commentsPath]: (): { data: unknown } => ({
+          data: [issueComment({ id: 100, created_at: '2011-04-11T11:00:00Z' })],
+        }),
+      }).handler,
+    )
+    const activities = await githubListTaskEvents(config, '1347')
+    expect(activities).toContainEqual({
+      id: '100',
+      timestamp: '2011-04-11T11:00:00Z',
+      author: 'octocat',
+      category: 'comment',
+    })
+  })
+
+  test('skips the comments fetch when categories exclude comment', async () => {
+    mockLogger()
+    const calls: CapturedRequest[] = []
+    setMockFetch(
+      routedRequests(calls, {
+        [eventsPath]: (): { data: unknown } => ({
+          data: [issueEvent({ id: 1, event: 'closed', created_at: '2011-04-11T10:00:00Z' })],
+        }),
+        [commentsPath]: (): { data: unknown } => ({ data: [issueComment()] }),
+      }).handler,
+    )
+    const activities = await githubListTaskEvents(config, '1347', { categories: ['status'] })
+    expect(calls.map((call) => call.url.pathname)).not.toContain(commentsPath)
+    expect(activities.map((activity) => activity.category)).toEqual(['status'])
+  })
+
+  test('merges events and comments into one ascending-timestamp sequence', async () => {
+    mockLogger()
+    const calls: CapturedRequest[] = []
+    setMockFetch(
+      routedRequests(calls, {
+        [eventsPath]: (): { data: unknown } => ({
+          data: [
+            issueEvent({ id: 3, event: 'closed', created_at: '2011-04-13T10:00:00Z' }),
+            issueEvent({ id: 1, event: 'labeled', label: { name: 'bug' }, created_at: '2011-04-11T10:00:00Z' }),
+          ],
+        }),
+        [commentsPath]: (): { data: unknown } => ({
+          data: [issueComment({ id: 2, created_at: '2011-04-12T10:00:00Z' })],
+        }),
+      }).handler,
+    )
+    const activities = await githubListTaskEvents(config, '1347')
+    expect(activities.map((activity) => activity.id)).toEqual(['1', '2', '3'])
+    expect(activities[1]).toEqual({
+      id: '2',
+      timestamp: '2011-04-12T10:00:00Z',
+      author: 'octocat',
+      category: 'comment',
+    })
+    const windowed = await githubListTaskEvents(config, '1347', { limit: 2 })
+    expect(windowed.map((activity) => activity.id)).toEqual(['1', '2'])
+  })
+
+  test('fails the whole lookup with the classified error when the comments fetch fails', async () => {
+    mockLogger()
+    const calls: CapturedRequest[] = []
+    setMockFetch(
+      routedRequests(calls, {
+        [eventsPath]: (): { data: unknown } => ({
+          data: [issueEvent({ id: 1, event: 'closed', created_at: '2011-04-11T10:00:00Z' })],
+        }),
+        [commentsPath]: (): { data: unknown; status?: number } => ({ data: { message: 'Boom' }, status: 500 }),
+      }).handler,
+    )
+    const caught = await githubListTaskEvents(config, '1347').catch((error: unknown) => error)
+    assert.ok(caught instanceof GitHubClassifiedError)
   })
 })
