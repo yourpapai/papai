@@ -73,6 +73,32 @@ scenario('SCN-chat-telegram-reply-fn: formatted reply, link-preview disable, and
   expect(editCalls[0]?.text).toBe('Updated')
   expect(editCalls[0]?.other).toHaveProperty('entities')
 
+  // Over-limit answers deliver as ordered in-bounds chunks, and the edit target
+  // snapshots the last chunk's message.
+  const chunkedCalls: ReplyCall[] = []
+  const chunkedCtx: FakeCtx = {
+    chat: { id: 42, type: 'private' },
+    message: { message_id: 100 },
+    reply: (text: string, options: Record<string, unknown>): Promise<{ message_id: number; chat: { id: number } }> => {
+      chunkedCalls.push({ text, options })
+      return Promise.resolve({ message_id: 400 + chunkedCalls.length, chat: { id: 42 } })
+    },
+    replyWithChatAction: (): Promise<void> => Promise.resolve(),
+  }
+  const chunkedReply = buildReply(chunkedCtx, api)
+
+  const longAnswer = 'x'.repeat(5000)
+  await chunkedReply.formatted(longAnswer)
+
+  expect(chunkedCalls.length).toBe(2)
+  for (const call of chunkedCalls) {
+    expect(call.text.length).toBeLessThanOrEqual(4096)
+  }
+  expect(chunkedCalls.map((call) => call.text).join('')).toBe(longAnswer)
+  if (chunkedReply.lastReplyTarget === undefined) throw new Error('lastReplyTarget is not attached')
+  const chunkedTarget: ReplyTarget | undefined = chunkedReply.lastReplyTarget()
+  expect(chunkedTarget).toEqual({ platform: 'telegram', ref: { messageId: 402, chatId: 42 } })
+
   const handle = await reply.buttons('Allow?', {
     buttons: [{ text: 'Yes', callbackData: 'perm:a:1' }],
   })
