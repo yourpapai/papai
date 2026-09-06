@@ -25,7 +25,6 @@ import { registerTelegramCommands } from './commands.js'
 import { renderTelegramContext } from './context-renderer.js'
 import { createTelegramFileFetcher } from './file-fetcher.js'
 import { extractFileCandidatesFromContext, extractFilesFromContext } from './file-helpers.js'
-import { formatLlmOutput } from './format.js'
 import { buildTelegramInteraction } from './interaction-helpers.js'
 import { getTelegramDisplayLabel, resolveTelegramGroupLabel, resolveTelegramUserLabel } from './label-helpers.js'
 import {
@@ -37,13 +36,8 @@ import {
 } from './message-extraction.js'
 import { telegramCapabilities, telegramConfigRequirements, telegramTraits } from './metadata.js'
 import { buildTelegramReplyFn, type CallbackAnswerState } from './reply-fn-builder.js'
-import {
-  buildTelegramMentionPrefix,
-  checkTelegramAdminStatus,
-  getTelegramUsername,
-  shiftTelegramEntity,
-  telegramIsBotMentioned,
-} from './reply-helpers.js'
+import { checkTelegramAdminStatus, getTelegramUsername, telegramIsBotMentioned } from './reply-helpers.js'
+import { sendTelegramMessage } from './send-message.js'
 export type { TelegramBotFactory, TelegramBotLike } from './bot-factory.js'
 const log = logger.child({ scope: 'chat:telegram' })
 export type TelegramConstructorConfig = {
@@ -138,19 +132,7 @@ export class TelegramChatProvider implements ChatProvider {
     this.bot.on('edited_message', deliver)
   }
   async sendMessage(_platformInstanceId: string, target: DeferredDeliveryTarget, markdown: string): Promise<void> {
-    const chatId = parseInt(target.contextId, 10)
-    const mentionPrefix = buildTelegramMentionPrefix(target)
-    const formatted = formatLlmOutput(markdown)
-    const options: Parameters<typeof this.bot.api.sendMessage>[2] = {
-      entities: [
-        ...mentionPrefix.entities,
-        ...formatted.entities.map((entity) => shiftTelegramEntity(entity, mentionPrefix.text.length)),
-      ],
-    }
-    if (target.contextType === 'group' && target.threadId !== null) {
-      options.message_thread_id = parseInt(target.threadId, 10)
-    }
-    await this.bot.api.sendMessage(chatId, `${mentionPrefix.text}${formatted.text}`, options)
+    await sendTelegramMessage(this.bot.api, target, markdown)
   }
   start(): Promise<void> {
     return new Promise<void>((resolve, reject) => {

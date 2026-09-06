@@ -236,8 +236,13 @@ export const invokeWithLiveStatus = async (
     await liveStatus.placeholder(t('liveStatus.preparingResponse', locale))
     const verifier = buildTurnVerifier(invokeArgs)
     const history: ModelMessage[] = [...invokeArgs.messages, ...collectTurnMessages(result)]
-    await sendLlmResponse(reply, invokeArgs.contextId, result, progressReporter, { verifier, history }, () =>
-      liveStatus.dismiss(),
+    await sendLlmResponse(
+      reply,
+      invokeArgs.contextId,
+      result,
+      progressReporter,
+      { verifier, history, turnId: invokeArgs.turnId },
+      () => liveStatus.dismiss(),
     )
     return result
   } finally {

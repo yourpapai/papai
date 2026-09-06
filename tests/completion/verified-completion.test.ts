@@ -251,11 +251,23 @@ describe('buildVerifiedCompletion', () => {
     },
   })
 
-  const fallbackDeps = (mode: 'empty' | 'throw'): VerifierDeps => ({
+  const fallbackDeps = (mode: 'empty' | 'whitespace' | 'throw'): VerifierDeps => ({
     readOnlyToolset: undefined,
     invokeVerifier: (): Promise<{ text: string | undefined }> => {
       if (mode === 'throw') throw new Error('network')
-      return Promise.resolve({ text: '' })
+      return Promise.resolve({ text: mode === 'empty' ? '' : '  \n\t ' })
+    },
+  })
+
+  const outcomeVerifierAnswer = 'Verified: task moved to Done.'
+  const outcomeDeps = (mode: 'text' | 'undefined' | 'empty' | 'whitespace' | 'throw'): VerifierDeps => ({
+    readOnlyToolset: undefined,
+    invokeVerifier: (): Promise<{ text: string | undefined }> => {
+      if (mode === 'throw') throw new Error('network')
+      if (mode === 'text') return Promise.resolve({ text: outcomeVerifierAnswer })
+      if (mode === 'undefined') return Promise.resolve({ text: undefined })
+      if (mode === 'empty') return Promise.resolve({ text: '' })
+      return Promise.resolve({ text: '  \n\t ' })
     },
   })
 
@@ -265,7 +277,7 @@ describe('buildVerifiedCompletion', () => {
       { history: [], finishReason: 'stop', hadToolFailure: false, hadToolActivity: true },
       okDeps('Created task TK-42.'),
     )
-    expect(result).toEqual({ text: 'Created task TK-42.', verdict: 'confirmed' })
+    expect(result).toEqual({ text: 'Created task TK-42.', verdict: 'confirmed', verifierOutcome: 'ok' })
   })
 
   test('truncated: verdict is truncated and the prompt asks for a progress summary, offering "continue" as an option', async () => {
@@ -355,6 +367,343 @@ describe('buildVerifiedCompletion', () => {
       )
       expect(result.verdict).toBe('unconfirmed')
       expect(result.text).toBe(row.expectedText)
+    })
+  })
+
+  test('degraded verifier (empty/whitespace/throw) on a turn with model text delivers the model answer with the derived verdict', async () => {
+    mockLogger()
+    const modelAnswer = 'Task TK-42 moved to Done.'
+    const activeTurn: CompletionTurn = {
+      history: [],
+      finishReason: 'stop',
+      hadToolFailure: false,
+      hadToolActivity: true,
+      finalText: modelAnswer,
+    }
+    const rows: readonly Row<{
+      mode: 'empty' | 'whitespace' | 'throw'
+      turn: CompletionTurn
+      expectedVerdict: CompletionVerdict
+    }>[] = [
+      {
+        label: 'verifier empty on an active turn keeps the confirmed verdict',
+        mode: 'empty',
+        turn: activeTurn,
+        expectedVerdict: 'confirmed',
+      },
+      {
+        label: 'whitespace-only verifier text on an active turn keeps the confirmed verdict',
+        mode: 'whitespace',
+        turn: activeTurn,
+        expectedVerdict: 'confirmed',
+      },
+      {
+        label: 'verifier throw on an active turn keeps the confirmed verdict',
+        mode: 'throw',
+        turn: activeTurn,
+        expectedVerdict: 'confirmed',
+      },
+      {
+        label: 'verifier empty on a failed turn keeps the partial verdict',
+        mode: 'empty',
+        turn: { ...activeTurn, hadToolFailure: true },
+        expectedVerdict: 'partial',
+      },
+      {
+        label: 'whitespace-only verifier text on a failed turn keeps the partial verdict',
+        mode: 'whitespace',
+        turn: { ...activeTurn, hadToolFailure: true },
+        expectedVerdict: 'partial',
+      },
+      {
+        label: 'verifier throw on a failed turn keeps the partial verdict',
+        mode: 'throw',
+        turn: { ...activeTurn, hadToolFailure: true },
+        expectedVerdict: 'partial',
+      },
+      {
+        label: 'verifier empty on a truncated turn keeps the truncated verdict',
+        mode: 'empty',
+        turn: { ...activeTurn, finishReason: 'tool-calls' },
+        expectedVerdict: 'truncated',
+      },
+      {
+        label: 'whitespace-only verifier text on a truncated turn keeps the truncated verdict',
+        mode: 'whitespace',
+        turn: { ...activeTurn, finishReason: 'tool-calls' },
+        expectedVerdict: 'truncated',
+      },
+      {
+        label: 'verifier throw on a truncated turn keeps the truncated verdict',
+        mode: 'throw',
+        turn: { ...activeTurn, finishReason: 'tool-calls' },
+        expectedVerdict: 'truncated',
+      },
+    ]
+    await assertEach(rows, async (row) => {
+      const result = await buildVerifiedCompletion(row.turn, fallbackDeps(row.mode))
+      expect(result.text).toBe(modelAnswer)
+      expect(result.verdict).toBe(row.expectedVerdict)
+    })
+  })
+
+  test('unconfirmed stub matrix with no model text: the activity-selected stub still fires for every verifier failure mode', async () => {
+    mockLogger()
+    const neutralStub = 'I ran the requested actions but could not confirm the result — please double-check.'
+    const noopStub = 'It looks like nothing was actually executed this turn — it cut off. Please repeat your request.'
+    const rows: readonly Row<{
+      mode: 'empty' | 'whitespace' | 'throw'
+      finalText: string | undefined
+      hadToolActivity: boolean
+      expectedText: string
+    }>[] = [
+      {
+        label: 'verifier empty with an explicit empty final text after an active turn picks the neutral stub',
+        mode: 'empty',
+        finalText: '',
+        hadToolActivity: true,
+        expectedText: neutralStub,
+      },
+      {
+        label: 'verifier empty with an explicit empty final text after a no-op turn picks the no-op stub',
+        mode: 'empty',
+        finalText: '',
+        hadToolActivity: false,
+        expectedText: noopStub,
+      },
+      {
+        label: 'verifier empty with an undefined final text after an active turn picks the neutral stub',
+        mode: 'empty',
+        finalText: undefined,
+        hadToolActivity: true,
+        expectedText: neutralStub,
+      },
+      {
+        label: 'verifier empty with an undefined final text after a no-op turn picks the no-op stub',
+        mode: 'empty',
+        finalText: undefined,
+        hadToolActivity: false,
+        expectedText: noopStub,
+      },
+      {
+        label:
+          'whitespace-only verifier text with an explicit empty final text after an active turn picks the neutral stub',
+        mode: 'whitespace',
+        finalText: '',
+        hadToolActivity: true,
+        expectedText: neutralStub,
+      },
+      {
+        label:
+          'whitespace-only verifier text with an explicit empty final text after a no-op turn picks the no-op stub',
+        mode: 'whitespace',
+        finalText: '',
+        hadToolActivity: false,
+        expectedText: noopStub,
+      },
+      {
+        label: 'whitespace-only verifier text with an undefined final text after an active turn picks the neutral stub',
+        mode: 'whitespace',
+        finalText: undefined,
+        hadToolActivity: true,
+        expectedText: neutralStub,
+      },
+      {
+        label: 'whitespace-only verifier text with an undefined final text after a no-op turn picks the no-op stub',
+        mode: 'whitespace',
+        finalText: undefined,
+        hadToolActivity: false,
+        expectedText: noopStub,
+      },
+      {
+        label: 'verifier throw with an explicit empty final text after an active turn picks the neutral stub',
+        mode: 'throw',
+        finalText: '',
+        hadToolActivity: true,
+        expectedText: neutralStub,
+      },
+      {
+        label: 'verifier throw with an explicit empty final text after a no-op turn picks the no-op stub',
+        mode: 'throw',
+        finalText: '',
+        hadToolActivity: false,
+        expectedText: noopStub,
+      },
+      {
+        label: 'verifier throw with an undefined final text after an active turn picks the neutral stub',
+        mode: 'throw',
+        finalText: undefined,
+        hadToolActivity: true,
+        expectedText: neutralStub,
+      },
+      {
+        label: 'verifier throw with an undefined final text after a no-op turn picks the no-op stub',
+        mode: 'throw',
+        finalText: undefined,
+        hadToolActivity: false,
+        expectedText: noopStub,
+      },
+    ]
+    await assertEach(rows, async (row) => {
+      const result = await buildVerifiedCompletion(
+        {
+          history: [],
+          finishReason: 'stop',
+          hadToolFailure: false,
+          hadToolActivity: row.hadToolActivity,
+          finalText: row.finalText,
+        },
+        fallbackDeps(row.mode),
+      )
+      expect(result.verdict).toBe('unconfirmed')
+      expect(result.text).toBe(row.expectedText)
+    })
+  })
+
+  test('whitespace-only final text counts as no model text: the activity-selected unconfirmed stub fires', async () => {
+    mockLogger()
+    const neutralStub = 'I ran the requested actions but could not confirm the result — please double-check.'
+    const noopStub = 'It looks like nothing was actually executed this turn — it cut off. Please repeat your request.'
+    const rows: readonly Row<{
+      mode: 'empty' | 'whitespace' | 'throw'
+      hadToolActivity: boolean
+      expectedText: string
+    }>[] = [
+      {
+        label: 'verifier empty after an active turn picks the neutral stub',
+        mode: 'empty',
+        hadToolActivity: true,
+        expectedText: neutralStub,
+      },
+      {
+        label: 'verifier empty after a no-op turn picks the no-op stub',
+        mode: 'empty',
+        hadToolActivity: false,
+        expectedText: noopStub,
+      },
+      {
+        label: 'whitespace verifier text after an active turn picks the neutral stub',
+        mode: 'whitespace',
+        hadToolActivity: true,
+        expectedText: neutralStub,
+      },
+      {
+        label: 'whitespace verifier text after a no-op turn picks the no-op stub',
+        mode: 'whitespace',
+        hadToolActivity: false,
+        expectedText: noopStub,
+      },
+      {
+        label: 'verifier throw after an active turn picks the neutral stub',
+        mode: 'throw',
+        hadToolActivity: true,
+        expectedText: neutralStub,
+      },
+      {
+        label: 'verifier throw after a no-op turn picks the no-op stub',
+        mode: 'throw',
+        hadToolActivity: false,
+        expectedText: noopStub,
+      },
+    ]
+    await assertEach(rows, async (row) => {
+      const result = await buildVerifiedCompletion(
+        {
+          history: [],
+          finishReason: 'stop',
+          hadToolFailure: false,
+          hadToolActivity: row.hadToolActivity,
+          finalText: '  \n\t ',
+        },
+        fallbackDeps(row.mode),
+      )
+      expect(result.verdict).toBe('unconfirmed')
+      expect(result.text).toBe(row.expectedText)
+    })
+  })
+
+  test('verifierOutcome matrix: ok when the verifier produced text, empty for blank output, error when it threw', async () => {
+    mockLogger()
+    const modelAnswer = 'Task TK-42 moved to Done.'
+    const neutralStub = 'I ran the requested actions but could not confirm the result — please double-check.'
+    const rows: readonly Row<{
+      mode: 'text' | 'undefined' | 'empty' | 'whitespace' | 'throw'
+      finalText: string | undefined
+      expected: { text: string; verdict: CompletionVerdict; verifierOutcome: 'ok' | 'empty' | 'error' }
+    }>[] = [
+      {
+        label: 'verifier text with no model text is ok',
+        mode: 'text',
+        finalText: undefined,
+        expected: { text: outcomeVerifierAnswer, verdict: 'confirmed', verifierOutcome: 'ok' },
+      },
+      {
+        label: 'verifier text alongside model text is ok',
+        mode: 'text',
+        finalText: modelAnswer,
+        expected: { text: outcomeVerifierAnswer, verdict: 'confirmed', verifierOutcome: 'ok' },
+      },
+      {
+        label: 'undefined verifier output with model text is empty',
+        mode: 'undefined',
+        finalText: modelAnswer,
+        expected: { text: modelAnswer, verdict: 'confirmed', verifierOutcome: 'empty' },
+      },
+      {
+        label: 'empty verifier output with model text is empty',
+        mode: 'empty',
+        finalText: modelAnswer,
+        expected: { text: modelAnswer, verdict: 'confirmed', verifierOutcome: 'empty' },
+      },
+      {
+        label: 'whitespace-only verifier output with model text is empty',
+        mode: 'whitespace',
+        finalText: modelAnswer,
+        expected: { text: modelAnswer, verdict: 'confirmed', verifierOutcome: 'empty' },
+      },
+      {
+        label: 'undefined verifier output with no model text is empty',
+        mode: 'undefined',
+        finalText: undefined,
+        expected: { text: neutralStub, verdict: 'unconfirmed', verifierOutcome: 'empty' },
+      },
+      {
+        label: 'empty verifier output with no model text is empty',
+        mode: 'empty',
+        finalText: undefined,
+        expected: { text: neutralStub, verdict: 'unconfirmed', verifierOutcome: 'empty' },
+      },
+      {
+        label: 'whitespace-only verifier output with no model text is empty',
+        mode: 'whitespace',
+        finalText: undefined,
+        expected: { text: neutralStub, verdict: 'unconfirmed', verifierOutcome: 'empty' },
+      },
+      {
+        label: 'a throwing verifier with model text is error',
+        mode: 'throw',
+        finalText: modelAnswer,
+        expected: { text: modelAnswer, verdict: 'confirmed', verifierOutcome: 'error' },
+      },
+      {
+        label: 'a throwing verifier with no model text is error',
+        mode: 'throw',
+        finalText: undefined,
+        expected: { text: neutralStub, verdict: 'unconfirmed', verifierOutcome: 'error' },
+      },
+    ]
+    await assertEach(rows, async (row) => {
+      const result = await buildVerifiedCompletion(
+        {
+          history: [],
+          finishReason: 'stop',
+          hadToolFailure: false,
+          hadToolActivity: true,
+          finalText: row.finalText,
+        },
+        outcomeDeps(row.mode),
+      )
+      expect(result).toEqual(row.expected)
     })
   })
 })

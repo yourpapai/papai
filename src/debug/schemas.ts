@@ -121,6 +121,7 @@ export const LlmTraceSchema = z.object({
   routingReason: z.string().optional(),
   generatedText: z.string().optional(),
   stepsDetail: z.array(StepDetailSchema).optional(),
+  verifierOutcome: z.enum(['ok', 'empty', 'error']).optional(),
 })
 
 // Log entry with additional properties

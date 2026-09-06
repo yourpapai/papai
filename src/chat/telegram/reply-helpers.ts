@@ -7,8 +7,12 @@ import type { MessageEntity } from '@grammyjs/types/message.js'
 import type { Context } from 'grammy'
 import { InlineKeyboard } from 'grammy'
 
-import type { ButtonReplyOptions, DeferredDeliveryTarget, ReplyOptions } from '../types.js'
+import { logger } from '../../logger.js'
+import type { ButtonReplyOptions, ReplyOptions } from '../types.js'
+import { chunkForTelegram, sliceTelegramEntities } from './chunking.js'
 import { formatLlmOutput } from './format.js'
+
+const log = logger.child({ scope: 'telegram:reply-helpers' })
 
 type TelegramReplyParameters = { message_id: number } & Partial<{ message_thread_id: number }>
 
@@ -25,85 +29,6 @@ type ReplacementCallOptions = Partial<{
 }>
 
 type TelegramEntity = ReturnType<typeof formatLlmOutput>['entities'][number]
-
-type TelegramMentionPrefix = {
-  text: string
-  entities: readonly TelegramEntity[]
-}
-
-type TelegramMentionTarget = {
-  userId: number
-  label: string
-  firstName: string
-}
-
-const parseTelegramUserId = (value: string): number | null => {
-  if (!/^\d+$/u.test(value)) {
-    return null
-  }
-
-  const parsed = Number(value)
-  return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : null
-}
-
-const getMentionLabel = (target: DeferredDeliveryTarget, mentionedUserId: string): string => {
-  if (mentionedUserId === target.createdByUserId) {
-    if (target.createdByUsername !== null) {
-      return `@${target.createdByUsername}`
-    }
-    return 'you'
-  }
-
-  return 'user'
-}
-
-const normalizeMentionFirstName = (label: string): string => (label.startsWith('@') ? label.slice(1) : label)
-
-export function buildTelegramMentionPrefix(target: DeferredDeliveryTarget): TelegramMentionPrefix {
-  if (target.contextType !== 'group' || target.audience !== 'personal') {
-    return { text: '', entities: [] }
-  }
-
-  const mentionTargets = target.mentionUserIds.flatMap<TelegramMentionTarget>((mentionedUserId) => {
-    const userId = parseTelegramUserId(mentionedUserId)
-    if (userId === null) {
-      return []
-    }
-
-    const label = getMentionLabel(target, mentionedUserId)
-    return [{ userId, label, firstName: normalizeMentionFirstName(label) }]
-  })
-
-  if (mentionTargets.length === 0) {
-    return { text: '', entities: [] }
-  }
-
-  const text = `${mentionTargets.map((mention) => mention.label).join(' ')} `
-  const mentionData = mentionTargets.reduce<{
-    offset: number
-    entities: readonly TelegramEntity[]
-  }>(
-    (acc, mention) => {
-      const entity: TelegramEntity = {
-        offset: acc.offset,
-        length: mention.label.length,
-        type: 'text_mention',
-        user: {
-          id: mention.userId,
-          is_bot: false,
-          first_name: mention.firstName,
-        },
-      }
-      return {
-        offset: acc.offset + mention.label.length + 1,
-        entities: [...acc.entities, entity],
-      }
-    },
-    { offset: 0, entities: [] },
-  )
-
-  return { text, entities: mentionData.entities }
-}
 
 export function shiftTelegramEntity(entity: TelegramEntity, offset: number): TelegramEntity {
   return {
@@ -222,12 +147,44 @@ export async function sendFormattedReply(
 ): Promise<{ messageId: number; chatId: number }> {
   const formatted = formatLlmOutput(markdown)
   const replyParameters = options === undefined ? buildReplyParams() : buildReplyParams(options)
-  const sent = await ctx.reply(formatted.text, {
-    entities: formatted.entities,
-    reply_parameters: replyParameters,
-    ...(options?.disableLinkPreview === true ? { link_preview_options: { is_disabled: true } } : {}),
-  })
-  return { messageId: sent.message_id, chatId: sent.chat.id }
+  const chunks = chunkForTelegram(formatted.text)
+
+  type SentState = {
+    index: number
+    chunkStart: number
+    last?: { messageId: number; chatId: number }
+    lastError?: Error
+  }
+  const sendChunk = async (state: SentState, chunk: string): Promise<SentState> => {
+    const chunkStart = state.chunkStart
+    const chunkEnd = chunkStart + chunk.length
+    const next: SentState = {
+      index: state.index + 1,
+      chunkStart: chunkEnd,
+      last: state.last,
+      lastError: state.lastError,
+    }
+    try {
+      const sent = await ctx.reply(chunk, {
+        entities: sliceTelegramEntities(formatted.entities, chunkStart, chunkEnd),
+        reply_parameters: replyParameters,
+        ...(options?.disableLinkPreview === true ? { link_preview_options: { is_disabled: true } } : {}),
+      })
+      return { ...next, last: { messageId: sent.message_id, chatId: sent.chat.id } }
+    } catch (error) {
+      const err = error instanceof Error ? error : new Error(String(error))
+      log.warn({ index: state.index, total: chunks.length, error: err.message }, 'Telegram chunk send failed')
+      return { ...next, lastError: err }
+    }
+  }
+  const finalState = await chunks.reduce<Promise<SentState>>(
+    (prev, chunk) => prev.then((state) => sendChunk(state, chunk)),
+    Promise.resolve({ index: 0, chunkStart: 0 }),
+  )
+  if (finalState.last === undefined) {
+    throw finalState.lastError ?? new Error('Telegram chunked reply delivered nothing')
+  }
+  return finalState.last
 }
 
 export async function sendFileReply(

@@ -31,12 +31,28 @@ import { loadFacts } from '../../src/memory.js'
 import { setToolPrefs } from '../../src/tools/tool-preferences.js'
 import type { MemoryFact } from '../../src/types/memory.js'
 import { createMockProvider } from '../tools/mock-provider.js'
+import { createTrackedLoggerMock } from '../utils/logger-mock.js'
 import { flushMicrotasks, mockLogger, seedAdminLlmBinding, setupTestDb } from '../utils/test-helpers.js'
 
 // Captured at module evaluation, before this file's beforeEach narrows the mocked
 // 'ai' module: the repair closure compares errors with the real
 // NoSuchToolError.isInstance, so the narrowed mock must keep exporting the real class.
 const realNoSuchToolError = NoSuchToolError
+
+// proactive-llm.ts binds its child logger at module-eval time, so force a fresh
+// evaluation under the tracked mock with a cache-busting query (mirrors
+// tests/llm-orchestrator-send.test.ts) for the logging tests at the bottom.
+const tracked = createTrackedLoggerMock()
+void mock.module('../../src/logger.js', () => ({ logger: tracked.logger, getLogLevel: tracked.getLogLevel }))
+
+type DispatchModule = typeof import('../../src/deferred-prompts/proactive-llm.js')
+const isDispatchModule = (value: unknown): value is DispatchModule =>
+  typeof value === 'object' && value !== null && typeof Reflect.get(value, 'dispatchExecution') === 'function'
+const loadedDispatch: unknown = await import(`../../src/deferred-prompts/proactive-llm.js?t=${crypto.randomUUID()}`)
+if (!isDispatchModule(loadedDispatch)) {
+  throw new Error('proactive-llm module did not export expected shape')
+}
+const { dispatchExecution: bustedDispatchExecution } = loadedDispatch
 
 // Track generateText calls
 type GenerateTextResult = {
@@ -587,6 +603,37 @@ describe('dispatchExecution', () => {
       expect(generateTextCalls[1]!.instructions).toContain('Отвечай на русском языке')
     })
 
+    test('the verifier receives the prepared turn history, not an empty one', async () => {
+      setupUserConfig()
+      const provider = createMockProvider()
+      generateTextImpl = (args: GenerateTextCall): Promise<GenerateTextResult> => {
+        generateTextCalls.push(args)
+        return Promise.resolve({
+          text: '',
+          toolCalls: [],
+          toolResults: [],
+          steps: [],
+          finalStep: { response: { messages: [] } },
+        })
+      }
+
+      await dispatchExecution(makeExecCtx(), 'scheduled', 'check overdue', metadata, () => provider)
+
+      expect(generateTextCalls).toHaveLength(2)
+      const verifierMessages = generateTextCalls[1]!.messages
+      // The verification history carries the prepared prompt context…
+      expect(messageIncludesText(verifierMessages, 'check overdue')).toBe(true)
+      // …and the finalize instruction rides after it.
+      expect(verifierMessages.length).toBeGreaterThan(1)
+    })
+
+    test('full generation applies the step-cap stop condition through the injected deps', async () => {
+      setupUserConfig()
+      const provider = createMockProvider()
+      await dispatchExecution(makeExecCtx(), 'scheduled', 'check overdue', metadata, () => provider)
+      expect(generateTextCalls[0]!.stopWhen).toEqual({ __stopAfterSteps: 25 })
+    })
+
     test('uses full system prompt', async () => {
       setupUserConfig()
       const provider = createMockProvider()
@@ -1056,5 +1103,97 @@ describe('dispatchExecution', () => {
       const second = generateTextCalls[1]!.toolsContext
       expect(first).not.toBe(second)
     })
+  })
+})
+
+describe('dispatchExecution logging (tracked logger, busted module)', () => {
+  const dispatchMetadata: ExecutionMetadata = {
+    delivery_brief: 'be brief',
+    context_snapshot: null,
+  }
+
+  const generateTextCalls: GenerateTextCall[] = []
+  const buildModelCalls: BuildModelCall[] = []
+  let generateTextImpl = (args: GenerateTextCall): Promise<GenerateTextResult> => {
+    generateTextCalls.push(args)
+    return Promise.resolve({
+      text: 'Mock response',
+      toolCalls: [],
+      toolResults: [],
+      steps: [],
+      finalStep: { response: { messages: [] } },
+    })
+  }
+
+  beforeEach(async () => {
+    clearLlmAdminCacheForTesting()
+    generateTextCalls.length = 0
+    buildModelCalls.length = 0
+    generateTextImpl = (args: GenerateTextCall): Promise<GenerateTextResult> => {
+      generateTextCalls.push(args)
+      return Promise.resolve({
+        text: 'Mock response',
+        toolCalls: [],
+        toolResults: [],
+        steps: [],
+        finalStep: { response: { messages: [] } },
+      })
+    }
+    void mock.module('ai', () => ({
+      generateText: (args: GenerateTextCall): Promise<GenerateTextResult> => generateTextImpl(args),
+      tool: (opts: unknown): unknown => opts,
+      isStepCount: (n: number): unknown => ({ __stopAfterSteps: n }),
+      NoSuchToolError: realNoSuchToolError,
+    }))
+    void mock.module('../../src/llm-model-builder.js', () => ({
+      buildChatModel: (
+        apiKey: string,
+        baseUrl: string,
+        modelId: string,
+        _deps: unknown,
+        metadata: BuildModelCall['metadata'],
+      ): string => {
+        buildModelCalls.push({ apiKey, baseURL: baseUrl, modelId, metadata })
+        return `openai-compatible:${modelId}`
+      },
+      getOpenAICompatibleProvider:
+        (
+          apiKey: string,
+          baseUrl: string,
+        ): ((modelId: string, _deps: unknown, metadata: BuildModelCall['metadata']) => string) =>
+        (modelId: string, _deps: unknown, metadata: BuildModelCall['metadata']): string => {
+          buildModelCalls.push({ apiKey, baseURL: baseUrl, modelId, metadata })
+          return `openai-compatible:${modelId}`
+        },
+      clearModelBuilderCacheForTesting: (): void => {},
+    }))
+    await setupTestDb()
+    tracked.clearCalls()
+  })
+
+  const findDebugLog = (message: string): { meta: unknown; message: string } | undefined => {
+    const call = tracked.getCallsByLevel('debug').find((entry) => entry.args[1] === message)
+    return call === undefined ? undefined : { meta: call.args[0], message: String(call.args[1]) }
+  }
+
+  test('proactive dispatch logs carry the run identity and module scope', async () => {
+    setupUserConfig()
+    const provider = createMockProvider()
+    await bustedDispatchExecution(makeExecCtx(), 'scheduled', 'check overdue', dispatchMetadata, () => provider)
+
+    // The module registered its child logger under its own scope at eval time.
+    expect(tracked.logger.child).toHaveBeenCalledWith(expect.objectContaining({ scope: 'deferred:proactive-llm' }))
+
+    const dispatchLog = findDebugLog('dispatchExecution called')
+    expect(dispatchLog).toBeDefined()
+    expect(dispatchLog?.meta).toEqual({ userId: USER_ID })
+
+    const invokeLog = findDebugLog('invokeFull called')
+    expect(invokeLog).toBeDefined()
+    expect(invokeLog?.meta).toEqual({ userId: USER_ID })
+
+    const generationLog = findDebugLog('generateText')
+    expect(generationLog).toBeDefined()
+    expect(generationLog?.meta).toMatchObject({ userId: USER_ID, mainModel: 'main-model' })
   })
 })

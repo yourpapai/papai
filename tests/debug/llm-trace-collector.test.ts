@@ -14,6 +14,7 @@ import {
   resetLlmBuffers,
   shapeLlmTrace,
   LLM_TRACE_CAPACITY,
+  VERIFIED_TRACES_GLOBAL_CAP,
   type LlmTrace,
 } from '../../src/debug/llm-trace-collector.js'
 
@@ -24,6 +25,23 @@ const callbacks = (pushed: LlmTrace[]): { pushTrace: (t: LlmTrace) => void; broa
     pushed.push(t)
   },
   broadcastTrace: (): void => {},
+})
+
+const outcomeOf = (trace: LlmTrace): unknown => {
+  const record: Record<string, unknown> = trace
+  return record['verifierOutcome']
+}
+
+const recordingCallbacks = (
+  pushed: LlmTrace[],
+  broadcasts: Array<{ trace: LlmTrace; ts: number }>,
+): { pushTrace: (t: LlmTrace) => void; broadcastTrace: (t: LlmTrace, ts: number) => void } => ({
+  pushTrace: (t: LlmTrace): void => {
+    pushed.push(t)
+  },
+  broadcastTrace: (t: LlmTrace, ts: number): void => {
+    broadcasts.push({ trace: t, ts })
+  },
 })
 
 describe('handleLlmTraceEvent', () => {
@@ -394,6 +412,223 @@ describe('handleLlmTraceEvent', () => {
     expect(pushed[1]!.toolCalls).toHaveLength(0)
   })
 
+  test('llm:verifier with a turnId applies the outcome to exactly that turn trace', () => {
+    const ctx = 'u:verifier-exact'
+    handleLlmTraceEvent(
+      { type: 'llm:start', timestamp: 1, scope: userScope(ctx), data: { model: 'm-a' }, turnId: 'turn-a' },
+      callbacks(pushed),
+      stats,
+      () => {},
+    )
+    handleLlmTraceEvent(
+      { type: 'llm:end', timestamp: 2, scope: userScope(ctx), data: {}, turnId: 'turn-a' },
+      callbacks(pushed),
+      stats,
+      () => {},
+    )
+    handleLlmTraceEvent(
+      { type: 'llm:start', timestamp: 3, scope: userScope(ctx), data: { model: 'm-b' }, turnId: 'turn-b' },
+      callbacks(pushed),
+      stats,
+      () => {},
+    )
+    handleLlmTraceEvent(
+      { type: 'llm:end', timestamp: 4, scope: userScope(ctx), data: {}, turnId: 'turn-b' },
+      callbacks(pushed),
+      stats,
+      () => {},
+    )
+
+    handleLlmTraceEvent(
+      {
+        type: 'llm:verifier',
+        timestamp: 5,
+        scope: userScope(ctx),
+        data: { verifierOutcome: 'empty' },
+        turnId: 'turn-a',
+      },
+      callbacks(pushed),
+      stats,
+      () => {},
+    )
+
+    expect(pushed).toHaveLength(2)
+    expect(outcomeOf(pushed[0]!)).toBe('empty')
+    expect(outcomeOf(pushed[1]!)).toBeUndefined()
+  })
+
+  test('turn-less llm:verifier attaches to the most recent trace for the user', () => {
+    const ctx = 'u:verifier-legacy'
+    handleLlmTraceEvent(
+      { type: 'llm:start', timestamp: 1, scope: userScope(ctx), data: { model: 'm-a' }, turnId: 'turn-a' },
+      callbacks(pushed),
+      stats,
+      () => {},
+    )
+    handleLlmTraceEvent(
+      { type: 'llm:end', timestamp: 2, scope: userScope(ctx), data: {}, turnId: 'turn-a' },
+      callbacks(pushed),
+      stats,
+      () => {},
+    )
+    handleLlmTraceEvent(
+      { type: 'llm:start', timestamp: 3, scope: userScope(ctx), data: { model: 'm-b' }, turnId: 'turn-b' },
+      callbacks(pushed),
+      stats,
+      () => {},
+    )
+    handleLlmTraceEvent(
+      { type: 'llm:end', timestamp: 4, scope: userScope(ctx), data: {}, turnId: 'turn-b' },
+      callbacks(pushed),
+      stats,
+      () => {},
+    )
+
+    handleLlmTraceEvent(
+      { type: 'llm:verifier', timestamp: 5, scope: userScope(ctx), data: { verifierOutcome: 'error' } },
+      callbacks(pushed),
+      stats,
+      () => {},
+    )
+
+    expect(pushed).toHaveLength(2)
+    expect(outcomeOf(pushed[1]!)).toBe('error')
+    expect(outcomeOf(pushed[0]!)).toBeUndefined()
+  })
+
+  test('the verifier trace registry prunes per user, so pruned turns no longer attach', () => {
+    const ctx = 'u:verifier-cap'
+    for (let i = 0; i < 6; i++) {
+      handleLlmTraceEvent(
+        { type: 'llm:start', timestamp: i, scope: userScope(ctx), data: { model: `m-${i}` }, turnId: `turn-${i}` },
+        callbacks(pushed),
+        stats,
+        () => {},
+      )
+      handleLlmTraceEvent(
+        { type: 'llm:end', timestamp: 10 + i, scope: userScope(ctx), data: {}, turnId: `turn-${i}` },
+        callbacks(pushed),
+        stats,
+        () => {},
+      )
+    }
+
+    handleLlmTraceEvent(
+      {
+        type: 'llm:verifier',
+        timestamp: 100,
+        scope: userScope(ctx),
+        data: { verifierOutcome: 'empty' },
+        turnId: 'turn-0',
+      },
+      callbacks(pushed),
+      stats,
+      () => {},
+    )
+    expect(outcomeOf(pushed[0]!)).toBeUndefined()
+
+    handleLlmTraceEvent(
+      {
+        type: 'llm:verifier',
+        timestamp: 101,
+        scope: userScope(ctx),
+        data: { verifierOutcome: 'ok' },
+        turnId: 'turn-5',
+      },
+      callbacks(pushed),
+      stats,
+      () => {},
+    )
+    expect(outcomeOf(pushed[5]!)).toBe('ok')
+  })
+
+  test('the verifier trace registry is globally bounded across users', () => {
+    const total = VERIFIED_TRACES_GLOBAL_CAP + 1
+    for (let i = 0; i < total; i++) {
+      const ctx = `u:cap-${i}`
+      handleLlmTraceEvent(
+        { type: 'llm:start', timestamp: i, scope: userScope(ctx), data: { model: `m-${i}` }, turnId: `turn-${i}` },
+        callbacks(pushed),
+        stats,
+        () => {},
+      )
+      handleLlmTraceEvent(
+        { type: 'llm:end', timestamp: 1000 + i, scope: userScope(ctx), data: {}, turnId: `turn-${i}` },
+        callbacks(pushed),
+        stats,
+        () => {},
+      )
+    }
+    expect(pushed).toHaveLength(total)
+
+    const broadcasts: Array<{ trace: LlmTrace; ts: number }> = []
+    handleLlmTraceEvent(
+      {
+        type: 'llm:verifier',
+        timestamp: 100000,
+        scope: userScope('u:cap-0'),
+        data: { verifierOutcome: 'ok' },
+        turnId: 'turn-0',
+      },
+      recordingCallbacks(pushed, broadcasts),
+      stats,
+      () => {},
+    )
+    expect(broadcasts).toHaveLength(0)
+    expect(outcomeOf(pushed[0]!)).toBeUndefined()
+
+    const last = total - 1
+    handleLlmTraceEvent(
+      {
+        type: 'llm:verifier',
+        timestamp: 100001,
+        scope: userScope(`u:cap-${last}`),
+        data: { verifierOutcome: 'ok' },
+        turnId: `turn-${last}`,
+      },
+      recordingCallbacks(pushed, broadcasts),
+      stats,
+      () => {},
+    )
+    expect(broadcasts).toHaveLength(1)
+    expect(outcomeOf(pushed[last]!)).toBe('ok')
+  })
+
+  test('llm:verifier re-broadcasts the updated trace in place', () => {
+    const ctx = 'u:verifier-broadcast'
+    handleLlmTraceEvent(
+      { type: 'llm:start', timestamp: 1, scope: userScope(ctx), data: { model: 'm-a' }, turnId: 'turn-a' },
+      callbacks(pushed),
+      stats,
+      () => {},
+    )
+    handleLlmTraceEvent(
+      { type: 'llm:end', timestamp: 2, scope: userScope(ctx), data: {}, turnId: 'turn-a' },
+      callbacks(pushed),
+      stats,
+      () => {},
+    )
+
+    const broadcasts: Array<{ trace: LlmTrace; ts: number }> = []
+    handleLlmTraceEvent(
+      {
+        type: 'llm:verifier',
+        timestamp: 9,
+        scope: userScope(ctx),
+        data: { verifierOutcome: 'ok' },
+        turnId: 'turn-a',
+      },
+      recordingCallbacks(pushed, broadcasts),
+      stats,
+      () => {},
+    )
+
+    expect(broadcasts).toHaveLength(1)
+    expect(broadcasts[0]!.trace).toBe(pushed[0]!)
+    expect(outcomeOf(broadcasts[0]!.trace)).toBe('ok')
+    expect(broadcasts[0]!.ts).toBe(9)
+  })
+
   test('resetLlmBuffers clears both captured traces and pending traces after capture', () => {
     pushTrace({
       timestamp: 1,
@@ -700,5 +935,9 @@ describe('shapeLlmTrace', () => {
 describe('buffer capacity exports', () => {
   test('LLM_TRACE_CAPACITY equals the recentLlm ring buffer capacity', () => {
     expect(LLM_TRACE_CAPACITY).toBe(65535)
+  })
+
+  test('VERIFIED_TRACES_GLOBAL_CAP bounds the verifier trace registry across users', () => {
+    expect(VERIFIED_TRACES_GLOBAL_CAP).toBe(1024)
   })
 })

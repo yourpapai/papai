@@ -3,8 +3,15 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import type { Scope } from './event-bus.js'
-import { str, num, bool, optStr, tokenUsage, parseStepsDetail } from './state-collector-utils.js'
+import type { VerifierOutcome } from '../completion/verified-completion.js'
+import {
+  buildEndTrace,
+  buildErrorTrace,
+  buildTraceToolCall,
+  type PendingLlmTrace,
+  type TraceEvent,
+} from './llm-trace-builders.js'
+import { str, parseStepsDetail } from './state-collector-utils.js'
 
 export type LlmTraceToolCall = {
   toolName: string
@@ -40,22 +47,7 @@ export type LlmTrace = {
   generatedText: string | undefined
   stepsDetail: ReturnType<typeof parseStepsDetail>
   currentTimeTag?: string
-}
-
-type PendingLlmTrace = {
-  startTimestamp: number
-  userId: string
-  model: string
-  toolCalls: Array<LlmTraceToolCall>
-  turnId: string | undefined
-}
-
-type TraceEvent = {
-  type: string
-  timestamp: number
-  scope: Scope
-  data: Record<string, unknown>
-  turnId?: string
+  verifierOutcome?: VerifierOutcome
 }
 type TraceCallbacks = {
   pushTrace: (trace: LlmTrace) => void
@@ -65,14 +57,25 @@ type TraceCallbacks = {
 export const LLM_TRACE_CAPACITY = 65535
 
 /**
- * Per-user cap on stored pendings. Keys are user+turn scoped, and a turn aborted
- * between llm:start and its terminal event never consumes its entry, so without
- * a cap entries would accumulate per unique turn id over process uptime.
+ * Per-user cap on stored pendings and on the ended-trace registry. Keys are
+ * user+turn scoped, and a turn aborted between llm:start and its terminal event
+ * never consumes its entry, so without a cap entries would accumulate per
+ * unique turn id over process uptime.
  */
 const MAX_PENDING_PER_USER = 4
 
+/**
+ * Global ceiling on the ended-trace registry. Unlike pendings, registry entries
+ * are never consumed by a terminal event, so the per-user cap alone would let
+ * the map grow with every distinct storage-context key ever served; this bound
+ * keeps total retention independent of historical user count.
+ */
+export const VERIFIED_TRACES_GLOBAL_CAP = 1024
+
 export const recentLlm: LlmTrace[] = []
 export const pendingTraces = new Map<string, PendingLlmTrace>()
+/** Ended traces keyed user+turnId so a follow-up llm:verifier can attach its outcome; capped like pendings. */
+const verifiedTraces = new Map<string, LlmTrace>()
 
 // Pending keys are scoped by user id AND turn id: a proactive generation
 // overlapping an interactive turn in the same storage context shares the user
@@ -80,9 +83,9 @@ export const pendingTraces = new Map<string, PendingLlmTrace>()
 // pending (wrong model, misattributed tool calls).
 const pendingKey = (userId: string, turnId: string | undefined): string => `${userId}\u0000${turnId ?? ''}`
 
-const pendingEntriesForUser = (userId: string): Array<[string, PendingLlmTrace]> => {
+const entriesForUser = <T>(map: Map<string, T>, userId: string): Array<[string, T]> => {
   const prefix = `${userId}\u0000`
-  return [...pendingTraces.entries()].filter(([key]) => key.startsWith(prefix))
+  return [...map.entries()].filter(([key]) => key.startsWith(prefix))
 }
 
 /** Consume the pending for a terminal (llm:end/llm:error) event. */
@@ -97,12 +100,26 @@ const takePending = (userId: string, turnId: string | undefined): PendingLlmTrac
   // turn's pending. Only turn-less emitters may fall back, and only when a
   // single pending remains, so the match is unambiguous.
   if (turnId !== undefined) return undefined
-  const entries = pendingEntriesForUser(userId)
+  const entries = entriesForUser(pendingTraces, userId)
   if (entries.length !== 1) return undefined
   const entry = entries[0]!
   pendingTraces.delete(entry[0])
   return entry[1]
 }
+
+/** Resolve the trace a follow-up llm:verifier outcome attaches to. */
+const traceForVerifier = (userId: string, turnId: string | undefined): LlmTrace | undefined => {
+  const exact = verifiedTraces.get(pendingKey(userId, turnId))
+  if (exact !== undefined) return exact
+  if (turnId !== undefined) return undefined
+  // Verifier events without a turn id (legacy emitters): attach to the most
+  // recently ended trace for the user, mirroring pendingForToolResult.
+  const entries = entriesForUser(verifiedTraces, userId)
+  return entries.length === 0 ? undefined : entries[entries.length - 1]![1]
+}
+
+const toVerifierOutcome = (value: unknown): VerifierOutcome | undefined =>
+  value === 'ok' || value === 'empty' || value === 'error' ? value : undefined
 
 /** Resolve the pending an llm:tool_result attaches to. */
 const pendingForToolResult = (userId: string, turnId: string | undefined): PendingLlmTrace | undefined => {
@@ -111,18 +128,18 @@ const pendingForToolResult = (userId: string, turnId: string | undefined): Pendi
   if (turnId !== undefined) return undefined
   // Tool results without a turn id (legacy emitters): attach to the most
   // recently started pending for the user.
-  const entries = pendingEntriesForUser(userId)
+  const entries = entriesForUser(pendingTraces, userId)
   return entries.length === 0 ? undefined : entries[entries.length - 1]![1]
 }
 
-const prunePendingsForUser = (userId: string): void => {
-  let excess = pendingEntriesForUser(userId).length - MAX_PENDING_PER_USER
+const pruneForUser = <T>(map: Map<string, T>, userId: string): void => {
+  let excess = entriesForUser(map, userId).length - MAX_PENDING_PER_USER
   if (excess <= 0) return
   const prefix = `${userId}\u0000`
-  for (const key of pendingTraces.keys()) {
+  for (const key of map.keys()) {
     if (excess === 0) break
     if (key.startsWith(prefix)) {
-      pendingTraces.delete(key)
+      map.delete(key)
       excess--
     }
   }
@@ -137,84 +154,7 @@ export function pushTrace(trace: LlmTrace): void {
 export function resetLlmBuffers(): void {
   recentLlm.length = 0
   pendingTraces.clear()
-}
-
-function buildTraceToolCall(data: Record<string, unknown>): LlmTraceToolCall {
-  return {
-    toolName: str(data['toolName']),
-    durationMs: num(data['durationMs']),
-    success: bool(data['success']),
-    toolCallId: str(data['toolCallId']),
-    args: data['args'],
-    result: data['result'],
-    error: str(data['error']),
-  }
-}
-
-function resolveModel(pending: PendingLlmTrace | undefined, data: Record<string, unknown>): string {
-  if (pending === undefined) return str(data['model'])
-  return pending.model
-}
-
-function resolveToolCalls(pending: PendingLlmTrace | undefined): Array<LlmTraceToolCall> {
-  if (pending === undefined) return []
-  return pending.toolCalls
-}
-
-function buildEndTrace(event: TraceEvent, userId: string, pending: PendingLlmTrace | undefined): LlmTrace {
-  return {
-    timestamp: event.timestamp,
-    userId,
-    chatUserId: optStr(event.data['chatUserId']),
-    model: resolveModel(pending, event.data),
-    steps: num(event.data['steps']),
-    totalTokens: tokenUsage(event.data['tokenUsage']),
-    duration: num(event.data['totalDuration']),
-    toolCalls: resolveToolCalls(pending),
-    error: undefined,
-    responseId: str(event.data['responseId']),
-    actualModel: str(event.data['actualModel']),
-    finishReason: str(event.data['finishReason']),
-    messageCount: num(event.data['messageCount']),
-    toolCount: num(event.data['toolCount']),
-    exposedToolCount: num(event.data['exposedToolCount']),
-    fullToolCount: num(event.data['fullToolCount']),
-    toolSchemaBytes: num(event.data['toolSchemaBytes']),
-    routingIntent: str(event.data['routingIntent']),
-    routingConfidence: num(event.data['routingConfidence']),
-    routingReason: str(event.data['routingReason']),
-    generatedText: str(event.data['generatedText']),
-    stepsDetail: parseStepsDetail(event.data['stepsDetail']),
-    currentTimeTag: optStr(event.data['currentTimeTag']),
-  }
-}
-
-function buildErrorTrace(event: TraceEvent, userId: string, pending: PendingLlmTrace | undefined): LlmTrace {
-  const duration = pending === undefined ? 0 : event.timestamp - pending.startTimestamp
-  return {
-    timestamp: event.timestamp,
-    userId,
-    chatUserId: optStr(event.data['chatUserId']),
-    model: resolveModel(pending, event.data),
-    steps: 0,
-    totalTokens: { inputTokens: 0, outputTokens: 0 },
-    duration,
-    toolCalls: resolveToolCalls(pending),
-    error: str(event.data['error']),
-    responseId: undefined,
-    actualModel: undefined,
-    finishReason: undefined,
-    messageCount: undefined,
-    toolCount: undefined,
-    exposedToolCount: undefined,
-    fullToolCount: undefined,
-    toolSchemaBytes: undefined,
-    routingIntent: undefined,
-    routingConfidence: undefined,
-    routingReason: undefined,
-    generatedText: undefined,
-    stepsDetail: undefined,
-  }
+  verifiedTraces.clear()
 }
 
 function traceKey(event: TraceEvent): string {
@@ -262,7 +202,7 @@ export function handleLlmTraceEvent(
       toolCalls: [],
       turnId: event.turnId,
     })
-    prunePendingsForUser(userId)
+    pruneForUser(pendingTraces, userId)
   } else if (event.type === 'llm:tool_result') {
     const pending = pendingForToolResult(userId, event.turnId)
     if (pending !== undefined) pending.toolCalls.push(buildTraceToolCall(event.data))
@@ -275,6 +215,20 @@ export function handleLlmTraceEvent(
     stats.totalLlmCalls++
     scheduleStatsBroadcast()
     callbacks.broadcastTrace(trace, event.timestamp)
+    verifiedTraces.set(pendingKey(userId, event.turnId), trace)
+    pruneForUser(verifiedTraces, userId)
+    while (verifiedTraces.size > VERIFIED_TRACES_GLOBAL_CAP) {
+      const oldest = verifiedTraces.keys().next().value
+      if (oldest === undefined) break
+      verifiedTraces.delete(oldest)
+    }
+  } else if (event.type === 'llm:verifier') {
+    const trace = traceForVerifier(userId, event.turnId)
+    const outcome = toVerifierOutcome(event.data['verifierOutcome'])
+    if (trace !== undefined && outcome !== undefined) {
+      trace.verifierOutcome = outcome
+      callbacks.broadcastTrace(trace, event.timestamp)
+    }
   } else if (event.type === 'llm:error') {
     const pending = takePending(userId, event.turnId)
     const trace = buildErrorTrace(event, traceUserId(event, userId), pending)
