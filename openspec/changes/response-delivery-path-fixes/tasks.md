@@ -29,7 +29,7 @@ One group per MR, ordered by dependency (bug 1 → 2 → 3 → 4). Every bug lan
 
 ## 4. Bug 4 (optional — only after bugs 1–3) — embedding sweep retry and dead-letter
 
-- [ ] 4.1 Red tests in `tests/message-embedding-sweep.test.ts`: `SweepDeps` gains an injectable `sleep`; a transient `embedMany` failure retries (2 retries with backoff) and then stores; a permanent failure leaves rows pending after retries with the warn enriched by the provider error class; rows exhausted N times are excluded from the next batch; the sweep log reports the dead-lettered count; the failure map is capped. Verify: `bun test tests/message-embedding-sweep.test.ts` (new cases fail red)
+- [x] 4.1 Red tests in `tests/message-embedding-sweep.test.ts`: `SweepDeps` gains an injectable `sleep`; a transient `embedMany` failure retries (2 retries with backoff) and then stores; a permanent failure leaves rows pending after retries with the warn enriched by the provider error class; rows exhausted N times are excluded from the next batch; the sweep log reports the dead-lettered count; the failure map is capped. Verify: `bun test tests/message-embedding-sweep.test.ts` (new cases fail red)
 - [ ] 4.2 Implement in `src/message-embedding-sweep.ts`: provider error-class enrichment, bounded retry with the injected sleep, capped in-memory failure map keyed by (`contextId`, `messageId`) with batch filtering; `src/message-cache/vector-store.ts` stays unchanged. Verify: `bun test tests/message-embedding-sweep.test.ts`
 - [ ] 4.3 Bug 4 MR gate: `bun run test:affected`, then `bun run test:mutate:changed`
 
