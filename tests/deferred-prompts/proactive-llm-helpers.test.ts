@@ -3,10 +3,12 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { beforeEach, describe, expect, test } from 'bun:test'
+import { beforeEach, describe, expect, mock, test } from 'bun:test'
 
 import type { DeferredDeliveryTarget } from '../../src/chat/types.js'
 import type { VerifierPrompt } from '../../src/completion/verified-completion.js'
+import type { DebugEvent } from '../../src/debug/event-bus.js'
+import { subscribe, unsubscribe } from '../../src/debug/event-bus.js'
 import {
   buildMetadataMessages,
   finalizeAndLog,
@@ -15,6 +17,7 @@ import {
   timezoneOrUtc,
 } from '../../src/deferred-prompts/proactive-llm-helpers.js'
 import type { ExecutionMetadata } from '../../src/deferred-prompts/types.js'
+import { createTrackedLoggerMock } from '../utils/logger-mock.js'
 import { mockLogger, setupTestDb } from '../utils/test-helpers.js'
 
 const dmTarget: DeferredDeliveryTarget = {
@@ -186,6 +189,33 @@ describe('finalizeAndLog verification', () => {
     expect(text).toBe(modelText)
   })
 
+  test('a verified proactive turn emits llm:verifier with the trace scope, turnId and outcome', async () => {
+    mockLogger()
+    const events: DebugEvent[] = []
+    const listener = (event: DebugEvent): void => {
+      events.push(event)
+    }
+    subscribe(listener)
+    try {
+      await finalizeAndLog({ text: '', finishReason: 'stop', finalStep: { response: { messages: [] } } }, 'user-1', {
+        history: [],
+        verifier: {
+          readOnlyToolset: undefined,
+          invokeVerifier: (): Promise<{ text: string | undefined }> => Promise.resolve({ text: '' }),
+        },
+        turnId: 'proactive:u:1:1',
+        traceScope: 'u:1',
+      })
+    } finally {
+      unsubscribe(listener)
+    }
+    const event = events.find((entry) => entry.type === 'llm:verifier')
+    expect(event).toBeDefined()
+    expect(event?.scope).toEqual({ kind: 'user', userId: 'u:1' })
+    expect(event?.turnId).toBe('proactive:u:1:1')
+    expect(event?.data['verifierOutcome']).toBe('empty')
+  })
+
   test('no verification arg → legacy Done. fallback preserved', async () => {
     mockLogger()
     const text = await finalizeAndLog({ text: '', finishReason: 'stop' }, 'user-1')
@@ -196,5 +226,62 @@ describe('finalizeAndLog verification', () => {
     mockLogger()
     const text = await finalizeAndLog({ text: '', finishReason: 'stop' }, 'user-1', undefined, 'ru')
     expect(text).toBe('Готово.')
+  })
+})
+
+// finalizeAndLog binds its child logger at module-eval time, so force a fresh
+// evaluation under the tracked mock with a cache-busting query (mirrors
+// tests/llm-orchestrator-send.test.ts).
+const tracked = createTrackedLoggerMock()
+void mock.module('../../src/logger.js', () => ({ logger: tracked.logger, getLogLevel: tracked.getLogLevel }))
+
+type HelpersModule = typeof import('../../src/deferred-prompts/proactive-llm-helpers.js')
+const isHelpersModule = (value: unknown): value is HelpersModule =>
+  typeof value === 'object' && value !== null && typeof Reflect.get(value, 'finalizeAndLog') === 'function'
+const loadedHelpers: unknown = await import(
+  `../../src/deferred-prompts/proactive-llm-helpers.js?t=${crypto.randomUUID()}`
+)
+if (!isHelpersModule(loadedHelpers)) {
+  throw new Error('proactive helpers module did not export expected shape')
+}
+const { finalizeAndLog: bustedFinalizeAndLog } = loadedHelpers
+
+describe('finalizeAndLog verification logging', () => {
+  type VerificationLogMeta = { userId: string; verifierOutcome: string; verdict: string }
+  const isVerificationLogMeta = (value: unknown): value is VerificationLogMeta =>
+    typeof value === 'object' &&
+    value !== null &&
+    typeof Reflect.get(value, 'verifierOutcome') === 'string' &&
+    typeof Reflect.get(value, 'verdict') === 'string'
+
+  const findVerificationLog = (): VerificationLogMeta | undefined => {
+    const call = tracked.getCallsByLevel('info').find((entry) => entry.args[1] === 'Proactive verification finished')
+    return call !== undefined && isVerificationLogMeta(call.args[0]) ? call.args[0] : undefined
+  }
+
+  beforeEach(async () => {
+    await setupTestDb()
+    tracked.clearCalls()
+  })
+
+  test('the verification log surfaces the outcome and verdict', async () => {
+    mockLogger()
+    await bustedFinalizeAndLog(
+      { text: '', finishReason: 'stop', finalStep: { response: { messages: [] } } },
+      'user-1',
+      {
+        history: [],
+        verifier: {
+          readOnlyToolset: undefined,
+          invokeVerifier: (): Promise<{ text: string | undefined }> => Promise.resolve({ text: '' }),
+        },
+        turnId: 'proactive:u:1:2',
+        traceScope: 'u:1',
+      },
+    )
+    const meta = findVerificationLog()
+    expect(meta).toBeDefined()
+    expect(meta?.verifierOutcome).toBe('empty')
+    expect(meta?.verdict).toBe('unconfirmed')
   })
 })

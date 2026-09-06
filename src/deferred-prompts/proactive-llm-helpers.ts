@@ -16,14 +16,18 @@ import {
   VERIFIER_MAX_STEPS,
 } from '../completion/verified-completion.js'
 import type { VerifierDeps, VerifierPrompt } from '../completion/verified-completion.js'
+import { emitUser } from '../debug/event-bus.js'
 import { t, type Locale } from '../i18n/index.js'
 import { hoistSystemMessages } from '../llm-message-utils.js'
+import { emitLlmEnd, emitLlmStart } from '../llm-orchestrator-events.js'
+import { emitLlmError } from '../llm-orchestrator-logging.js'
 import { collectTurnMessages, type TurnMessagesResult } from '../llm-orchestrator-messages.js'
 import { logger } from '../logger.js'
 import type { TaskProvider } from '../providers/types.js'
 import { buildProviderlessSystemPrompt, buildSystemPrompt } from '../system-prompt.js'
 import type { DisclosureSession } from '../tools/disclosure/registry.js'
 import { buildToolsContextRecord } from '../tools/wrap-tool-execution.js'
+import type { LlmConfig } from './proactive-llm-config.js'
 import type { ExecutionMetadata } from './types.js'
 
 const log = logger.child({ scope: 'deferred:proactive-llm-helpers' })
@@ -111,6 +115,109 @@ export const finalizeDeliveryText = (result: DeliveryResultLike, locale?: Locale
 }
 
 /**
+ * Debug-trace emission parity with invokeModel (llm:start/end/error): the proof
+ * checks correlate the run's own trace from recentLlm, so the proactive execution
+ * must land one. chatUserId is the prompt owner's native chat user id (the
+ * delivery target's context id only for DM targets, where the two coincide),
+ * which is what findOwnTrace attributes against — and what usage recording
+ * treats as the real chat actor, so group-targeted prompts must not land their
+ * spend on the group id.
+ */
+export const generateWithTrace = async (
+  execCtx: DeferredExecutionContextLike,
+  config: LlmConfig,
+  prepared: FullGenerationInput,
+  deps: { generateText: typeof generateText },
+  scope: ProviderRequestScope,
+  turnId: string,
+  baseOptions: Parameters<typeof generateText>[0],
+): Promise<Awaited<ReturnType<typeof generateText>>> => {
+  const start = Date.now()
+  emitLlmStart(prepared.storageContextId, config.mainModel, prepared.messages, prepared.tools, turnId)
+  try {
+    const result = await deps.generateText(
+      Object.assign({}, baseOptions, { toolsContext: buildToolsContextRecord(prepared.tools, scope) }),
+    )
+    emitLlmEnd(
+      prepared.storageContextId,
+      execCtx.deliveryTarget.createdByUserId,
+      execCtx.deliveryTarget.contextType,
+      config.mainModel,
+      result,
+      start,
+      prepared.messages,
+      prepared.tools,
+      turnId,
+    )
+    return result
+  } catch (error) {
+    emitLlmError(
+      prepared.storageContextId,
+      execCtx.deliveryTarget.createdByUserId,
+      execCtx.deliveryTarget.contextType,
+      config.mainModel,
+      start,
+      prepared.messages.length,
+      error,
+      turnId,
+    )
+    throw error
+  }
+}
+
+type ProactiveVerificationArg = {
+  verifier: VerifierDeps
+  history: readonly ModelMessage[]
+  /** Correlates the follow-up llm:verifier event with the turn's llm:end trace. */
+  turnId?: string
+  /** The user scope the path's own llm:start/end events used (the storage context id). */
+  traceScope?: string
+}
+
+/**
+ * Risky-turn verify-and-report leg: runs the verifier, emits the llm:verifier trace
+ * event with the path's own scope and turnId, logs the outcome, and returns the
+ * verified text. Returns undefined when the turn is not risky (no verification).
+ */
+const verifyRiskyTurn = async (
+  result: DeliveryResultLike & TurnMessagesResult,
+  verification: ProactiveVerificationArg,
+  userId: string,
+  locale?: Locale,
+): Promise<string | undefined> => {
+  const turnMessages = collectTurnMessages(result)
+  const hadToolFailure = detectToolFailure(turnMessages)
+  const hadToolActivity = turnHasToolActivity(turnMessages)
+  const isRisky =
+    result.text === undefined || result.text === '' || result.finishReason === 'tool-calls' || hadToolFailure
+  if (!isRisky) return undefined
+  const verified = await buildVerifiedCompletion(
+    {
+      history: verification.history,
+      finishReason: result.finishReason,
+      hadToolFailure,
+      hadToolActivity,
+      finalText: result.text,
+      locale,
+    },
+    verification.verifier,
+  )
+  if (verification.turnId !== undefined && verification.traceScope !== undefined) {
+    emitUser(
+      'llm:verifier',
+      verification.traceScope,
+      { verifierOutcome: verified.verifierOutcome },
+      verification.turnId,
+    )
+  }
+  log.info(
+    { userId, verifierOutcome: verified.verifierOutcome, verdict: verified.verdict },
+    'Proactive verification finished',
+  )
+  return verified.text
+}
+
+/**
  * Resolve the user-facing delivery text and log the turn's completion shape. Warns when the
  * turn ended on a pending tool call, because a delivered reminder that stopped mid-tool-step
  * is provably incomplete (its text is a preamble, dropped by finalizeDeliveryText).
@@ -121,7 +228,7 @@ export const finalizeDeliveryText = (result: DeliveryResultLike, locale?: Locale
 export const finalizeAndLog = async (
   result: DeliveryResultLike & TurnMessagesResult,
   userId: string,
-  verification?: { verifier: VerifierDeps; history: readonly ModelMessage[] },
+  verification?: ProactiveVerificationArg,
   locale?: Locale,
 ): Promise<string> => {
   const stepCount = Array.isArray(result.steps) ? result.steps.length : undefined
@@ -133,25 +240,8 @@ export const finalizeAndLog = async (
   }
 
   if (verification !== undefined) {
-    const turnMessages = collectTurnMessages(result)
-    const hadToolFailure = detectToolFailure(turnMessages)
-    const hadToolActivity = turnHasToolActivity(turnMessages)
-    const isRisky =
-      result.text === undefined || result.text === '' || result.finishReason === 'tool-calls' || hadToolFailure
-    if (isRisky) {
-      const verified = await buildVerifiedCompletion(
-        {
-          history: verification.history,
-          finishReason: result.finishReason,
-          hadToolFailure,
-          hadToolActivity,
-          finalText: result.text,
-          locale,
-        },
-        verification.verifier,
-      )
-      return verified.text
-    }
+    const verifiedText = await verifyRiskyTurn(result, verification, userId, locale)
+    if (verifiedText !== undefined) return verifiedText
   }
   return finalizeDeliveryText(result, locale)
 }
