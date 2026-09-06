@@ -26,7 +26,7 @@ Design open questions: none (design.md resolves the only earlier unknown). Work 
 
 ## 4. Documentation (MR 4)
 
-- [ ] 4.1 Update `docs/architecture/tools.md`: `create_alert`/`update_reminder` accept `condition` as a JSON-encoded string or object with identical validation and rejection reasons; capability gating, tool_prefs (`allow`/`ask`/`deny`), and the guest toolset unchanged. Verify: review diff against specs; `bun run lint`
+- [x] 4.1 Update `docs/architecture/tools.md`: `create_alert`/`update_reminder` accept `condition` as a JSON-encoded string or object with identical validation and rejection reasons; capability gating, tool_prefs (`allow`/`ask`/`deny`), and the guest toolset unchanged. Verify: review diff against specs; `bun run lint`
 - [ ] 4.2 Update `docs/architecture/behaviors.md`: filter alerts baseline on their first evaluation cycle (no backlog replay); alert delivery is the 5-minute poll cycle with `cooldown_minutes` burst collapse (one merged message per firing cycle; fire-time LLM composes the digest with `get_task`/`get_comments`); GitHub close coverage comes from per-task watches/activity (whole-list path lists open tasks only). Verify: review diff against specs; `bun run lint`
 
 ## 5. Post-deploy ops checklist (no code; after rollout)
