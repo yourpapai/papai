@@ -36,4 +36,4 @@ Design open questions: none (design.md resolves the only earlier unknown). Work 
 
 ## 6. Full verification
 
-- [ ] 6.1 Run the full suite and checks — `bun run test`, `bun run typecheck`, `bun run lint` (or `bun run check:full`) — and confirm the `docs/architecture/tools.md`/`behaviors.md` updates from 4.x are in place; fix anything red and re-run to green.
+- [x] 6.1 Run the full suite and checks — `bun run test`, `bun run typecheck`, `bun run lint` (or `bun run check:full`) — and confirm the `docs/architecture/tools.md`/`behaviors.md` updates from 4.x are in place; fix anything red and re-run to green.
