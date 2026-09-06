@@ -115,6 +115,16 @@ describe('sendTelegramMessage', () => {
     const warn = tracked.getCallsByLevel('warn').find((entry) => entry.args[1] === 'Telegram chunk send failed')
     expect(warn).toBeDefined()
   })
+
+  test('rejects with the last chunk error when every chunk fails', async () => {
+    const { api, calls } = makeApi([new Error('telegram down'), new Error('telegram down'), new Error('telegram down')])
+
+    await expect(sendTelegramMessage(api, makeTarget(), 'x'.repeat(9000))).rejects.toThrow('telegram down')
+
+    expect(calls.length).toBe(3)
+    const warns = tracked.getCallsByLevel('warn').filter((entry) => entry.args[1] === 'Telegram chunk send failed')
+    expect(warns).toHaveLength(3)
+  })
 })
 
 function entitiesOf(options: SendMessageCall[2]): unknown[] {

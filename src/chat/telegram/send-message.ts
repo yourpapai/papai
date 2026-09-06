@@ -13,12 +13,15 @@ import { shiftTelegramEntity } from './reply-helpers.js'
 
 const log = logger.child({ scope: 'telegram:send-message' })
 
+type DeferredChunkState = { index: number; chunkStart: number; sent: number; lastError?: Error }
+
 /**
  * Deliver a proactive markdown answer to a Telegram chat. The formatted text is
  * chunked against the platform limit; the personal-group mention prefix rides
  * the first chunk only (its entities as-is there, formatted entities windowed
- * per chunk). A failed chunk logs a warn and the remaining chunks still send —
- * never a silent drop.
+ * per chunk). A failed chunk logs a warn and the remaining chunks still send;
+ * when no chunk is delivered the last error propagates so delivery-accounting
+ * callers (deferred poller) keep their prompts due for the next poll.
  */
 export async function sendTelegramMessage(
   api: Pick<TelegramBotApiLike, 'sendMessage'>,
@@ -34,36 +37,36 @@ export async function sendTelegramMessage(
     target.contextType === 'group' && target.threadId !== null
       ? { message_thread_id: parseInt(target.threadId, 10) }
       : {}
-  type DeferredChunkState = { index: number; chunkStart: number }
-  await chunks.reduce<Promise<DeferredChunkState>>(
-    (prev, chunk) =>
-      prev.then((state) => {
-        const chunkStart = state.chunkStart
-        const chunkEnd = chunkStart + chunk.length
-        const next: DeferredChunkState = { index: state.index + 1, chunkStart: chunkEnd }
-        const options: Parameters<TelegramBotApiLike['sendMessage']>[2] = {
-          entities: [
-            // The mention prefix rides the first chunk only, its entities as-is.
-            ...(state.index === 0 ? mentionPrefix.entities : []),
-            // Formatted entities map into full-text coordinates (prefix
-            // shift), then window onto this chunk.
-            ...sliceTelegramEntities(
-              formatted.entities.map((entity) => shiftTelegramEntity(entity, mentionPrefix.text.length)),
-              chunkStart,
-              chunkEnd,
-            ),
-          ],
-          ...threadOptions,
-        }
-        return api.sendMessage(chatId, chunk, options).then(
-          () => next,
-          (error: unknown) => {
-            const err = error instanceof Error ? error : new Error(String(error))
-            log.warn({ index: state.index, total: chunks.length, error: err.message }, 'Telegram chunk send failed')
-            return next
-          },
-        )
-      }),
-    Promise.resolve({ index: 0, chunkStart: 0 }),
+  const sendChunk = (state: DeferredChunkState, chunk: string): Promise<DeferredChunkState> => {
+    const chunkStart = state.chunkStart
+    const chunkEnd = chunkStart + chunk.length
+    const next: DeferredChunkState = { ...state, index: state.index + 1, chunkStart: chunkEnd }
+    const options: Parameters<TelegramBotApiLike['sendMessage']>[2] = {
+      entities: [
+        // The mention prefix rides the first chunk only, its entities as-is.
+        ...(state.index === 0 ? mentionPrefix.entities : []),
+        // Formatted entities map into full-text coordinates (prefix shift),
+        // then window onto this chunk.
+        ...sliceTelegramEntities(
+          formatted.entities.map((entity) => shiftTelegramEntity(entity, mentionPrefix.text.length)),
+          chunkStart,
+          chunkEnd,
+        ),
+      ],
+      ...threadOptions,
+    }
+    return api.sendMessage(chatId, chunk, options).then(
+      () => ({ ...next, sent: state.sent + 1 }),
+      (error: unknown) => {
+        const err = error instanceof Error ? error : new Error(String(error))
+        log.warn({ index: state.index, total: chunks.length, error: err.message }, 'Telegram chunk send failed')
+        return { ...next, lastError: err }
+      },
+    )
+  }
+  const finalState = await chunks.reduce<Promise<DeferredChunkState>>(
+    (prev, chunk) => prev.then((state) => sendChunk(state, chunk)),
+    Promise.resolve({ index: 0, chunkStart: 0, sent: 0 }),
   )
+  if (finalState.sent === 0) throw finalState.lastError ?? new Error('Telegram chunked send delivered nothing')
 }
