@@ -694,6 +694,23 @@ describe('pollAlertsOnce — alert task watch', () => {
     expect(sentMessages).toHaveLength(1)
     expect(getAlertPrompt(alert.id, WATCH_USER)!.lastTriggeredAt).not.toBeNull()
   })
+
+  test('a per-task watch observes a GitHub close via its targeted fetch and fires', async () => {
+    const watch = makeWatchProvider()
+    watch.setTask(watchTask('task-1', { status: 'open' }))
+    const alert = createWatchAlert({ field: 'task.id', op: 'eq', value: 'task-1' }, 'Watch task-1')
+    const buildProviderFn = watchBuildProviderFn(watch)
+
+    await pollAlertsOnce(chat, buildProviderFn)
+    expect(watch.getTaskCalls).toEqual(['task-1'])
+    expect(sentMessages).toHaveLength(0)
+
+    watch.setTask(watchTask('task-1', { status: 'closed' }))
+    await pollAlertsOnce(chat, buildProviderFn)
+
+    expect(sentMessages).toHaveLength(1)
+    expect(getAlertPrompt(alert.id, WATCH_USER)!.lastTriggeredAt).not.toBeNull()
+  })
 })
 
 // --- Alert task activity (per-task activity watch) tests ---
@@ -1049,5 +1066,25 @@ describe('pollAlertsOnce — alert task activity', () => {
     expect(state.historyCalls.map(([taskId]) => taskId)).toEqual(['task-1'])
     expect(sentMessages).toHaveLength(1)
     expect(getAlertPrompt(activityAlert.id, ACTIVITY_USER)!.lastActivityCursor).toBe(T1)
+  })
+
+  test('a GitHub close surfaces as status activity that fires an activity alert', async () => {
+    const state = makeActivityProvider()
+    state.setHistory('task-1', [activity('reopen-1', T1, { category: 'status', added: 'open' })])
+    const alert = createActivityAlert({ kind: 'activity', taskId: 'task-1', categories: ['status'] })
+
+    await pollAlertsOnce(chat, activityBuildProviderFn(state))
+
+    expect(sentMessages).toHaveLength(0)
+    expect(getAlertPrompt(alert.id, ACTIVITY_USER)!.lastActivityCursor).toBe(T1)
+
+    state.setHistory('task-1', [
+      activity('reopen-1', T1, { category: 'status', added: 'open' }),
+      activity('close-1', T2, { category: 'status', added: 'closed' }),
+    ])
+    await pollAlertsOnce(chat, activityBuildProviderFn(state))
+
+    expect(sentMessages).toHaveLength(1)
+    expect(getAlertPrompt(alert.id, ACTIVITY_USER)!.lastActivityCursor).toBe(T2)
   })
 })

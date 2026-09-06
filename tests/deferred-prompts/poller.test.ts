@@ -1875,4 +1875,45 @@ describe('pollAlertsOnce — change gate and fetch sharing', () => {
     expect(getAlertPrompt(created.id, USER_ID)!.lastTriggeredAt).toBeNull()
     expect(getSnapshotsForUser(USER_ID).size).toBe(0)
   })
+
+  test('a not-planned close reports the folded status at fire time, never completed', async () => {
+    createPastBaselineAlert(
+      USER_ID,
+      'Notify on not-planned close',
+      { field: 'task.status', op: 'eq', value: 'closed (not_planned)' },
+      0,
+    )
+    const provider = createMockProvider({
+      listProjects: mock(() => Promise.resolve([{ id: 'proj-1', name: 'Test', url: 'http://test/proj/1' }])),
+      listTasks: mock(() =>
+        Promise.resolve([{ id: 'task-1', title: 'Task A', status: 'closed (not_planned)', url: 'http://test/1' }]),
+      ),
+    })
+
+    await pollAlertsOnce(chat, () => provider)
+
+    expect(sentMessages).toHaveLength(1)
+    expect(dispatchCalls).toHaveLength(1)
+    const summary = String(dispatchCalls[0]![5])
+    expect(summary).toContain('closed (not_planned)')
+    expect(summary).not.toContain('completed')
+  })
+
+  test('a changed_to closed filter alert does not fire for GitHub closes on the open-only whole-list path', async () => {
+    createPastBaselineAlert(USER_ID, 'Notify on close', { field: 'task.status', op: 'changed_to', value: 'closed' }, 0)
+    const openProvider = createMockProvider({
+      listProjects: mock(() => Promise.resolve([{ id: 'proj-1', name: 'Test', url: 'http://test/proj/1' }])),
+      listTasks: mock(() => Promise.resolve([{ id: 'task-1', title: 'Task A', status: 'open', url: 'http://test/1' }])),
+    })
+
+    await pollAlertsOnce(chat, () => openProvider)
+    expect(sentMessages).toHaveLength(0)
+
+    const emptyProvider = createMockProvider({
+      listProjects: mock(() => Promise.resolve([{ id: 'proj-1', name: 'Test', url: 'http://test/proj/1' }])),
+      listTasks: mock(() => Promise.resolve([])),
+    })
+    await pollAlertsOnce(chat, () => emptyProvider)
+    expect(sentMessages).toHaveLength(0)
+  })
 })

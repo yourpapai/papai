@@ -229,6 +229,15 @@ describe('githubListTasks', () => {
     expect(calls[0]?.url.searchParams.get('state')).toBe('open')
   })
 
+  test('without a status filter the request pins no state so GitHub serves open issues only', async () => {
+    mockLogger()
+    const calls: CapturedRequest[] = []
+    setMockFetch(captureRequests(calls, () => ({ data: [] })).handler)
+    await githubListTasks(config, 'octocat/Hello-World')
+    expect(calls[0]?.url.pathname).toBe('/repos/octocat/Hello-World/issues')
+    expect(calls[0]?.url.searchParams.get('state')).toBeNull()
+  })
+
   test('both closed status forms map onto state=closed', async () => {
     mockLogger()
     const calls: CapturedRequest[] = []
