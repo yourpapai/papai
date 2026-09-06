@@ -14,6 +14,7 @@ import {
   resetLlmBuffers,
   shapeLlmTrace,
   LLM_TRACE_CAPACITY,
+  VERIFIED_TRACES_GLOBAL_CAP,
   type LlmTrace,
 } from '../../src/debug/llm-trace-collector.js'
 
@@ -541,6 +542,58 @@ describe('handleLlmTraceEvent', () => {
     expect(outcomeOf(pushed[5]!)).toBe('ok')
   })
 
+  test('the verifier trace registry is globally bounded across users', () => {
+    const total = VERIFIED_TRACES_GLOBAL_CAP + 1
+    for (let i = 0; i < total; i++) {
+      const ctx = `u:cap-${i}`
+      handleLlmTraceEvent(
+        { type: 'llm:start', timestamp: i, scope: userScope(ctx), data: { model: `m-${i}` }, turnId: `turn-${i}` },
+        callbacks(pushed),
+        stats,
+        () => {},
+      )
+      handleLlmTraceEvent(
+        { type: 'llm:end', timestamp: 1000 + i, scope: userScope(ctx), data: {}, turnId: `turn-${i}` },
+        callbacks(pushed),
+        stats,
+        () => {},
+      )
+    }
+    expect(pushed).toHaveLength(total)
+
+    const broadcasts: Array<{ trace: LlmTrace; ts: number }> = []
+    handleLlmTraceEvent(
+      {
+        type: 'llm:verifier',
+        timestamp: 100000,
+        scope: userScope('u:cap-0'),
+        data: { verifierOutcome: 'ok' },
+        turnId: 'turn-0',
+      },
+      recordingCallbacks(pushed, broadcasts),
+      stats,
+      () => {},
+    )
+    expect(broadcasts).toHaveLength(0)
+    expect(outcomeOf(pushed[0]!)).toBeUndefined()
+
+    const last = total - 1
+    handleLlmTraceEvent(
+      {
+        type: 'llm:verifier',
+        timestamp: 100001,
+        scope: userScope(`u:cap-${last}`),
+        data: { verifierOutcome: 'ok' },
+        turnId: `turn-${last}`,
+      },
+      recordingCallbacks(pushed, broadcasts),
+      stats,
+      () => {},
+    )
+    expect(broadcasts).toHaveLength(1)
+    expect(outcomeOf(pushed[last]!)).toBe('ok')
+  })
+
   test('llm:verifier re-broadcasts the updated trace in place', () => {
     const ctx = 'u:verifier-broadcast'
     handleLlmTraceEvent(
@@ -882,5 +935,9 @@ describe('shapeLlmTrace', () => {
 describe('buffer capacity exports', () => {
   test('LLM_TRACE_CAPACITY equals the recentLlm ring buffer capacity', () => {
     expect(LLM_TRACE_CAPACITY).toBe(65535)
+  })
+
+  test('VERIFIED_TRACES_GLOBAL_CAP bounds the verifier trace registry across users', () => {
+    expect(VERIFIED_TRACES_GLOBAL_CAP).toBe(1024)
   })
 })

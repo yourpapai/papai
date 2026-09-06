@@ -64,6 +64,14 @@ export const LLM_TRACE_CAPACITY = 65535
  */
 const MAX_PENDING_PER_USER = 4
 
+/**
+ * Global ceiling on the ended-trace registry. Unlike pendings, registry entries
+ * are never consumed by a terminal event, so the per-user cap alone would let
+ * the map grow with every distinct storage-context key ever served; this bound
+ * keeps total retention independent of historical user count.
+ */
+export const VERIFIED_TRACES_GLOBAL_CAP = 1024
+
 export const recentLlm: LlmTrace[] = []
 export const pendingTraces = new Map<string, PendingLlmTrace>()
 /** Ended traces keyed user+turnId so a follow-up llm:verifier can attach its outcome; capped like pendings. */
@@ -209,6 +217,11 @@ export function handleLlmTraceEvent(
     callbacks.broadcastTrace(trace, event.timestamp)
     verifiedTraces.set(pendingKey(userId, event.turnId), trace)
     pruneForUser(verifiedTraces, userId)
+    while (verifiedTraces.size > VERIFIED_TRACES_GLOBAL_CAP) {
+      const oldest = verifiedTraces.keys().next().value
+      if (oldest === undefined) break
+      verifiedTraces.delete(oldest)
+    }
   } else if (event.type === 'llm:verifier') {
     const trace = traceForVerifier(userId, event.turnId)
     const outcome = toVerifierOutcome(event.data['verifierOutcome'])
