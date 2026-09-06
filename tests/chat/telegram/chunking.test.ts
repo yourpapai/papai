@@ -110,4 +110,17 @@ describe('chunkForTelegram', () => {
     expect(chunks.length).toBeGreaterThan(1)
     expect(chunks.join('')).toBe(input)
   })
+
+  test('clamps a non-positive maxLen so the splitter always advances', () => {
+    const input = 'z'.repeat(10)
+    for (const limit of [0, -5]) {
+      const chunks = chunkForTelegram(input, limit)
+      expect(chunks).toHaveLength(10)
+      for (const chunk of chunks) {
+        expect(chunk).toBe('z')
+      }
+      expect(chunks.join('')).toBe(input)
+    }
+    expect(chunkForTelegram('tiny', 0)).toEqual(['t', 'i', 'n', 'y'])
+  })
 })

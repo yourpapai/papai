@@ -24,15 +24,16 @@ function findSplitPoint(text: string, maxLen: number): number {
  * then single newlines, then a hard cut. The split always advances — the hard
  * cut is the floor — so an oversize single line cannot loop. Chunks join back
  * to the exact input (no trimming, no fence healing): per-chunk entity offsets
- * index the chunk text verbatim.
+ * index the chunk text verbatim. A `maxLen` below 1 is clamped to 1.
  */
 export function chunkForTelegram(text: string, maxLen: number = telegramTraits.maxMessageLength!): string[] {
-  if (text.length <= maxLen) return [text]
+  const limit = Math.max(1, maxLen)
+  if (text.length <= limit) return [text]
 
   const chunks: string[] = []
   let remainder = text
-  while (remainder.length > maxLen) {
-    const sliceEnd = findSplitPoint(remainder, maxLen)
+  while (remainder.length > limit) {
+    const sliceEnd = findSplitPoint(remainder, limit)
     chunks.push(remainder.slice(0, sliceEnd))
     remainder = remainder.slice(sliceEnd)
   }
