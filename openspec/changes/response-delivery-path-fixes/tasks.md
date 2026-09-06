@@ -25,7 +25,7 @@ One group per MR, ordered by dependency (bug 1 → 2 → 3 → 4). Every bug lan
 - [x] 3.3 Red tests in `tests/chat/telegram/reply-helpers.test.ts` and `tests/chat/telegram/index.test.ts`: over-limit `sendFormattedReply` sends ordered in-bounds chunks with the same reply params and per-chunk entities (entities spanning a cut dropped, `shiftTelegramEntity` shifts the rest) and returns the last successful `{messageId, chatId}`; a failing chunk logs a warn and later chunks still send; the at-or-under-limit path is unchanged; deferred `sendMessage` chunks with the mention prefix on the first chunk only. Verify: `bun test tests/chat/telegram/reply-helpers.test.ts tests/chat/telegram/index.test.ts` (new cases fail red)
 - [x] 3.4 Implement chunked sends: entity-windowing helper alongside the splitter; apply in `sendFormattedReply` (`src/chat/telegram/reply-helpers.ts`) and deferred `sendMessage` (`src/chat/telegram/index.ts`); `src/chat/telegram/reply-fn-builder.ts` needs no change (`lastReplyTarget` flows from the return). Verify: `bun test tests/chat/telegram/chunking.test.ts tests/chat/telegram/reply-helpers.test.ts tests/chat/telegram/index.test.ts tests/chat/telegram/reply-fn-builder.test.ts`
 - [x] 3.5 If `tests/stories/chat/telegram-reply-fn.story.test.ts` pins single-send `formatted` behavior, extend it for ordered chunked delivery. Verify: `bun test:stories`
-- [ ] 3.6 Bug 3 MR gate: `bun run test:affected`, then `bun run test:mutate:changed`
+- [x] 3.6 Bug 3 MR gate: `bun run test:affected`, then `bun run test:mutate:changed`
 
 ## 4. Bug 4 (optional — only after bugs 1–3) — embedding sweep retry and dead-letter
 
