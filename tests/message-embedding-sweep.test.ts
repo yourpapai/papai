@@ -220,15 +220,16 @@ describe('message-embedding-sweep failure policy (tracked logger, busted module)
     tracked.clearCalls()
   })
 
-  test('rows exhausted repeatedly are dead-lettered out of the batch, bounded by the map cap', async () => {
-    // Nine rows against a failure-map cap of eight: every sweep fails the whole
-    // batch, the map evicts its oldest entry, and after five failed sweeps the
-    // rows that reached the threshold are excluded while evicted rows retry.
-    for (let i = 0; i < 9; i++) {
+  test('a full failing batch is dead-lettered out of the sweep after five exhausted sweeps', async () => {
+    // A context batch holds up to 25 rows and the per-context failure map must
+    // hold all of them, so every count climbs to the retire threshold. Five
+    // failing sweeps (three embed attempts each) exhaust every row; the sixth
+    // sweep has no live rows left, attempts nothing, and the rows stay pending.
+    for (let i = 0; i < 25; i++) {
       cacheMessage({
         messageId: `m${i}`,
-        contextId: `g:t${i}`,
-        groupContextId: 'g-cap',
+        contextId: 'g-full:t0',
+        groupContextId: 'g-full',
         text: `t${i}`,
         timestamp: i + 1,
       })
@@ -249,15 +250,10 @@ describe('message-embedding-sweep failure policy (tracked logger, busted module)
     }
     const res = await bustedRunMessageEmbeddingSweep(deps)
 
-    // The sixth sweep attempts only the five rows whose failure entries were
-    // evicted or never reached the threshold; the four dead-lettered rows are
-    // excluded from the batch but stay pending.
-    const finalBatch = valuesPerCall[valuesPerCall.length - 1]
-    assert(finalBatch !== undefined)
-    expect(finalBatch).toEqual(['t0', 't1', 't2', 't3', 't4'])
-    expect(valuesPerCall[0]).toEqual(['t0', 't1', 't2', 't3', 't4', 't5', 't6', 't7', 't8'])
+    expect(valuesPerCall).toHaveLength(15)
+    expect(valuesPerCall[0]).toEqual(Array.from({ length: 25 }, (_, i) => `t${i}`))
     expect(res.embedded).toBe(0)
-    expect(countPending()).toBe(9)
+    expect(countPending()).toBe(25)
 
     const completionLogs = tracked
       .getCallsByLevel('info')
@@ -265,7 +261,50 @@ describe('message-embedding-sweep failure policy (tracked logger, busted module)
     const lastCompletion = completionLogs.at(-1)
     assert(lastCompletion !== undefined)
     assert(isSweepCompletionMeta(lastCompletion.args[0]))
-    expect(lastCompletion.args[0].deadLettered).toBe(4)
+    expect(lastCompletion.args[0].deadLettered).toBe(25)
+  })
+
+  test('rows behind dead-lettered rows are still attempted and evicted rows retry', async () => {
+    // Thirty rows in one context: the first batch of 25 exhausts over five
+    // sweeps; the sixth sweep skips past the dead-lettered rows and attempts
+    // the five rows behind them, whose failures evict the five oldest dead
+    // entries — so the seventh sweep retries the revived rows too.
+    for (let i = 0; i < 30; i++) {
+      cacheMessage({
+        messageId: `m${i}`,
+        contextId: 'g-adv:t0',
+        groupContextId: 'g-adv',
+        text: `t${i}`,
+        timestamp: i + 1,
+      })
+    }
+    await flushPendingWrites()
+    const valuesPerCall: string[][] = []
+    const deps = {
+      resolve: (): LlmConfigResult => okConfig('m'),
+      embedMany: (values: readonly string[]): Promise<{ embeddings: number[][] }> => {
+        valuesPerCall.push([...values])
+        return Promise.reject(new Error('hard down'))
+      },
+      sleep: async (): Promise<void> => {},
+    }
+
+    for (let sweep = 0; sweep < 7; sweep++) {
+      await bustedRunMessageEmbeddingSweep(deps)
+    }
+
+    expect(valuesPerCall).toHaveLength(21)
+    expect(valuesPerCall[15]).toEqual(['t25', 't26', 't27', 't28', 't29'])
+    expect(valuesPerCall[18]).toEqual(['t0', 't1', 't2', 't3', 't4', 't25', 't26', 't27', 't28', 't29'])
+    expect(countPending()).toBe(30)
+
+    const completionLogs = tracked
+      .getCallsByLevel('info')
+      .filter((entry) => entry.args[1] === 'message embedding sweep complete')
+    const lastCompletion = completionLogs.at(-1)
+    assert(lastCompletion !== undefined)
+    assert(isSweepCompletionMeta(lastCompletion.args[0]))
+    expect(lastCompletion.args[0].deadLettered).toBe(20)
   })
 
   test('the embed-failure warn carries the provider error class', async () => {

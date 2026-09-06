@@ -24,12 +24,13 @@ const CONCURRENCY = 3
 /** Backoff between embed retries: attempt → 500ms → attempt → 1s → attempt → give up. */
 const EMBED_RETRY_BACKOFF_MS = [500, 1000] as const
 /**
- * In-memory dead-letter bound for per-row embed-failure counts, keyed
- * `contextId\0messageId` and evicting the oldest entry beyond the cap — a
- * failed row is retried again once its entry is evicted (bounded memory over
- * permanent remembering).
+ * Per-context dead-letter bound for per-row embed-failure counts (the inner
+ * map is keyed `messageId`). A failing batch never exceeds BATCH_PER_CONTEXT
+ * rows, so a row's count survives sweep to sweep and can reach the retire
+ * threshold; beyond the bound the oldest entry is evicted and that row is
+ * retried again (bounded memory over permanent remembering).
  */
-const SWEEP_FAILURE_MAP_CAP = 8
+const SWEEP_FAILURE_MAP_CAP = BATCH_PER_CONTEXT
 /** Failed sweeps after which a row is excluded from the embed batch. */
 const SWEEP_FAILURE_RETIRE_THRESHOLD = 5
 
@@ -87,26 +88,33 @@ const providerErrorClass = (error: Error): string => {
   return `${error.name}:${statusText}`
 }
 
-const failureCounts = new Map<string, number>()
+/** Per-row embed-failure counts, one capped map per storage context. */
+const failureCounts = new Map<string, Map<string, number>>()
 
-const failureKey = (contextId: string, messageId: string): string => `${contextId}\u0000${messageId}`
-
-/** Count one failed batch per row, then trim the map to its cap, evicting the oldest entries. */
+/**
+ * Count one failed batch per row, then trim each touched context's map to its
+ * cap, evicting the oldest entries. A batch is one config-context's rows and
+ * may span storage contexts, so counts key on the full row identity.
+ */
 const recordBatchFailures = (rows: ReadonlyArray<{ contextId: string; messageId: string }>): void => {
   for (const row of rows) {
-    const key = failureKey(row.contextId, row.messageId)
-    failureCounts.set(key, (failureCounts.get(key) ?? 0) + 1)
-  }
-  while (failureCounts.size > SWEEP_FAILURE_MAP_CAP) {
-    const oldest = failureCounts.keys().next().value
-    if (oldest === undefined) break
-    failureCounts.delete(oldest)
+    let counts = failureCounts.get(row.contextId)
+    if (counts === undefined) {
+      counts = new Map<string, number>()
+      failureCounts.set(row.contextId, counts)
+    }
+    counts.set(row.messageId, (counts.get(row.messageId) ?? 0) + 1)
+    while (counts.size > SWEEP_FAILURE_MAP_CAP) {
+      const oldest = counts.keys().next().value
+      if (oldest === undefined) break
+      counts.delete(oldest)
+    }
   }
 }
 
 /** Forget a row's failures once its embedding is stored. */
 const clearFailure = (contextId: string, messageId: string): void => {
-  failureCounts.delete(failureKey(contextId, messageId))
+  failureCounts.get(contextId)?.delete(messageId)
 }
 
 type PendingRow = { contextId: string; messageId: string; text: string | null }
@@ -114,7 +122,7 @@ type PendingRow = { contextId: string; messageId: string; text: string | null }
 /** Drop rows whose failure count reached the retire threshold; report how many were dropped. */
 const excludeDeadLettered = (rows: readonly PendingRow[]): { batch: PendingRow[]; deadLettered: number } => {
   const batch = rows.filter((row) => {
-    const failures = failureCounts.get(failureKey(row.contextId, row.messageId)) ?? 0
+    const failures = failureCounts.get(row.contextId)?.get(row.messageId) ?? 0
     return failures < SWEEP_FAILURE_RETIRE_THRESHOLD
   })
   return { batch, deadLettered: rows.length - batch.length }
@@ -123,9 +131,11 @@ const excludeDeadLettered = (rows: readonly PendingRow[]): { batch: PendingRow[]
 /**
  * Embed one config-context's pending batch (NULL-embedding rows plus rows whose
  * stored model differs from the currently-resolved model). Rows whose failure
- * count reached the retire threshold are dead-lettered out of the batch. Returns
- * the number of embeddings stored and the dead-lettered count; never throws —
- * failures are logged (with the provider error class) and rows stay pending.
+ * count reached the retire threshold are dead-lettered out of the batch; the
+ * fetch window extends past them so live rows behind dead-lettered rows are
+ * still embedded. Returns the number of embeddings stored and the
+ * dead-lettered count; never throws — failures are logged (with the provider
+ * error class) and rows stay pending.
  */
 async function sweepContext(
   configContextId: string,
@@ -137,8 +147,9 @@ async function sweepContext(
     return { embedded: 0, deadLettered: 0 }
   }
   const { apiKey, baseUrl, model } = resolved.embedding
-  const rows = nextPendingBatchForContext(configContextId, model, BATCH_PER_CONTEXT)
-  const { batch, deadLettered } = excludeDeadLettered(rows)
+  const rows = nextPendingBatchForContext(configContextId, model, BATCH_PER_CONTEXT + SWEEP_FAILURE_MAP_CAP)
+  const { batch: liveRows, deadLettered } = excludeDeadLettered(rows)
+  const batch = liveRows.slice(0, BATCH_PER_CONTEXT)
   if (batch.length === 0) {
     if (deadLettered > 0) {
       log.debug({ configContextId, deadLettered }, 'all rows dead-lettered; skipping context')
