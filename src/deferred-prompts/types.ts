@@ -42,7 +42,7 @@ export const deliveryPolicySchema = z
 
 import type { AlertCondition } from './condition-schema.js'
 
-export { alertConditionSchema } from './condition-schema.js'
+export { alertConditionInputSchema, parseConditionInput } from './condition-schema.js'
 export type { AlertCondition, LeafCondition } from './condition-schema.js'
 
 // --- Execution metadata ---

@@ -7,12 +7,34 @@ import { beforeEach, describe, expect, test } from 'bun:test'
 
 import { z } from 'zod'
 
+import { getDrizzleDb } from '../../src/db/drizzle.js'
+import { contextSettings, platformInstances, taskInstances } from '../../src/db/schema.js'
 import { ACTIVITY_UNAVAILABLE_ERROR } from '../../src/deferred-prompts/activity-gating.js'
+import { getAlertPrompt, listAlertPrompts } from '../../src/deferred-prompts/alerts.js'
+import type { AlertCondition } from '../../src/deferred-prompts/condition-schema.js'
 import { makeCreateAlertTool } from '../../src/tools/create-alert.js'
 import { getToolExecutor, mockLogger, schemaValidates, setupTestDb } from '../utils/test-helpers.js'
 
 const USER_ID = 'create-alert-user'
 const condition = { field: 'task.status', op: 'eq', value: 'Done' }
+
+const extractCreatedId = (result: unknown): string => {
+  if (typeof result !== 'object' || result === null || !('id' in result)) {
+    throw new Error('Expected created result with id property')
+  }
+  const id: unknown = Reflect.get(result, 'id')
+  if (typeof id !== 'string') throw new Error('Expected created result id to be string')
+  return id
+}
+
+const errorOf = (result: unknown): string => {
+  if (typeof result !== 'object' || result === null || !('error' in result)) {
+    throw new Error('Expected an error result')
+  }
+  const message: unknown = Reflect.get(result, 'error')
+  if (typeof message !== 'string') throw new Error('Expected the error to be a string')
+  return message
+}
 
 const getInputFieldDescription = (schema: unknown, fieldName: string): string | undefined => {
   if (!(schema instanceof z.ZodType)) return undefined
@@ -71,5 +93,63 @@ describe('makeCreateAlertTool — activity alert gating', () => {
     const execute = getToolExecutor(tool)
     const result = await execute({ prompt: 'Notify me', condition: { kind: 'activity', taskId: 'task-1' } })
     expect(result).toEqual({ error: ACTIVITY_UNAVAILABLE_ERROR })
+  })
+})
+
+describe('makeCreateAlertTool — JSON-string conditions', () => {
+  const canonicalField: AlertCondition = { field: 'task.status', op: 'eq', value: 'open' }
+  const canonicalActivity: AlertCondition = { kind: 'activity', taskId: '417' }
+
+  const seedTaskInstance = (): void => {
+    const db = getDrizzleDb()
+    db.insert(platformInstances).values({ id: 'telegram-default', type: 'telegram', config: '{}' }).run()
+    db.insert(taskInstances).values({ id: 'ti-1', type: 'kaneo', config: '{}', status: 'active' }).run()
+    db.insert(contextSettings)
+      .values({ contextId: USER_ID, taskInstanceId: 'ti-1', platformInstanceId: 'telegram-default' })
+      .run()
+  }
+
+  beforeEach(async () => {
+    mockLogger()
+    await setupTestDb()
+  })
+
+  test('creates an alert from a JSON-string field condition storing the canonical object', async () => {
+    const execute = getToolExecutor(makeCreateAlertTool(USER_ID, USER_ID, 'dm'))
+    const result = await execute({
+      prompt: 'Notify me',
+      condition: '{"field":"task.status","op":"eq","value":"open"}',
+    })
+    expect(result).toMatchObject({ status: 'created', type: 'alert' })
+    const stored = getAlertPrompt(extractCreatedId(result), USER_ID)
+    expect(stored).not.toBeNull()
+    expect(stored!.condition).toEqual(canonicalField)
+  })
+
+  test('creates an alert from a JSON-string activity condition with the capability flag and a configured task instance', async () => {
+    seedTaskInstance()
+    const execute = getToolExecutor(makeCreateAlertTool(USER_ID, USER_ID, 'dm', undefined, undefined, true))
+    const result = await execute({ prompt: 'Notify me', condition: '{"kind":"activity","taskId":"417"}' })
+    expect(result).toMatchObject({ status: 'created', type: 'alert' })
+    const stored = getAlertPrompt(extractCreatedId(result), USER_ID)
+    expect(stored).not.toBeNull()
+    expect(stored!.condition).toEqual(canonicalActivity)
+  })
+
+  test('a non-JSON string condition returns the structured invalid-condition error and stores nothing', async () => {
+    const execute = getToolExecutor(makeCreateAlertTool(USER_ID, USER_ID, 'dm'))
+    const result = await execute({ prompt: 'Notify me', condition: 'not json at all' })
+    expect(errorOf(result).startsWith('Invalid condition: value is not valid JSON')).toBe(true)
+    expect(listAlertPrompts(USER_ID)).toEqual([])
+  })
+
+  test('a condition-invalid JSON string returns the schema reason and stores nothing', async () => {
+    const execute = getToolExecutor(makeCreateAlertTool(USER_ID, USER_ID, 'dm'))
+    const result = await execute({
+      prompt: 'Notify me',
+      condition: '{"field":"task.status","op":"bogus","value":"open"}',
+    })
+    expect(errorOf(result)).toContain("Invalid operator 'bogus' for field 'task.status'")
+    expect(listAlertPrompts(USER_ID)).toEqual([])
   })
 })

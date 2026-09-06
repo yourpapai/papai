@@ -9,7 +9,7 @@ import { z } from 'zod'
 
 import { executeUpdate, type UpdateInput } from '../deferred-prompts/tool-handlers.js'
 import {
-  alertConditionSchema,
+  alertConditionInputSchema,
   cooldownSchema,
   executionInputSchema,
   scheduleSchema,
@@ -27,7 +27,7 @@ export function makeUpdateReminderTool(userId: string): Tool {
       id: z.string().describe('The reminder or alert ID'),
       prompt: z.string().optional().describe('Updated action text'),
       schedule: scheduleSchema.optional().describe('Updated time-based trigger'),
-      condition: alertConditionSchema.optional().describe('Updated event-based trigger condition'),
+      condition: alertConditionInputSchema.optional().describe('Updated event-based trigger condition'),
       cooldown_minutes: cooldownSchema,
       execution: executionInputSchema,
     }),

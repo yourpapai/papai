@@ -13,7 +13,7 @@ import { setConfig } from '../../src/config.testing.js'
 import { getDrizzleDb } from '../../src/db/drizzle.js'
 import { alertPrompts, scheduledPrompts } from '../../src/db/schema.js'
 import { getAlertPrompt } from '../../src/deferred-prompts/alerts.js'
-import { alertConditionSchema } from '../../src/deferred-prompts/condition-schema.js'
+import { alertConditionSchema, type AlertCondition } from '../../src/deferred-prompts/condition-schema.js'
 import { getStorageContextId } from '../../src/deferred-prompts/proactive-llm-helpers.js'
 import { getScheduledPrompt } from '../../src/deferred-prompts/scheduled.js'
 import {
@@ -85,6 +85,15 @@ function extractFireAt(result: unknown): unknown {
     throw new Error('Expected result with fireAt property')
   }
   return (result as Record<string, unknown>)['fireAt']
+}
+
+function errorOf(result: unknown): string {
+  if (typeof result !== 'object' || result === null || !('error' in result)) {
+    throw new Error('Expected an error result')
+  }
+  const message: unknown = Reflect.get(result, 'error')
+  if (typeof message !== 'string') throw new Error('Expected the error to be a string')
+  return message
 }
 
 beforeEach(() => {
@@ -392,6 +401,61 @@ describe('update_reminder', () => {
       toolCtx,
     )
     expect(result).toHaveProperty('error')
+  })
+})
+
+describe('update_reminder — JSON-string alert conditions', () => {
+  const canonicalField: AlertCondition = { field: 'task.status', op: 'eq', value: 'open' }
+  const canonicalActivity: AlertCondition = { kind: 'activity', taskId: '417' }
+  const originalCondition: AlertCondition = { field: 'task.status', op: 'eq', value: 'done' }
+
+  const createFieldAlert = async (): Promise<string> => {
+    const tools = getTools()
+    const create = tools['create_alert']!
+    assert.ok(create.execute)
+    const created: unknown = await create.execute({ prompt: 'Original', condition: originalCondition }, toolCtx)
+    return extractId(created)
+  }
+
+  beforeEach(async () => {
+    await setupTestDb()
+    setConfig(USER_ID, 'timezone', 'UTC')
+  })
+
+  test('updates an alert condition from a JSON string storing the canonical object', async () => {
+    const id = await createFieldAlert()
+    const update = getTools()['update_reminder']!
+    assert.ok(update.execute)
+    const result: unknown = await update.execute(
+      { id, condition: '{"field":"task.status","op":"eq","value":"open"}' },
+      toolCtx,
+    )
+    expect(result).toHaveProperty('status', 'updated')
+    const stored = getAlertPrompt(id, USER_ID)
+    expect(stored).not.toBeNull()
+    expect(stored!.condition).toEqual(canonicalField)
+  })
+
+  test('updates an alert condition from a JSON-string activity leaf storing the canonical object', async () => {
+    const id = await createFieldAlert()
+    const update = getTools()['update_reminder']!
+    assert.ok(update.execute)
+    const result: unknown = await update.execute({ id, condition: '{"kind":"activity","taskId":"417"}' }, toolCtx)
+    expect(result).toHaveProperty('status', 'updated')
+    const stored = getAlertPrompt(id, USER_ID)
+    expect(stored).not.toBeNull()
+    expect(stored!.condition).toEqual(canonicalActivity)
+  })
+
+  test('an invalid JSON string condition returns the structured error and keeps the stored condition', async () => {
+    const id = await createFieldAlert()
+    const update = getTools()['update_reminder']!
+    assert.ok(update.execute)
+    const result: unknown = await update.execute({ id, condition: 'not json at all' }, toolCtx)
+    expect(errorOf(result).startsWith('Invalid condition: value is not valid JSON')).toBe(true)
+    const stored = getAlertPrompt(id, USER_ID)
+    expect(stored).not.toBeNull()
+    expect(stored!.condition).toEqual(originalCondition)
   })
 })
 

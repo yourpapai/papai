@@ -11,7 +11,7 @@ import { observeActiveFeatureUsed } from '../analytics/feature-observer.js'
 import type { ContextType } from '../chat/types.js'
 import { executeCreate, type CreateInput } from '../deferred-prompts/tool-handlers.js'
 import {
-  alertConditionSchema,
+  alertConditionInputSchema,
   cooldownSchema,
   deliveryPolicySchema,
   executionInputSchema,
@@ -33,7 +33,7 @@ export function makeCreateAlertTool(
   const inputSchema = z
     .object({
       prompt: z.string().describe('What to do/say when the alert fires - not the condition'),
-      condition: alertConditionSchema.describe(
+      condition: alertConditionInputSchema.describe(
         'Event-based trigger: watch a specific task (task.id eq <id>), any task by field (e.g. status changes), or new activity on one task (kind: "activity" with taskId)',
       ),
       cooldown_minutes: cooldownSchema,

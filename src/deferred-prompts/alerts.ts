@@ -8,9 +8,9 @@ import { and, eq, gte, lt, or } from 'drizzle-orm'
 import { getDrizzleDb } from '../db/drizzle.js'
 import { alertPrompts, type AlertPromptRow } from '../db/schema.js'
 import { logger } from '../logger.js'
+import { alertConditionSchema } from './condition-schema.js'
 import { defaultDeliveryTarget, rowToDeliveryTarget, storageContextIdForTarget } from './delivery-target.js'
 import {
-  alertConditionSchema,
   DEFAULT_EXECUTION_METADATA,
   parseExecutionMetadata,
   parseMatchedTaskIds,

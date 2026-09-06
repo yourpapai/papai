@@ -30,8 +30,8 @@ import {
   updateScheduledPrompt,
 } from './scheduled.js'
 import {
-  alertConditionSchema,
   executionMetadataSchema,
+  parseConditionInput,
   type AlertCondition,
   type CancelResult,
   type CreateResult,
@@ -54,7 +54,7 @@ export type CreateInput = {
 } & Partial<
   Readonly<{
     schedule: ScheduleInput
-    condition: AlertCondition
+    condition: AlertCondition | string
     cooldown_minutes: number
     execution: ExecutionInput
     delivery: DeliveryPolicy
@@ -69,7 +69,7 @@ export type UpdateInput = {
   Readonly<{
     prompt: string
     schedule: ScheduleInput
-    condition: AlertCondition
+    condition: AlertCondition | string
     cooldown_minutes: number
     execution: ExecutionInput
   }>
@@ -139,22 +139,22 @@ function createAlert(
   delivery: DeferredPromptDeliveryInput | undefined,
   activityAlertsEnabled: boolean,
 ): CreateResult {
-  const parseResult = alertConditionSchema.safeParse(condition)
-  if (!parseResult.success) return { error: `Invalid condition: ${parseResult.error.message}` }
-  const mixedError = mixedActivityTreeError(parseResult.data)
+  const parsed = parseConditionInput(condition)
+  if (!parsed.success) return { error: parsed.error }
+  const mixedError = mixedActivityTreeError(parsed.data)
   if (mixedError !== null) return { error: mixedError }
 
   const configContextId = getConfigContextIdFromStorageContextId(
     storageContextIdForTarget(delivery ?? defaultDeliveryTarget(userId)),
   )
   const taskInstanceId = getContextSettings(configContextId)?.taskInstanceId ?? null
-  const supportError = activitySupportError(parseResult.data, activityAlertsEnabled, taskInstanceId)
+  const supportError = activitySupportError(parsed.data, activityAlertsEnabled, taskInstanceId)
   if (supportError !== null) return { error: supportError }
 
   const result = createAlertPrompt(
     userId,
     prompt,
-    parseResult.data,
+    parsed.data,
     cooldownMinutes,
     executionMetadata,
     delivery,
@@ -250,11 +250,11 @@ function updateAlertFields(id: string, userId: string, input: UpdateInput): Upda
   }> = {}
   if (input.prompt !== undefined) updates.prompt = input.prompt
   if (input.condition !== undefined) {
-    const parseResult = alertConditionSchema.safeParse(input.condition)
-    if (!parseResult.success) return { error: `Invalid condition: ${parseResult.error.message}` }
-    const mixedError = mixedActivityTreeError(parseResult.data)
+    const parsed = parseConditionInput(input.condition)
+    if (!parsed.success) return { error: parsed.error }
+    const mixedError = mixedActivityTreeError(parsed.data)
     if (mixedError !== null) return { error: mixedError }
-    updates.condition = parseResult.data
+    updates.condition = parsed.data
   }
   if (input.cooldown_minutes !== undefined) updates.cooldownMinutes = input.cooldown_minutes
   if (input.execution !== undefined) {

@@ -14,6 +14,7 @@ import type { ChatProvider, DeferredDeliveryTarget } from '../../src/chat/types.
 import { setConfig } from '../../src/config.testing.js'
 import type { DebugEvent } from '../../src/debug/event-bus.js'
 import type { LlmTrace } from '../../src/debug/llm-trace-collector.js'
+import { parseConditionInput } from '../../src/deferred-prompts/condition-schema.js'
 import type { CreateDeliveryContext } from '../../src/deferred-prompts/delivery-input.js'
 import { pollScheduledOnce } from '../../src/deferred-prompts/poller.js'
 import * as proactiveLlmModule from '../../src/deferred-prompts/proactive-llm.js'
@@ -230,8 +231,10 @@ const makeHandlers = (
     world.createCalls.push({ userId, input, deliveryCtx })
     if (world.createError !== null) return { error: world.createError }
     if (input.condition !== undefined) {
+      const parsed = parseConditionInput(input.condition)
+      if (!parsed.success) return { error: parsed.error }
       const id = nextId('al')
-      world.alerts.set(id, makeAlertRow(id, userId, input.prompt, input.condition))
+      world.alerts.set(id, makeAlertRow(id, userId, input.prompt, parsed.data))
       return { status: 'created', type: 'alert', id, cooldownMinutes: 60 }
     }
     const schedule = input.schedule
