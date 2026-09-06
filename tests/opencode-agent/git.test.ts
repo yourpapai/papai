@@ -197,6 +197,31 @@ describe('completeMerge', () => {
     expect(content).toBe('resolved version\n')
   })
 
+  it('an ambient GIT_COMMITTER_* in the harness env cannot restamp the service committer', async () => {
+    const fixture = await makeFixture()
+    await commitOn(fixture, 'main', 'src/same.txt', 'base version\n', 'base edits')
+    await commitOn(fixture, 'agent/issue-42', 'src/same.txt', 'agent version\n', 'agent edits')
+    await fixture.run(['checkout', 'agent/issue-42'])
+    expect(await fixture.git.mergeBase('main')).toEqual({ kind: 'conflicted', paths: ['src/same.txt'] })
+
+    // The scenario the identity env exists for: a runner harness exported
+    // GIT_COMMITTER_* into this process's environment. `runCommand` merges
+    // that ambient half with the runners' explicit identity env, and the
+    // explicit half must win — `-c user.name` alone would lose to it.
+    process.env['GIT_COMMITTER_NAME'] = 'Ambient Harness'
+    process.env['GIT_COMMITTER_EMAIL'] = 'ambient@harness.test'
+    try {
+      await fixture.git.completeMerge('chore(agent): sync with main')
+      const log = await fixture.run(['log', '-1', '--format=%an%n%cn'])
+      const [author, committer] = log.split('\n')
+      expect(author).toBe('Maintainer Author')
+      expect(committer).toBe('Maintainer Author')
+    } finally {
+      delete process.env['GIT_COMMITTER_NAME']
+      delete process.env['GIT_COMMITTER_EMAIL']
+    }
+  })
+
   it('keeps base workflow edits that stageAllowed would have dropped', async () => {
     const fixture = await makeFixture()
     // Base moved a workflow file — the exact file class the commit path drops.

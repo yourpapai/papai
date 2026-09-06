@@ -258,6 +258,7 @@ export interface Dictionary {
     verifierSummarizeRule: string
     verifierTruncatedRule: string
     neutralFallback: string
+    noopFallback: string
     finalizeMessage: string
     doneFallback: string
   }

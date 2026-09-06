@@ -6,7 +6,6 @@
 import { stdoutLines } from './git-commit.js'
 import type { GitFn } from './git-commit.js'
 import { GitError, issueNumberFromBranch } from './git.js'
-import type { GitOptions } from './git.js'
 
 /**
  * Bringing a local agent branch back in step with a remote that moved while a
@@ -47,7 +46,7 @@ import type { GitOptions } from './git.js'
  * reconcile — the base branch `ARCHIVE` pushes has sharing rules of its own
  * and keeps the plain push it always had.
  */
-export const reconcile = async (git: GitFn, gitOrThrow: GitFn, options: GitOptions, branch: string): Promise<void> => {
+export const reconcile = async (git: GitFn, gitOrThrow: GitFn, branch: string): Promise<void> => {
   if (issueNumberFromBranch(branch) === null) return
 
   const remote = `refs/remotes/origin/${branch}`
@@ -62,21 +61,11 @@ export const reconcile = async (git: GitFn, gitOrThrow: GitFn, options: GitOptio
   const ancestor = await git('merge-base', '--is-ancestor', remote, 'HEAD')
   if (ancestor.exitCode === 0) return
 
-  // The merge makes a commit, so it carries the committer identity the same
-  // way `commit` in `git-commit.ts` does — a hosted runner has no `user.name`
-  // anywhere, and an identity-less merge fails on a config file rather than on
-  // the branch this is about.
-  const committerName = options.committerName ?? options.authorName
-  const committerEmail = options.committerEmail ?? options.authorEmail
-  const merged = await git(
-    '-c',
-    `user.name=${committerName}`,
-    '-c',
-    `user.email=${committerEmail}`,
-    'merge',
-    '--no-edit',
-    remote,
-  )
+  // The merge makes a commit, so it needs the committer identity — a hosted
+  // runner has no `user.name` anywhere, and an identity-less merge fails on a
+  // config file rather than on the branch this is about. It rides the
+  // environment `makeRunners` sets on every git child (`git.ts`).
+  const merged = await git('merge', '--no-edit', remote)
   if (merged.exitCode === 0) return
 
   // Every failure path aborts the merge, so the tree is never left mid-merge
