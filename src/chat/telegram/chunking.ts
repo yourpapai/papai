@@ -39,3 +39,19 @@ export function chunkForTelegram(text: string, maxLen: number = telegramTraits.m
   if (remainder.length > 0) chunks.push(remainder)
   return chunks
 }
+
+/**
+ * Window the entities of a formatted text onto one chunk: entities fully inside
+ * the `[chunkStart, chunkEnd)` window shift by the window start; entities
+ * spanning the cut are dropped (Telegram cannot represent an entity across two
+ * messages). Entity offsets are relative to the chunk text afterwards.
+ */
+export function sliceTelegramEntities<TEntity extends { offset: number; length: number }>(
+  entities: readonly TEntity[],
+  chunkStart: number,
+  chunkEnd: number,
+): TEntity[] {
+  return entities
+    .filter((entity) => entity.offset >= chunkStart && entity.offset + entity.length <= chunkEnd)
+    .map((entity) => ({ ...entity, offset: entity.offset - chunkStart }))
+}

@@ -79,11 +79,6 @@ export const KNIP_ENTRY_POINTS: readonly string[] = [
   // usage-failure-queries change (openspec/changes/usage-failure-queries);
   // the follow-up dashboard/settings wiring consumes its exports.
   'src/usage/failures.ts!',
-  // Telegram chunked-delivery splitter is the seam module of the in-flight
-  // response-delivery-path-fixes change (task 3.4): sendFormattedReply and the
-  // deferred sendMessage consume it later in the same change; the unit suite
-  // consumes it today. Remove the entry once those call sites land.
-  'src/chat/telegram/chunking.ts!',
   // First-party plugin entry points are loaded dynamically by the plugin
   // loader, so they have no static importer.
   'plugins/*/index.ts!',

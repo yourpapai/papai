@@ -437,7 +437,7 @@ describe('TelegramChatProvider', () => {
         expect(text.length).toBeLessThanOrEqual(4096)
         expect(options?.message_thread_id).toBe(123)
       }
-      const joined = calls.map(([text]) => text).join('')
+      const joined = calls.map(([, text]) => text).join('')
       expect(joined.startsWith('@alice ')).toBe(true)
       expect(joined.replace('@alice ', '')).toBe('x'.repeat(5000))
     })
