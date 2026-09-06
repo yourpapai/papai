@@ -15,7 +15,7 @@ Design open questions: none (design.md resolves the only earlier unknown). Work 
 
 - [x] 2.1 Create failing `tests/plugins/task-provider-github/activities.test.ts` (setMockFetch pattern): a comment surfaces as `{category:'comment', id, timestamp, author}`; categories excluding `'comment'` skip the comments fetch and emit no comment entries; events + comments merge into one ascending-timestamp sequence; existing event→category mappings unchanged; a comments-fetch failure fails the whole lookup with the classified error. Verify: `bun run test tests/plugins/task-provider-github` (red)
 - [x] 2.2 Implement the merge in `plugins/task-provider-github/operations/activities.ts`: reuse `githubListTaskComments`, map comments to comment activity entries, skip the fetch when categories exclude `'comment'`, run both sources through one shared post-merge filter/sort/slice (slice once, after the merge). Verify: `bun run test tests/plugins/task-provider-github` (green)
-- [ ] 2.3 MR gate: `bun run test tests/plugins/task-provider-github` then `bun run test:affected`.
+- [x] 2.3 MR gate: `bun run test tests/plugins/task-provider-github` then `bun run test:affected`.
 
 ## 3. Baseline-on-create for filter alerts + close verification (MR 3)
 
