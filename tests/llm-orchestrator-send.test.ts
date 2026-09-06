@@ -140,6 +140,29 @@ describe('sendLlmResponse verification wiring', () => {
     )
   })
 
+  test('a failing verifier on a risky turn with model text delivers the model text', async () => {
+    mockLogger()
+    const reply = createMockReply()
+    const modelText = 'Task TK-42 updated; TK-43 still pending.'
+    await sendLlmResponse(
+      reply.reply,
+      'ctx-1',
+      { ...baseResult, text: modelText, finishReason: 'tool-calls' },
+      undefined,
+      {
+        history: [],
+        verifier: {
+          readOnlyToolset: undefined,
+          invokeVerifier: (): Promise<{ text: string | undefined }> => Promise.resolve({ text: '' }),
+        },
+      },
+    )
+    expect(reply.textCalls).toContain(modelText)
+    expect(reply.textCalls).not.toContain(
+      'I ran the requested actions but could not confirm the result — please double-check.',
+    )
+  })
+
   test('empty-text turn without a verifier in a ru context gets the localized done fallback', async () => {
     mockLogger()
     setConfigValue('ctx-ru-done', 'language', 'ru')

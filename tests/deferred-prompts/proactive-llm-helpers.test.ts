@@ -163,6 +163,29 @@ describe('finalizeAndLog verification', () => {
     expect(text).toBe('I ran the requested actions but could not confirm the result — please double-check.')
   })
 
+  test('a failing verifier on a risky turn with model text delivers the model text', async () => {
+    mockLogger()
+    const modelText = 'Task TK-42 updated; TK-43 still pending.'
+    const text = await finalizeAndLog(
+      {
+        text: modelText,
+        finishReason: 'tool-calls',
+        finalStep: { response: { messages: [] } },
+      },
+      'user-1',
+      {
+        history: [],
+        verifier: {
+          readOnlyToolset: undefined,
+          invokeVerifier: (): Promise<{ text: string | undefined }> => {
+            throw new Error('network')
+          },
+        },
+      },
+    )
+    expect(text).toBe(modelText)
+  })
+
   test('no verification arg → legacy Done. fallback preserved', async () => {
     mockLogger()
     const text = await finalizeAndLog({ text: '', finishReason: 'stop' }, 'user-1')
