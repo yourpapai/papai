@@ -46,7 +46,13 @@ export const turnHasToolActivity = (messages: readonly ModelMessage[]): boolean 
 }
 
 export type CompletionVerdict = 'confirmed' | 'truncated' | 'partial' | 'unconfirmed' | 'no-op'
-export type VerifiedCompletion = { text: string; verdict: CompletionVerdict }
+/** How the verification pass itself went: produced text, returned blank, or threw. */
+export type VerifierOutcome = 'ok' | 'empty' | 'error'
+export type VerifiedCompletion = {
+  text: string
+  verdict: CompletionVerdict
+  verifierOutcome: VerifierOutcome
+}
 export type VerifierPrompt = { system: string; messages: ModelMessage[] }
 
 export type VerifierDeps = {
@@ -109,23 +115,23 @@ export const buildVerifiedCompletion = async (
   const lastResortFallback = turn.hadToolActivity ? texts.neutralFallback : texts.noopFallback
   log.debug({ verdict, readBack: deps.readOnlyToolset !== undefined }, 'Building verified completion')
   const prompt = buildVerifierPrompt(turn)
-  const degradedCompletion = (event: string, err?: string): VerifiedCompletion => {
+  const degradedCompletion = (outcome: VerifierOutcome, event: string, err?: string): VerifiedCompletion => {
     const finalText = turn.finalText
     if (finalText !== undefined && finalText.trim() !== '') {
-      log.warn({ verdict, delivered: 'model-final-text', err }, event)
-      return { text: finalText, verdict }
+      log.warn({ verdict, delivered: 'model-final-text', verifierOutcome: outcome, err }, event)
+      return { text: finalText, verdict, verifierOutcome: outcome }
     }
-    log.warn({ verdict, delivered: 'last-resort-fallback', err }, event)
-    return { text: lastResortFallback, verdict: 'unconfirmed' }
+    log.warn({ verdict, delivered: 'last-resort-fallback', verifierOutcome: outcome, err }, event)
+    return { text: lastResortFallback, verdict: 'unconfirmed', verifierOutcome: outcome }
   }
   try {
     const res = await deps.invokeVerifier(prompt)
     if (res.text === undefined || res.text.trim() === '') {
-      return degradedCompletion('Verifier returned empty text')
+      return degradedCompletion('empty', 'Verifier returned empty text')
     }
     log.info({ verdict }, 'Verified completion built')
-    return { text: res.text, verdict }
+    return { text: res.text, verdict, verifierOutcome: 'ok' }
   } catch (error) {
-    return degradedCompletion('Verifier call failed', error instanceof Error ? error.message : String(error))
+    return degradedCompletion('error', 'Verifier call failed', error instanceof Error ? error.message : String(error))
   }
 }

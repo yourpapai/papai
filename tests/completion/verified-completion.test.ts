@@ -277,7 +277,7 @@ describe('buildVerifiedCompletion', () => {
       { history: [], finishReason: 'stop', hadToolFailure: false, hadToolActivity: true },
       okDeps('Created task TK-42.'),
     )
-    expect(result).toEqual({ text: 'Created task TK-42.', verdict: 'confirmed' })
+    expect(result).toEqual({ text: 'Created task TK-42.', verdict: 'confirmed', verifierOutcome: 'ok' })
   })
 
   test('truncated: verdict is truncated and the prompt asks for a progress summary, offering "continue" as an option', async () => {
