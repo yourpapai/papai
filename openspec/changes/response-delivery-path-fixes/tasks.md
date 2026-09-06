@@ -36,4 +36,4 @@ One group per MR, ordered by dependency (bug 1 → 2 → 3 → 4). Every bug lan
 ## 5. Docs and full verification
 
 - [x] 5.1 Update `docs/architecture/behaviors.md`: the verified-completion bullet (fallback rule now delivers the model's answer on verifier empty/error, plus `verifierOutcome`), a Telegram chunked-delivery bullet, and — if bug 4 landed — the sweep retry/dead-letter note. Verify: `bun run lint`
-- [ ] 5.2 Final gate over the whole change: `bun run test` && `bun run typecheck` && `bun run lint` (or the combined `bun check:full`), then `bun run test:mutate:changed` with a ratchet baseline update if a touched file regressed; finish the report noting anything skipped (bug 4) or still suspicious (verifier-empty root cause)
+- [x] 5.2 Final gate over the whole change: `bun run test` && `bun run typecheck` && `bun run lint` (or the combined `bun check:full`), then `bun run test:mutate:changed` with a ratchet baseline update if a touched file regressed; finish the report noting anything skipped (bug 4) or still suspicious (verifier-empty root cause)
