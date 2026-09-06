@@ -18,23 +18,6 @@ const jsonResponse = (data: unknown, status = 200): Response =>
 
 type CapturedRequest = Readonly<{ url: URL; method: string }>
 
-const captureRequests = (
-  sink: CapturedRequest[],
-  respond: (call: number) => { data: unknown; status?: number },
-): { fetches: () => number; handler: (url: string, init: RequestInit) => Promise<Response> } => {
-  let call = 0
-  return {
-    fetches: (): number => call,
-    handler: (url: string, init: RequestInit): Promise<Response> => {
-      const current = call
-      call += 1
-      const response = respond(current)
-      sink.push({ url: new URL(url), method: init.method ?? '' })
-      return Promise.resolve(jsonResponse(response.data, response.status ?? 200))
-    },
-  }
-}
-
 const sequenceResponder =
   (responses: Array<{ data: unknown; status?: number }>) =>
   (call: number): { data: unknown; status?: number } =>
@@ -116,14 +99,19 @@ describe('githubListTaskEvents', () => {
     const calls: CapturedRequest[] = []
     const fullPage = Array.from({ length: 100 }, (_, i) => issueEvent({ id: i + 1, event: 'commented' }))
     const shortPage = [issueEvent({ id: 101, event: 'commented' })]
-    setMockFetch(captureRequests(calls, sequenceResponder([{ data: fullPage }, { data: shortPage }])).handler)
+    setMockFetch(
+      routedRequests(calls, {
+        [eventsPath]: sequenceResponder([{ data: fullPage }, { data: shortPage }]),
+      }).handler,
+    )
     const activities = await githubListTaskEvents(config, '1347')
-    expect(calls).toHaveLength(2)
+    expect(calls).toHaveLength(3)
     expect(calls[0]?.method).toBe('GET')
     expect(calls[0]?.url.pathname).toBe(eventsPath)
     expect(calls[0]?.url.searchParams.get('page')).toBe('1')
     expect(calls[0]?.url.searchParams.get('per_page')).toBe('100')
     expect(calls[1]?.url.searchParams.get('page')).toBe('2')
+    expect(calls[2]?.url.pathname).toBe(commentsPath)
     expect(activities).toHaveLength(101)
   })
 
@@ -143,7 +131,7 @@ describe('githubListTaskEvents', () => {
       issueEvent({ id: 5, event: 'reopened', created_at: '2011-04-11T14:00:00Z' }),
       issueEvent({ id: 6, event: 'commented', created_at: '2011-04-11T15:00:00Z' }),
     ]
-    setMockFetch(captureRequests(calls, () => ({ data: page })).handler)
+    setMockFetch(routedRequests(calls, { [eventsPath]: (): { data: unknown } => ({ data: page }) }).handler)
     const activities = await githubListTaskEvents(config, '1347')
     expect(activities).toEqual([
       { id: '1', timestamp: '2011-04-11T10:00:00Z', author: 'octocat', category: 'assignee', added: 'hubot' },
@@ -163,7 +151,7 @@ describe('githubListTaskEvents', () => {
       issueEvent({ id: 2, event: 'milestoned', created_at: '2011-04-11T11:00:00Z' }),
       issueEvent({ id: 3, event: 'commented', created_at: '2011-04-11T12:00:00Z' }),
     ]
-    setMockFetch(captureRequests(calls, () => ({ data: page })).handler)
+    setMockFetch(routedRequests(calls, { [eventsPath]: (): { data: unknown } => ({ data: page }) }).handler)
     const activities = await githubListTaskEvents(config, '1347')
     expect(activities).toHaveLength(1)
     expect(activities[0]?.id).toBe('3')
@@ -173,7 +161,7 @@ describe('githubListTaskEvents', () => {
     mockLogger()
     const calls: CapturedRequest[] = []
     const page = [issueEvent({ id: 7, event: 'closed', actor: null })]
-    setMockFetch(captureRequests(calls, () => ({ data: page })).handler)
+    setMockFetch(routedRequests(calls, { [eventsPath]: (): { data: unknown } => ({ data: page }) }).handler)
     const activities = await githubListTaskEvents(config, '1347')
     expect(activities[0]?.author).toBeUndefined()
   })
@@ -185,7 +173,7 @@ describe('githubListTaskEvents', () => {
       issueEvent({ id: 1, event: 'commented', actor: octocat, created_at: '2011-04-11T10:00:00Z' }),
       issueEvent({ id: 2, event: 'commented', actor: hubot, created_at: '2011-04-11T11:00:00Z' }),
     ]
-    setMockFetch(captureRequests(calls, () => ({ data: page })).handler)
+    setMockFetch(routedRequests(calls, { [eventsPath]: (): { data: unknown } => ({ data: page }) }).handler)
     const activities = await githubListTaskEvents(config, '1347', { author: 'hubot' })
     expect(activities).toHaveLength(1)
     expect(activities[0]?.author).toBe('hubot')
@@ -198,7 +186,7 @@ describe('githubListTaskEvents', () => {
       issueEvent({ id: 1, event: 'closed', created_at: '2011-04-11T10:00:00Z' }),
       issueEvent({ id: 2, event: 'labeled', label: { name: 'bug' }, created_at: '2011-04-11T11:00:00Z' }),
     ]
-    setMockFetch(captureRequests(calls, () => ({ data: page })).handler)
+    setMockFetch(routedRequests(calls, { [eventsPath]: (): { data: unknown } => ({ data: page }) }).handler)
     const activities = await githubListTaskEvents(config, '1347', { categories: ['label'] })
     expect(activities).toHaveLength(1)
     expect(activities[0]?.category).toBe('label')
@@ -212,7 +200,7 @@ describe('githubListTaskEvents', () => {
       issueEvent({ id: 2, event: 'commented', created_at: '2011-04-11T10:00:00Z' }),
       issueEvent({ id: 3, event: 'commented', created_at: '2011-04-12T10:00:00Z' }),
     ]
-    setMockFetch(captureRequests(calls, () => ({ data: page })).handler)
+    setMockFetch(routedRequests(calls, { [eventsPath]: (): { data: unknown } => ({ data: page }) }).handler)
     const activities = await githubListTaskEvents(config, '1347', {
       start: '2011-04-11T00:00:00Z',
       end: '2011-04-12T00:00:00Z',
@@ -230,7 +218,7 @@ describe('githubListTaskEvents', () => {
       issueEvent({ id: 3, event: 'commented', created_at: '2011-04-11T10:00:01Z' }),
       issueEvent({ id: 4, event: 'commented', created_at: '2011-04-11T12:30:00Z' }),
     ]
-    setMockFetch(captureRequests(calls, () => ({ data: page })).handler)
+    setMockFetch(routedRequests(calls, { [eventsPath]: (): { data: unknown } => ({ data: page }) }).handler)
     const activities = await githubListTaskEvents(config, '1347', {
       start: '2011-04-11T12:00:00+02:00',
       end: '2011-04-11T13:00:00+02:00',
@@ -247,7 +235,7 @@ describe('githubListTaskEvents', () => {
       issueEvent({ id: 4, event: 'commented', created_at: '2011-04-14T10:00:00Z' }),
       issueEvent({ id: 2, event: 'commented', created_at: '2011-04-12T10:00:00Z' }),
     ]
-    setMockFetch(captureRequests(calls, () => ({ data: page })).handler)
+    setMockFetch(routedRequests(calls, { [eventsPath]: (): { data: unknown } => ({ data: page }) }).handler)
     const ascending = await githubListTaskEvents(config, '1347')
     expect(ascending.map((activity) => activity.id)).toEqual(['1', '2', '3', '4'])
     const reversed = await githubListTaskEvents(config, '1347', { reverse: true })

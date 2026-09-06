@@ -283,10 +283,11 @@ describe('GitHubProvider', () => {
 
     expect(calls.map((call) => `${call.method} ${call.url.pathname}`)).toEqual([
       'GET /repos/octocat/Hello-World/issues/1347/events',
+      'GET /repos/octocat/Hello-World/issues/1347/comments',
       'GET /search/issues',
       'GET /repos/octocat/Hello-World/collaborators',
     ])
-    expect(history).toEqual([])
+    expect(history).toEqual([{ id: '99', timestamp: '2011-04-14T16:00:49Z', category: 'comment' }])
     expect(count).toBe(0)
     expect(typeof provider.identityResolver?.searchUsers).toBe('function')
     expect(identity).toEqual([{ id: '583231', login: 'octocat', name: 'The Octocat' }])
