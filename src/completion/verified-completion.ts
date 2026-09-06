@@ -11,7 +11,7 @@ import { isToolFailureResult } from '../tool-failure.js'
 
 const log = logger.child({ scope: 'completion:verified' })
 
-const READ_ONLY_PREFIXES = ['get_', 'list_', 'search_'] as const
+const READ_ONLY_PREFIXES = ['get_', 'list_', 'search_', 'read_'] as const
 
 /** Filter an assembled toolset to a read-only subset by name prefix. Returns undefined when none match. */
 export const selectReadOnlyTools = (tools: ToolSet): ToolSet | undefined => {
@@ -36,7 +36,16 @@ export const detectToolFailure = (messages: readonly ModelMessage[]): boolean =>
   return false
 }
 
-export type CompletionVerdict = 'confirmed' | 'truncated' | 'partial' | 'failed' | 'unconfirmed'
+/** True when the turn executed at least one tool: any tool message carries a tool-result part. */
+export const turnHasToolActivity = (messages: readonly ModelMessage[]): boolean => {
+  for (const message of messages) {
+    if (message.role !== 'tool') continue
+    if (message.content.some((part) => part.type === 'tool-result')) return true
+  }
+  return false
+}
+
+export type CompletionVerdict = 'confirmed' | 'truncated' | 'partial' | 'unconfirmed' | 'no-op'
 export type VerifiedCompletion = { text: string; verdict: CompletionVerdict }
 export type VerifierPrompt = { system: string; messages: ModelMessage[] }
 
@@ -51,6 +60,10 @@ export type CompletionTurn = {
   history: readonly ModelMessage[]
   finishReason?: string
   hadToolFailure: boolean
+  /** True when the turn executed at least one tool; the call sites fill it from the messages they collect. */
+  hadToolActivity: boolean
+  /** The turn's own final model text; undefined when the model produced none. */
+  finalText?: string
   /** Locale of the turn's config context; the verifier prompt and fallback localize to it. */
   locale?: Locale
 }
@@ -68,37 +81,45 @@ const buildVerifierPrompt = (turn: CompletionTurn): VerifierPrompt => {
   return { system, messages }
 }
 
-const deriveVerdict = (turn: CompletionTurn): CompletionVerdict => {
+/**
+ * Derive the verdict from observable turn shape (design D2 order):
+ * truncated (pending tool call) → partial (tool failure) → no-op (empty final
+ * text with no executed tool) → confirmed.
+ */
+export const deriveVerdict = (turn: CompletionTurn): CompletionVerdict => {
   if (turn.finishReason === 'tool-calls') return 'truncated'
   if (turn.hadToolFailure) return 'partial'
+  if (!turn.hadToolActivity && (turn.finalText === undefined || turn.finalText === '')) return 'no-op'
   return 'confirmed'
 }
 
 /**
  * On a risky turn, run a verification LLM call and return a truthful user-facing message.
- * Never returns a bare "Done."; degrades to a neutral honest message if verification fails.
+ * Never returns a bare "Done."; degrades to an honest last-resort message — actions-ran vs
+ * nothing-executed, selected by the turn's tool activity — if verification fails.
  */
 export const buildVerifiedCompletion = async (
   turn: CompletionTurn,
   deps: VerifierDeps,
 ): Promise<VerifiedCompletion> => {
   const verdict = deriveVerdict(turn)
-  const neutralFallback = getDictionary(turn.locale ?? 'en').completion.neutralFallback
+  const texts = getDictionary(turn.locale ?? 'en').completion
+  const lastResortFallback = turn.hadToolActivity ? texts.neutralFallback : texts.noopFallback
   log.debug({ verdict, readBack: deps.readOnlyToolset !== undefined }, 'Building verified completion')
   const prompt = buildVerifierPrompt(turn)
   try {
     const res = await deps.invokeVerifier(prompt)
     if (res.text === undefined || res.text === '') {
-      log.warn({ verdict }, 'Verifier returned empty text; using neutral fallback')
-      return { text: neutralFallback, verdict: 'unconfirmed' }
+      log.warn({ verdict }, 'Verifier returned empty text; using last-resort fallback')
+      return { text: lastResortFallback, verdict: 'unconfirmed' }
     }
     log.info({ verdict }, 'Verified completion built')
     return { text: res.text, verdict }
   } catch (error) {
     log.warn(
       { err: error instanceof Error ? error.message : String(error) },
-      'Verifier call failed; using neutral fallback',
+      'Verifier call failed; using last-resort fallback',
     )
-    return { text: neutralFallback, verdict: 'unconfirmed' }
+    return { text: lastResortFallback, verdict: 'unconfirmed' }
   }
 }

@@ -72,16 +72,19 @@ export const credentialEnv = (credential: GitCredential | null): Record<string, 
 
 const makeRunners = (options: GitOptions): { git: GitFn; gitOrThrow: GitFn } => {
   const credential = credentialEnv(options.credential)
-  const authorEnv = {
+  // Both identity halves ride the environment because it outranks every config
+  // source: the `-c user.*` stamps `commit` uses lose to an ambient
+  // `GIT_COMMITTER_*`, so a launcher's or runner harness's exported identity
+  // would silently restamp the service one, and a hosted runner has no
+  // `user.name` anywhere to fall back to. Pin the same resolution `commit`
+  // uses, making the committer a fact of options rather than of the env.
+  const identityEnv = {
     GIT_AUTHOR_NAME: options.authorName,
     GIT_AUTHOR_EMAIL: options.authorEmail,
-    // Ambient `GIT_COMMITTER_*` outranks the `-c user.*` stamps below, so a
-    // launcher's identity would silently win; pin the same resolution `commit`
-    // uses, making the committer a fact of options rather than of the env.
     GIT_COMMITTER_NAME: options.committerName ?? options.authorName,
     GIT_COMMITTER_EMAIL: options.committerEmail ?? options.authorEmail,
   }
-  const env = credential === undefined ? authorEnv : { ...credential, ...authorEnv }
+  const env = credential === undefined ? identityEnv : { ...credential, ...identityEnv }
   const git: GitFn = (...argv) => options.run(['git', ...argv], { cwd: options.cwd, env })
 
   const gitOrThrow: GitFn = async (...argv) => {
@@ -176,12 +179,12 @@ export const createGit = (options: GitOptions): Git => {
       ),
     commitAll: (message) => commitAll(gitOrThrow, options, message),
     salvageAll: (message) => salvageAll(gitOrThrow, options, message),
-    reconcile: (branch) => reconcile(git, gitOrThrow, options, branch),
+    reconcile: (branch) => reconcile(git, gitOrThrow, branch),
     push: async (branch, pushOptions) => {
       // The reconcile is what makes this push able to succeed at all after a
       // human moved the branch mid-phase; on a quiet remote it costs one fetch
       // and an ancestor check.
-      await reconcile(git, gitOrThrow, options, branch)
+      await reconcile(git, gitOrThrow, branch)
       const verify = pushOptions?.noVerify === true ? ['--no-verify'] : []
       await gitOrThrow('push', ...verify, '-u', 'origin', branch)
     },
@@ -196,8 +199,8 @@ export const createGit = (options: GitOptions): Git => {
       ),
     diffSince: (sha, paths) => gitOrThrow('diff', sha, '--', ...paths).then((result) => result.stdout),
     revertPaths: (sha, paths) => revertPaths(gitOrThrow, options, sha, paths),
-    mergeBase: (base) => mergeBase(git, gitOrThrow, options, base),
-    completeMerge: (message) => completeMerge(gitOrThrow, options, message),
+    mergeBase: (base) => mergeBase(git, gitOrThrow, base),
+    completeMerge: (message) => completeMerge(gitOrThrow, message),
     abortMerge: () => abortMerge(gitOrThrow),
   }
 }

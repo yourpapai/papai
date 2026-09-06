@@ -255,6 +255,7 @@ Output only the user-facing reply text, nothing else.`,
     verifierTruncatedRule:
       '- This turn did a lot of work but ran out of room before fully finishing. Summarize what was completed (naming the affected item(s)) and briefly what remains. Do not apologize or dwell on limits; you may offer that the user can say "continue" if they want you to pick up where you left off.',
     neutralFallback: 'I ran the requested actions but could not confirm the result — please double-check.',
+    noopFallback: 'It looks like nothing was actually executed this turn — it cut off. Please repeat your request.',
     finalizeMessage: '[FINALIZE] Write the reply now, following your instructions.',
     doneFallback: 'Done.',
   },

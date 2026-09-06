@@ -667,6 +667,18 @@
     "timeout": 0,
     "scored": 136
   },
+  "review-loop/src/build-checker.ts": {
+    "score": 0.7857142857142857,
+    "killed": 55,
+    "timeout": 0,
+    "scored": 70
+  },
+  "review-loop/src/cli-errors.ts": {
+    "score": 0.8103448275862069,
+    "killed": 47,
+    "timeout": 0,
+    "scored": 58
+  },
   "src/analytics/provider-scope-factory.ts": {
     "score": 0.6571428571428571,
     "killed": 69,
@@ -790,10 +802,10 @@
   },
   "src/deferred-prompts/proactive-llm-helpers.ts": 0.6952380952380952,
   "src/deferred-prompts/proactive-llm.ts": {
-    "score": 0.7560975609756098,
-    "killed": 31,
+    "score": 0.7619047619047619,
+    "killed": 32,
     "timeout": 0,
-    "scored": 41
+    "scored": 42
   },
   "src/deferred-prompts/proof-checks-observe.ts": {
     "score": 0.668918918918919,
@@ -848,6 +860,18 @@
     "killed": 38,
     "timeout": 0,
     "scored": 63
+  },
+  "src/llm-orchestrator-invoke.ts": {
+    "score": 0.71,
+    "killed": 70,
+    "timeout": 1,
+    "scored": 100
+  },
+  "src/llm-orchestrator-support.ts": {
+    "score": 0.5714285714285714,
+    "killed": 56,
+    "timeout": 0,
+    "scored": 98
   },
   "src/llm-orchestrator-tool-events.ts": {
     "score": 0.7156862745098039,
@@ -1037,6 +1061,12 @@
   },
   "src/tools/disclosure/prepare-step.ts": 0.8679245283018868,
   "src/tools/disclosure/registry.ts": 0.9142857142857143,
+  "src/tools/disclosure/repair-tool-call.ts": {
+    "score": 0.8181818181818182,
+    "killed": 18,
+    "timeout": 0,
+    "scored": 22
+  },
   "src/tools/disclosure/search-tools.ts": 0.6041666666666666,
   "src/tools/disclosure/tool-brief.ts": 0.7906976744186046,
   "src/tools/disclosure/tool-retriever.ts": 0.9361702127659575,

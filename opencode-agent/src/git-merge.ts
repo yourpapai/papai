@@ -6,7 +6,6 @@
 import { commit, stdoutLines } from './git-commit.js'
 import type { GitFn } from './git-commit.js'
 import { GitError } from './git.js'
-import type { GitOptions } from './git.js'
 
 /**
  * Merging the base branch into the agent branch — the git half of `/sync`.
@@ -39,10 +38,9 @@ export type MergeOutcome =
  *
  * A clean merge (fast-forward included) is committed here with this pipeline's
  * own identity — a runner configures no git user, so a bare `git merge` would
- * die on *committer identity unknown*; the `-c user.*` stamps are the same ones
- * {@link commit} puts on every other commit, on the one git subcommand that
- * does not pass through it. The author arrives for free: the runners already
- * set `GIT_AUTHOR_*` on every invocation. A conflicted merge is left mid-merge
+ * die on *committer identity unknown*. Both identity halves ride the
+ * environment `makeRunners` sets on every git child (`git.ts`), which outranks
+ * any config a runner could carry. A conflicted merge is left mid-merge
  * on purpose — the conflicted paths go back to the handler, which drives
  * repair rounds against the marked files and finishes through
  * {@link completeMerge} or unwinds through {@link abortMerge}.
@@ -52,29 +50,14 @@ export type MergeOutcome =
  * overwrite, a missing object), and it is thrown so the sync handler reports a
  * broken run rather than repairing a conflict that does not exist.
  */
-export const mergeBase = async (
-  git: GitFn,
-  gitOrThrow: GitFn,
-  options: GitOptions,
-  base: string,
-): Promise<MergeOutcome> => {
+export const mergeBase = async (git: GitFn, gitOrThrow: GitFn, base: string): Promise<MergeOutcome> => {
   await gitOrThrow('fetch', 'origin', base)
   const ref = `origin/${base}`
 
   const ahead = Number.parseInt((await gitOrThrow('rev-list', '--count', `HEAD..${ref}`)).stdout.trim(), 10)
   if (ahead === 0) return { kind: 'up-to-date' }
 
-  const committerName = options.committerName ?? options.authorName
-  const committerEmail = options.committerEmail ?? options.authorEmail
-  const merged = await git(
-    '-c',
-    `user.name=${committerName}`,
-    '-c',
-    `user.email=${committerEmail}`,
-    'merge',
-    '--no-edit',
-    ref,
-  )
+  const merged = await git('merge', '--no-edit', ref)
   if (merged.exitCode === 0) return { kind: 'clean', commits: ahead }
 
   const paths = stdoutLines((await git('diff', '--name-only', '--diff-filter=U')).stdout)
@@ -89,15 +72,15 @@ export const mergeBase = async (
  * committed is base's own reviewed content plus a marker resolution, not new
  * work seeking admission to the branch — a repository hook that refused it
  * would leave the merge half-done on a runner about to die, and the push itself
- * is what CI judges. Identity as every commit: author from the environment the
- * runners already set, committer through `-c user.*`.
+ * is what CI judges. Identity rides the environment `makeRunners` sets on every
+ * git child (`git.ts`), as on every commit.
  */
-export const completeMerge = async (gitOrThrow: GitFn, options: GitOptions, message: string): Promise<void> => {
+export const completeMerge = async (gitOrThrow: GitFn, message: string): Promise<void> => {
   // The repair turn edited the marked files in the working tree and is
   // forbidden git, so the resolution is still unstaged. Staging here is the
   // pipeline's half of the doctrine: the model edits, the pipeline commits.
   await gitOrThrow('add', '--all')
-  await commit(gitOrThrow, options, message, ['--no-verify'])
+  await commit(gitOrThrow, message, ['--no-verify'])
 }
 
 /** Abandons a conflicted merge, leaving the tree exactly as it entered it. */

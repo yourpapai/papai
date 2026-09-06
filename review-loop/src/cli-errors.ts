@@ -18,11 +18,30 @@ function tailLines(text: string, maxLines: number): string {
   return `…(${skipped} earlier lines truncated; full output in build-check.log)…\n${lines.slice(-maxLines).join('\n')}`
 }
 
+/**
+ * The two streams are tailed **separately**, each with the full line budget,
+ * and stdout is rendered first.
+ *
+ * Tailing `stdout + stderr` as one string is what made run 33974052563
+ * undiagnosable. The check command is `bun build:client && bun check:full`, and
+ * `vite` writes all ~170 of its `state_referenced_locally` warnings to stderr;
+ * `check.sh` writes its verdict — `✗ <check> failed (exit code N)`, the failing
+ * check's log, and the `N/M checks passed` summary — to stdout. Concatenating
+ * put every stderr line after every stdout line, so a 40-line window over the
+ * join landed entirely inside the build's own warning noise and reported not one
+ * line about which check had failed. Whichever stream is noisier must not be
+ * able to evict the other.
+ */
 export function formatBuildFailureMessage(runState: RunState, build: BuildCheckResult): string {
-  const combined = tailLines(
-    [build.stdout, build.stderr].filter((part) => part.length > 0).join('\n'),
-    BUILD_OUTPUT_TAIL_LINES,
-  )
+  const streams: ReadonlyArray<readonly [string, string]> = [
+    ['stdout', build.stdout],
+    ['stderr', build.stderr],
+  ]
+  const sections = streams
+    .map(([name, text]) => [name, tailLines(text, BUILD_OUTPUT_TAIL_LINES)] as const)
+    .filter(([, body]) => body.length > 0)
+    .map(([name, body]) => `--- ${name} ---\n${body}`)
+  const combined = sections.length === 0 ? '(the build command produced no output)' : sections.join('\n')
   const logPath = path.join(runState.runDir, 'build-check.log')
   return (
     `Final build check failed; worktree preserved at ${runState.worktreePath} for inspection, merge skipped.\n` +
