@@ -12,9 +12,10 @@ import { getCachedTools, setCachedTools, userCachesForTesting } from '../../src/
 import { toScopedContextId, toScopedThreadContextId } from '../../src/chat/scoped-context.js'
 import { setConfigValue, setPluginConfig } from '../../src/config.js'
 import { setPluginEnabledForContext } from '../../src/plugins/registry.js'
+import { makeCreateAlertTool } from '../../src/tools/create-alert.js'
 import { applyToolPreferences, makeTools } from '../../src/tools/index.js'
 import { setToolPrefs } from '../../src/tools/tool-preferences.js'
-import { mockLogger, setupTestDb } from '../utils/test-helpers.js'
+import { mockLogger, schemaValidates, setupTestDb } from '../utils/test-helpers.js'
 import { createMockProvider } from './mock-provider.js'
 
 const CONTEXT = 'test-tool-prefs-index-user'
@@ -272,6 +273,41 @@ describe('applyToolPreferences (ask integration)', () => {
     expect(executeFn).toBeDefined()
     const out: unknown = await executeFn!(
       { id: 'X', _permission_reason: 'r' },
+      { toolCallId: 't1', messages: [], context: {} },
+    )
+    expect(out).toMatchObject({ status: 'permission_denied' })
+  })
+})
+
+describe('applyToolPreferences — create_alert condition forms unchanged', () => {
+  const contextId = 'ctx-ask-alert-1'
+  const fieldCondition = { field: 'task.status', op: 'eq', value: 'open' }
+  const stringCondition = '{"kind":"activity","taskId":"417"}'
+
+  beforeEach(() => {
+    mockLogger()
+  })
+
+  test('deny removes create_alert from the set', () => {
+    setToolPrefs(contextId, { domainDefaults: {}, toolOverrides: { create_alert: 'deny' } })
+    const tools: ToolSet = { create_alert: makeCreateAlertTool('alert-prefs-user', 'alert-prefs-user', 'dm') }
+    const result = applyToolPreferences(tools, contextId, undefined)
+    expect(Object.keys(result)).toEqual([])
+  })
+
+  test('ask requires the permission reason for string and object conditions and denies without a permission surface', async () => {
+    setToolPrefs(contextId, { domainDefaults: {}, toolOverrides: { create_alert: 'ask' } })
+    const tools: ToolSet = { create_alert: makeCreateAlertTool('alert-prefs-user', 'alert-prefs-user', 'dm') }
+    const result = applyToolPreferences(tools, contextId, undefined)
+    const wrapped = result['create_alert']
+    expect(wrapped).toBeDefined()
+    expect(schemaValidates(wrapped!, { prompt: 'x', condition: stringCondition, _permission_reason: 'r' })).toBe(true)
+    expect(schemaValidates(wrapped!, { prompt: 'x', condition: fieldCondition, _permission_reason: 'r' })).toBe(true)
+    expect(schemaValidates(wrapped!, { prompt: 'x', condition: stringCondition })).toBe(false)
+    const executeFn = wrapped!.execute
+    expect(executeFn).toBeDefined()
+    const out: unknown = await executeFn!(
+      { prompt: 'x', condition: stringCondition, _permission_reason: 'r' },
       { toolCallId: 't1', messages: [], context: {} },
     )
     expect(out).toMatchObject({ status: 'permission_denied' })

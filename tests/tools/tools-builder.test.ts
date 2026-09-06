@@ -1271,6 +1271,16 @@ describe('provider request scope closure', () => {
     expect(out).toEqual([])
   })
 
+  it('keeps the alert tools out of the guest read-only toolset', () => {
+    const provider = createMockProvider()
+    const descriptors = buildTools(provider, 'user-123', 'group-123', 'normal', 'group')
+
+    expect(Object.keys(descriptors)).toContain('create_alert')
+    const guest = applyGuestReadOnlyFilter(descriptors)
+    expect(Object.keys(guest)).not.toContain('create_alert')
+    expect(Object.keys(guest)).not.toContain('update_reminder')
+  })
+
   it('preserves compaction and disclosure behavior through the finalize pass', async () => {
     const provider = createMockProvider({
       listTasks: mock(() =>

@@ -9,7 +9,7 @@ import { z } from 'zod'
 
 import { getDrizzleDb } from '../../src/db/drizzle.js'
 import { contextSettings, platformInstances, taskInstances } from '../../src/db/schema.js'
-import { ACTIVITY_UNAVAILABLE_ERROR } from '../../src/deferred-prompts/activity-gating.js'
+import { ACTIVITY_NO_INSTANCE_ERROR, ACTIVITY_UNAVAILABLE_ERROR } from '../../src/deferred-prompts/activity-gating.js'
 import { getAlertPrompt, listAlertPrompts } from '../../src/deferred-prompts/alerts.js'
 import type { AlertCondition } from '../../src/deferred-prompts/condition-schema.js'
 import { makeCreateAlertTool } from '../../src/tools/create-alert.js'
@@ -93,6 +93,20 @@ describe('makeCreateAlertTool — activity alert gating', () => {
     const execute = getToolExecutor(tool)
     const result = await execute({ prompt: 'Notify me', condition: { kind: 'activity', taskId: 'task-1' } })
     expect(result).toEqual({ error: ACTIVITY_UNAVAILABLE_ERROR })
+  })
+
+  test('refuses a JSON-string activity condition with the unavailable guidance by default', async () => {
+    const tool = makeCreateAlertTool(USER_ID, USER_ID, 'dm')
+    const execute = getToolExecutor(tool)
+    const result = await execute({ prompt: 'Notify me', condition: '{"kind":"activity","taskId":"417"}' })
+    expect(result).toEqual({ error: ACTIVITY_UNAVAILABLE_ERROR })
+  })
+
+  test('refuses a JSON-string activity condition with the instance guidance when no task instance is configured', async () => {
+    const tool = makeCreateAlertTool(USER_ID, USER_ID, 'dm', undefined, undefined, true)
+    const execute = getToolExecutor(tool)
+    const result = await execute({ prompt: 'Notify me', condition: '{"kind":"activity","taskId":"417"}' })
+    expect(result).toEqual({ error: ACTIVITY_NO_INSTANCE_ERROR })
   })
 })
 
