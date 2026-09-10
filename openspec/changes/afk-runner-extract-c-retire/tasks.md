@@ -19,7 +19,7 @@ Sections 1–4 are umbrella task 4.2 (one commit-shaped deletion); section 5 is 
 
 - [x] 3.1 Mutation baseline purge: drop all 119 `afk-runner/src/**` keys from `scripts/mutation/baseline.json` (dead keys are dead weight; the monotonic floor never consults missing files). Verify: `grep -rn "afk-runner" package.json .gitignore scripts/mutation/baseline.json` empty — the full design grep gate; `bun run test:affected` green.
 - [x] 3.2 Mutation README mentions: in `scripts/mutation/README.md` remove the two normative mentions — the mapping-table row (:139, `afk-runner/src/foo.ts -> tests/afk-runner/foo.test.ts`) and the gateable-roots sentence (:223, drop `afk-runner/src/` from the list) — while the :45 PR-#431 zod anecdote stays (historical keep-class). Verify: `rg -n "afk" scripts/mutation/README.md` returns only the :45 anecdote.
-- [ ] 3.3 Knip sweep: in `knip.config.ts` drop `'afk-runner'` from `ignoreWorkspaces` (:27) AND reword the standalone-workspaces comment above it (:23–26) so the file ends with zero afk references — comment and entry together, exactly as R5's `41fa25b6a` knip sweep did; the grep gate does not cover this file, only the inventory forces it. Verify: `rg -n "afk" knip.config.ts` empty; `bun run knip` green.
+- [x] 3.3 Knip sweep: in `knip.config.ts` drop `'afk-runner'` from `ignoreWorkspaces` (:27) AND reword the standalone-workspaces comment above it (:23–26) so the file ends with zero afk references — comment and entry together, exactly as R5's `41fa25b6a` knip sweep did; the grep gate does not cover this file, only the inventory forces it. Verify: `rg -n "afk" knip.config.ts` empty; `bun run knip` green.
 
 ## 4. Tombstones (design D1.8, D2, D3, D4)
 
