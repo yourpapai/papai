@@ -73,3 +73,9 @@ deleting the new repo.
   task files + this runbook committed; `yourpapai/afk-runner` created
   private and empty. PR #432 merged as 84ebb2c26 — the severance tip is
   master; drain gate (4.1) not yet confirmed.
+- 2026-09-10 — drain gate (task 4.1) confirmed: papai store roster all
+  terminal (6 runs, none running, all worktree-pinned — exempt by D4); the
+  new repo's single `afk-runner-extract-c-setup` run ends in a release
+  approve. Run 3 merged into the new repo's master. Run 5 launched from
+  `.worktrees/afk-runner-retire` (branch `afk-runner-retire` off
+  origin/master 3633da06b).
