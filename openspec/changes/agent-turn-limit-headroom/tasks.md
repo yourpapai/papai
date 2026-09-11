@@ -25,4 +25,4 @@ Test-first order per design.md Migration Plan; every implementation task is driv
 ## 5. Docs and full gates
 
 - [x] 5.1 Document the 125-step default and the `stopReason: 'turn_limit'` marker in `docs/architecture/behaviors.md` next to the verified-completion/truncation section. Verify: `bun run format:check`
-- [ ] 5.2 Full verification: `bun run test` (with coverage ratchet), `bun run typecheck`, `bun run lint`, and `bun check:full` all green; state the old → new budget (50 → 125) explicitly in the MR description. Verify: `bun check:full`
+- [x] 5.2 Full verification: `bun run test` (with coverage ratchet), `bun run typecheck`, `bun run lint`, and `bun check:full` all green; state the old → new budget (50 → 125) explicitly in the MR description. Verify: `bun check:full`
