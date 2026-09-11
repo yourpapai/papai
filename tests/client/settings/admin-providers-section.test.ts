@@ -261,4 +261,77 @@ describe('AdminProvidersSection', () => {
     expect(patched).not.toBeUndefined()
     expect(JSON.parse(patched!.body)).toMatchObject({ baseModel: 'gpt-4o-mini' })
   })
+
+  const HINTS = { 'gpt-4o': { baseProvider: 'openai', baseModel: 'gpt-4o' } }
+  const baseFixture = populatedPayload.providers[0]!
+  const hintsPayload = {
+    providers: [
+      {
+        ...baseFixture,
+        modelHints: HINTS,
+        verification: { ...baseFixture.verification, models: ['gpt-4o', 'gpt-4o-mini'] },
+      },
+    ],
+  }
+
+  const setElementValue = (input: HTMLInputElement, value: string): void => {
+    input.value = value
+    input.dispatchEvent(new Event('input', { bubbles: true }))
+  }
+
+  test('the edit form renders the hints editor with the enumerated models and stored hints', async () => {
+    setMockFetch(recordingRoute([], hintsPayload, true))
+    mount(AdminProvidersSection, { target })
+    await drain()
+
+    document.querySelector<HTMLButtonElement>('[data-testid="admin-providers-edit-prov_1"]')!.click()
+    await drain()
+
+    const editor = document.querySelector('[data-testid="provider-edit-form"] [data-testid="model-hints-editor"]')
+    expect(editor).not.toBeNull()
+    const row = [...document.querySelectorAll('[data-testid="model-hints-row"]')].find((candidate) =>
+      candidate.textContent?.includes('gpt-4o'),
+    )
+    expect(row).toBeDefined()
+    expect(row!.querySelector<HTMLInputElement>('[data-testid="model-hints-base-provider"]')!.value).toBe('openai')
+    expect(row!.querySelector<HTMLInputElement>('[data-testid="model-hints-base-model"]')!.value).toBe('gpt-4o')
+    const select = document.querySelector<HTMLSelectElement>('[data-testid="model-hints-add-model"]')!
+    expect([...select.options].map((option) => option.value)).toStrictEqual(['gpt-4o-mini'])
+  })
+
+  test('saving the edit form carries modelHints in the PATCH body', async () => {
+    const calls: CapturedRequest[] = []
+    setMockFetch(recordingRoute(calls, hintsPayload, true))
+    mount(AdminProvidersSection, { target })
+    await drain()
+
+    document.querySelector<HTMLButtonElement>('[data-testid="admin-providers-edit-prov_1"]')!.click()
+    await drain()
+    const row = [...document.querySelectorAll('[data-testid="model-hints-row"]')].find((candidate) =>
+      candidate.textContent?.includes('gpt-4o'),
+    )!
+    setElementValue(row.querySelector<HTMLInputElement>('[data-testid="model-hints-base-model"]')!, 'gpt-4o-turbo')
+    flushSync()
+
+    document.querySelector<HTMLButtonElement>('[data-testid="provider-edit-form-save"]')!.click()
+    await drain()
+
+    const patched = calls.find((call) => call.method === 'PATCH')
+    expect(patched).not.toBeUndefined()
+    expect(JSON.parse(patched!.body)).toMatchObject({
+      modelHints: { 'gpt-4o': { baseProvider: 'openai', baseModel: 'gpt-4o-turbo' } },
+    })
+  })
+
+  test('the create form does not render the hints editor', async () => {
+    setMockFetch(routeProvidersWithMetadata(populatedPayload))
+    mount(AdminProvidersSection, { target })
+    await drain()
+
+    document.querySelector<HTMLButtonElement>('[data-testid="admin-providers-add"]')!.click()
+    await drain()
+
+    expect(document.querySelector('[data-testid="provider-form"]')).not.toBeNull()
+    expect(document.querySelector('[data-testid="model-hints-editor"]')).toBeNull()
+  })
 })
