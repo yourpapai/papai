@@ -18,18 +18,28 @@
 
   let { contextId }: Props = $props()
 
+  const FIELD_HINTS: Record<string, string> = {
+    ai_output_detail_level: 'Raw detail shows unredacted tool inputs/outputs and reasoning in chat.',
+    ai_reasoning_effort: 'Sent to the active model of this context; models unknown to the catalogue offer the full level set.',
+  }
+
   let fields: ConfigField[] = $state([])
   let error: string | null = $state(null)
   let loading = $state(false)
 
-  // Unset keys come back as value: ''. Display the first option (the default) so the
-  // control is never rendered in an indeterminate state.
+  // Unset keys come back as value: '', and a stored value can fall outside the returned
+  // options (for example after a model switch narrowed the level set). Both display the
+  // first option (the default) so the control is never rendered in an indeterminate state.
   const visible = $derived(
     fields
       .filter((field) => field.kind === 'ai-output')
       .map((field) => ({
         ...field,
-        value: field.value === '' ? (field.options?.[0]?.value ?? '') : field.value,
+        value:
+          field.value === '' ||
+          (field.options !== undefined && !field.options.some((option) => option.value === field.value))
+            ? (field.options?.[0]?.value ?? '')
+            : field.value,
       })),
   )
 
@@ -76,9 +86,7 @@
         <ConfigFieldRow
           {contextId}
           {field}
-          hint={field.key === 'ai_output_detail_level'
-            ? 'Raw detail shows unredacted tool inputs/outputs and reasoning in chat.'
-            : undefined}
+          hint={FIELD_HINTS[field.key]}
           onSaved={() => void load(contextId)} />
       {/each}
     </div>

@@ -26,7 +26,7 @@ See LICENSE in the project root for details.
 - [x] 3.3 TDD red: extend `tests/debug/settings/config-routes.test.ts` — GET returns the derived options for the context's active model; PATCH stores a union value while the active model is catalogue-unknown; PATCH rejects a clearly invalid value with 422 listing the allowed set; unsetting (empty) is accepted. Verify: `bun test tests/debug/settings/config-routes.test.ts`
 - [x] 3.4 Close any route-level gap (expected near-zero: GET and PATCH already flow through `getConfigFieldsForContext` and `validateConfigField` against `field.options`). Verify: `bun test tests/debug/settings/config-routes.test.ts`
 - [x] 3.5 TDD red: extend `tests/client/settings/sections/AiOutputSection.test.ts` — the new select renders with its hint line; a stored value no longer among the options displays "Provider default" while the stored string is untouched. Verify: `bun test tests/client/settings/sections/AiOutputSection.test.ts` (fails)
-- [ ] 3.6 Implement the hint line and the display fallback in `client/settings/sections/AiOutputSection.svelte` (extension of the `visible` derived). Verify: `bun test tests/client/settings/sections/AiOutputSection.test.ts`
+- [x] 3.6 Implement the hint line and the display fallback in `client/settings/sections/AiOutputSection.svelte` (extension of the `visible` derived). Verify: `bun test tests/client/settings/sections/AiOutputSection.test.ts`
 
 ## 4. Request wiring
 
