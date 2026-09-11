@@ -37,6 +37,20 @@ export const FOLLOW_UP_FORBIDDEN_GIT_RULE =
   'Do not run git yourself: do not commit, do not stage, do not push, do not merge. The pipeline runs the checks, ' +
   'commits, reconciles and pushes the moment you finish; a git command from you could break the tree the pipeline relies on.'
 
+/**
+ * The maintainer-note framing, as the follow-up request rides it.
+ *
+ * The same two load-bearing clauses `MAINTAINER_NOTE_FRAMING` pins for the
+ * steering notes — guidance, not a re-plan, and the change folder remaining the
+ * source of truth — with the one clause that has to differ: `/changes` is not
+ * accepted on a delivered issue, so the scope channel here is a new issue,
+ * which is exactly what the too-big decline's draft is for. Pinned by
+ * `instructions.test.ts` beside the steering framing.
+ */
+export const FOLLOW_UP_NOTE_FRAMING =
+  'Guidance from the maintainer — guidance, not a re-plan: the delivered work and its change folder remain the ' +
+  'source of truth, and a scope bigger than a small tweak belongs in a new issue, not in this edit.'
+
 /** Carried verbatim by the apply prompt and asserted against the constants. */
 export const FOLLOW_UP_APPLY_INSTRUCTIONS = [
   'A maintainer has asked for a small follow-up change on this delivered pull request, and the size gate has judged it small.',
@@ -126,7 +140,7 @@ const buildAssessmentPrompt = (envelope: UntrustedEnvelope, request: string, con
   [
     'A maintainer has asked for a follow-up change on this delivered pull request. Judge whether it is small enough to ' +
       'apply directly as follow-up commits on the branch, or too big and better as its own issue.',
-    `## The request\n${envelope.wrap('follow-up-request', request)}`,
+    `## The request\n${FOLLOW_UP_NOTE_FRAMING}\n\n${envelope.wrap('follow-up-request', request)}`,
     `## The change folder this branch carries\n${context.changeDigest}`,
     `## The branch's diff against \`${context.base}\`\n${fence(context.diffStat)}`,
     'Small means: a bounded diff of the order of tens of lines, in files this change already touched or trivially ' +
@@ -144,7 +158,7 @@ const buildApplyPrompt = (
   [
     'The size gate judged this follow-up small. Apply it in the working tree.',
     `The gate's verdict: ${verdictReason}`,
-    `## The request\n${envelope.wrap('follow-up-request', request)}`,
+    `## The request\n${FOLLOW_UP_NOTE_FRAMING}\n\n${envelope.wrap('follow-up-request', request)}`,
     `## The change folder this branch carries\n${context.changeDigest}`,
     `## The branch's diff against \`${context.base}\`\n${fence(context.diffStat)}`,
     'Reply with a single JSON object and nothing else: {"summary": "<what you changed>", "files": ["<paths you ' +

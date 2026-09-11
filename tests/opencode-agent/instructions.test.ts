@@ -5,6 +5,13 @@
 
 import { describe, expect, test } from 'bun:test'
 
+import {
+  applyRequest,
+  assessmentRequest,
+  FOLLOW_UP_APPLY_INSTRUCTIONS,
+  FOLLOW_UP_FORBIDDEN_GIT_RULE,
+  FOLLOW_UP_NOTE_FRAMING,
+} from '../../opencode-agent/src/follow-up-prompts.js'
 import { IMPLEMENT_INSTRUCTIONS } from '../../opencode-agent/src/implement-prompts.js'
 import { buildImplementPrompt, MAINTAINER_NOTE_FRAMING } from '../../opencode-agent/src/implement-prompts.js'
 import { CI_FIX_INSTRUCTIONS } from '../../opencode-agent/src/phases/ci-fix.js'
@@ -34,6 +41,7 @@ describe('every phase that can write a file states the protected-paths rule', ()
     ['ci-fix', CI_FIX_INSTRUCTIONS],
     ['propose', PROPOSE_INSTRUCTIONS],
     ['propose-files', PROPOSE_FILES_INSTRUCTIONS],
+    ['follow-up', FOLLOW_UP_APPLY_INSTRUCTIONS],
   ]
 
   test.each(PHASES)('%s carries it verbatim', (_phase, instructions) => {
@@ -62,6 +70,7 @@ describe('the minimality rule reaches the code-writing phases only', () => {
   const WRITES_CODE: ReadonlyArray<readonly [string, string]> = [
     ['implement', IMPLEMENT_INSTRUCTIONS],
     ['ci-fix', CI_FIX_INSTRUCTIONS],
+    ['follow-up', FOLLOW_UP_APPLY_INSTRUCTIONS],
   ]
 
   const DRAFTS_ARTIFACTS: ReadonlyArray<readonly [string, string]> = [
@@ -162,5 +171,75 @@ describe('the steering-note framing', () => {
 
     expect(prompt).not.toContain(MAINTAINER_NOTE_FRAMING)
     expect(prompt).not.toContain('maintainer-note')
+  })
+})
+
+/**
+ * The `/follow-up` handler's prompts, pinned like every other block in this
+ * file. The apply turn holds `bash` over a tree the pipeline alone may commit,
+ * reconcile and push — the same situation the sync repair rule answers — so
+ * its forbidden-git rule is pinned against the constant, not a phrase. And the
+ * maintainer's request is untrusted text reaching a prompt: it rides the
+ * envelope under the maintainer-note framing, with the handler's one nonce
+ * shared by the system prompt and the body, so a delimiter is decidable by the
+ * one document untrusted text cannot reach.
+ */
+describe('the follow-up forbidden-git rule', () => {
+  const envelope: UntrustedEnvelope = {
+    nonce: 'test-nonce',
+    wrap: (label: string, body: string): string => `<${label}>${body}</${label}>`,
+  }
+  const context = { base: 'main', changeDigest: 'Change `add-x`', diffStat: ' src/x.ts | 2 +-' }
+
+  test('the apply prompt carries the rule verbatim', () => {
+    const request = applyRequest('COMPLETE', '/repo', envelope, 'tighten the backoff', context, 'A one-line change.')
+
+    expect(request.prompt).toContain(FOLLOW_UP_FORBIDDEN_GIT_RULE)
+  })
+
+  test('the rule names git and the moves it forbids', () => {
+    expect(FOLLOW_UP_FORBIDDEN_GIT_RULE).toContain('Do not run git yourself')
+    expect(FOLLOW_UP_FORBIDDEN_GIT_RULE).toContain('commit')
+    expect(FOLLOW_UP_FORBIDDEN_GIT_RULE).toContain('push')
+  })
+})
+
+describe('the follow-up request framing', () => {
+  const envelope: UntrustedEnvelope = {
+    nonce: 'follow-up-nonce',
+    wrap: (label: string, body: string): string => `<${label}>${body}</${label}>`,
+  }
+  const context = { base: 'main', changeDigest: 'Change `add-x`', diffStat: ' src/x.ts | 2 +-' }
+
+  test('the framing names guidance, the truth and the scope channel', () => {
+    // The same two load-bearing clauses the steering-note framing pins — a
+    // maintainer's note must not read as permission to re-scope — with the
+    // delivered-work channel named where `/changes` would be wrong: a
+    // delivered issue takes a new issue, not an OpenSpec re-plan.
+    expect(FOLLOW_UP_NOTE_FRAMING).toContain('guidance')
+    expect(FOLLOW_UP_NOTE_FRAMING).toContain('source of truth')
+    expect(FOLLOW_UP_NOTE_FRAMING).toContain('new issue')
+  })
+
+  test.each([
+    [
+      'assessment',
+      (): { prompt: string; system?: string } =>
+        assessmentRequest('COMPLETE', '/repo', envelope, 'tighten the backoff', context),
+    ],
+    [
+      'apply',
+      (): { prompt: string; system?: string } =>
+        applyRequest('COMPLETE', '/repo', envelope, 'tighten the backoff', context, 'A one-line change.'),
+    ],
+  ])('the %s prompt rides the request enveloped, under the framing, with the handler nonce', (_turn, build) => {
+    const request = build()
+
+    expect(request.prompt).toContain(FOLLOW_UP_NOTE_FRAMING)
+    expect(request.prompt).toContain('follow-up-request')
+    expect(request.prompt).toContain('tighten the backoff')
+    // One nonce per handler: the system prompt states the rule for the same id
+    // the body's envelope closes with.
+    expect(request.system).toContain('follow-up-nonce')
   })
 })
