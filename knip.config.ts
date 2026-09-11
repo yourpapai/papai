@@ -176,11 +176,6 @@ export default {
     // (openspec/changes/usage-failure-queries) and by tests outside knip's
     // production project scope.
     'src/usage/failures.ts': ['exports'],
-    // The reasoning-effort gate function is consumed by the request wiring of the
-    // reasoning-effort-setting change (tasks 4.4/4.6: callLlm and the proactive
-    // path) and is test-consumed until then, outside knip's production project
-    // scope. Remove when the request wiring lands.
-    'src/ai-output-settings.ts': ['exports'],
     // Proof-check module exports: the later-task consumers landed (proof-check-run,
     // proof-checks-read, poller, diagnostics); this now covers only test-only exports
     // (resetProofChecksForTest, resetProofDeliveryRecords) and test-only consumption.

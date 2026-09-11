@@ -35,7 +35,7 @@ See LICENSE in the project root for details.
 - [x] 4.3 TDD red: extend `tests/llm-orchestrator.test.ts` — the `buildModel` spy receives the effective effort for the context's stored setting; unset → not passed; the turn verifier inherits the same model instance. Verify: `bun test tests/llm-orchestrator.test.ts` (fails)
 - [x] 4.4 Implement the optional effort argument through `LlmOrchestratorDeps.buildModel` (src/llm-orchestrator-types.ts) and the gate resolution in `callLlm` (src/llm-orchestrator.ts). Verify: `bun test tests/llm-orchestrator.test.ts`
 - [x] 4.5 TDD red: extend `tests/deferred-prompts/proactive-llm.test.ts` — proactive/deferred `buildModel` receives the effective effort; unset → not passed; the proactive verification pass inherits it. Verify: `bun test tests/deferred-prompts/proactive-llm.test.ts` (fails)
-- [ ] 4.6 Implement the same pass-through in `src/deferred-prompts/proactive-llm.ts`. Verify: `bun test tests/deferred-prompts/proactive-llm.test.ts`
+- [x] 4.6 Implement the same pass-through in `src/deferred-prompts/proactive-llm.ts`. Verify: `bun test tests/deferred-prompts/proactive-llm.test.ts`
 
 ## 5. Full gates and docs
 

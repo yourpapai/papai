@@ -570,6 +570,7 @@ describe('dispatchExecution', () => {
             source: 'none',
             via: null,
           },
+          effort: null,
         },
       ])
       expect(generateTextCalls[0]!.model).toBe('openai-compatible:byok-main-deferred')
@@ -912,18 +913,21 @@ describe('dispatchExecution', () => {
           baseURL: 'https://byok-full-trim.invalid/v1',
           modelId: 'byok-full-main',
           metadata: trimMetadata,
+          effort: null,
         },
         {
           apiKey: 'sk-byok-full-trim',
           baseURL: 'https://byok-full-trim.invalid/v1',
           modelId: 'byok-full-small',
           metadata: trimMetadata,
+          effort: undefined,
         },
         {
           apiKey: 'sk-byok-full-trim',
           baseURL: 'https://byok-full-trim.invalid/v1',
           modelId: 'byok-full-small',
           metadata: trimMetadata,
+          effort: undefined,
         },
       ])
     })
