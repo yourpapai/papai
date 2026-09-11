@@ -214,6 +214,10 @@ export default {
     // llm-base-model-selection): consumed by the in-flight ModelHintsEditor
     // (change task 5.4) and by tests outside knip's production project scope.
     'client/settings/fetcher-schemas-llm-providers.ts': ['types'],
+    // ModelHintsEditor is wired into ProviderForm by the in-flight
+    // llm-base-model-selection change (task 5.6); until then only its tests
+    // (outside knip's production project scope) import it.
+    'client/settings/components/ModelHintsEditor.svelte': ['files'],
   },
 
   includeEntryExports: true,
