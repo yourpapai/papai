@@ -12,6 +12,10 @@ import { getConfigValue, maskSensitiveValue, setConfigValue } from '../../../src
 import { handleConfigRoutes } from '../../../src/debug/settings/config-routes.js'
 import { setContextSettings } from '../../../src/instances/context-store.js'
 import { insertTaskInstance } from '../../../src/instances/task-store.js'
+import { createLlmProvider, setAdminRoleBindings } from '../../../src/llm-providers/store.js'
+import { clearLlmAdminCacheForTesting } from '../../../src/llm-providers/store.testing.js'
+import { prewarmModelsDevSnapshot } from '../../../src/models-dev/client.js'
+import { resetModelsDevSnapshotForTest } from '../../../src/models-dev/client.testing.js'
 import {
   registerContributedTaskProviderType,
   unregisterContributedTaskProviderType,
@@ -36,8 +40,25 @@ const GetResponseSchema = z.object({
 })
 const PatchResponseSchema = z.object({ contextId: z.string() })
 const PatchUnchangedResponseSchema = z.object({ ok: z.literal(true), unchanged: z.literal(true) })
+const PatchErrorSchema = z.object({ error: z.string().optional() })
 
 const KANEO_PLUGIN_ID = 'task-provider-kaneo'
+
+const prewarmCatalogue = async (models: Record<string, unknown>): Promise<void> => {
+  await prewarmModelsDevSnapshot({
+    fetchImpl: () => Promise.resolve(JSON.stringify({ openai: { models } })),
+    cachePath: `/tmp/opencode/config-routes-${crypto.randomUUID()}/models.json`,
+    now: () => 1_700_000_000_000,
+  })
+}
+
+const seedMainModel = (model: string): void => {
+  const provider = createLlmProvider(
+    { label: 'admin-openai', providerType: 'openai', baseUrl: 'https://admin/v1', apiKey: 'sk-admin' },
+    'admin',
+  )
+  setAdminRoleBindings({ main: { providerId: provider.id, model }, small: null, embedding: null }, 'admin')
+}
 
 const registerKaneoProviderType = (): void => {
   registerContributedTaskProviderType('kaneo', {
@@ -62,11 +83,14 @@ describe('settings config routes', () => {
     await setupTestDb()
     seedTestPlatformInstance({ id: 'pi-1' })
     addUser({ userId: 'u-1', platformInstanceId: 'pi-1', addedBy: 'admin', username: undefined })
+    process.env['INSTANCE_CONFIG_KEY'] = '5'.repeat(64)
+    clearLlmAdminCacheForTesting()
     session = await establishSession({ platformInstanceId: 'pi-1', platformUserId: 'u-1' })
   })
 
   afterEach(() => {
     unregisterContributedTaskProviderType(KANEO_PLUGIN_ID)
+    resetModelsDevSnapshotForTest()
   })
 
   test('GET returns field descriptors with masked values', async () => {
@@ -291,5 +315,90 @@ describe('settings config routes', () => {
       getConfigValue(personalConfigContextId, KANEO_PLUGIN_CREDENTIAL_KEY) === plaintext,
       'stored secret must not be overwritten with the masked sentinel value',
     )
+  })
+
+  test('GET returns the derived reasoning effort options for the active model', async () => {
+    await prewarmCatalogue({
+      'o4-reasoning': {
+        limit: { context: 200_000, output: 100_000 },
+        reasoning: true,
+        reasoning_options: [{ kind: 'effort', values: ['low', 'high'] }],
+      },
+    })
+    seedMainModel('o4-reasoning')
+
+    const res = await handleConfigRoutes(
+      new Request('https://x/settings/api/config', { headers: authHeaders(session) }),
+      new URL('https://x/settings/api/config'),
+    )
+    expect(res.status).toBe(200)
+    const body = GetResponseSchema.parse(await res.json())
+    const effort = body.fields.find((f) => f.key === 'ai_reasoning_effort')
+    expect(effort?.control).toBe('select')
+    expect(effort?.options).toEqual([
+      { value: '', label: 'Provider default' },
+      { value: 'low', label: 'low' },
+      { value: 'high', label: 'high' },
+    ])
+  })
+
+  test('PATCH stores a union value while the active model is catalogue-unknown', async () => {
+    await prewarmCatalogue({ 'other-model': { limit: { context: 1000 } } })
+    seedMainModel('mystery-model')
+
+    const req = new Request('https://x/settings/api/config', {
+      method: 'PATCH',
+      headers: { ...authHeaders(session, true), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ key: 'ai_reasoning_effort', value: 'xhigh' }),
+    })
+    const res = await handleConfigRoutes(req, new URL('https://x/settings/api/config'))
+    expect(res.status).toBe(200)
+    const body = PatchResponseSchema.parse(await res.json())
+    expect(getConfigValue(body.contextId, 'ai_reasoning_effort')).toBe('xhigh')
+  })
+
+  test('PATCH rejects a clearly invalid reasoning effort value with 422 listing the allowed set', async () => {
+    const req = new Request('https://x/settings/api/config', {
+      method: 'PATCH',
+      headers: { ...authHeaders(session, true), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ key: 'ai_reasoning_effort', value: 'bogus-level' }),
+    })
+    const res = await handleConfigRoutes(req, new URL('https://x/settings/api/config'))
+    expect(res.status).toBe(422)
+    const body = PatchErrorSchema.parse(await res.json())
+    expect(body.error).toContain('must be one of:')
+    expect(body.error).toContain('xhigh')
+  })
+
+  test('PATCH accepts the default sentinel as provider default', async () => {
+    const req = new Request('https://x/settings/api/config', {
+      method: 'PATCH',
+      headers: { ...authHeaders(session, true), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ key: 'ai_reasoning_effort', value: 'default' }),
+    })
+    const res = await handleConfigRoutes(req, new URL('https://x/settings/api/config'))
+    expect(res.status).toBe(200)
+    const body = PatchResponseSchema.parse(await res.json())
+    expect(getConfigValue(body.contextId, 'ai_reasoning_effort')).toBe('default')
+  })
+
+  test('PATCH accepts clearing the reasoning effort value', async () => {
+    const setReq = new Request('https://x/settings/api/config', {
+      method: 'PATCH',
+      headers: { ...authHeaders(session, true), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ key: 'ai_reasoning_effort', value: 'xhigh' }),
+    })
+    const setRes = await handleConfigRoutes(setReq, new URL('https://x/settings/api/config'))
+    expect(setRes.status).toBe(200)
+    const stored = PatchResponseSchema.parse(await setRes.json())
+
+    const clearReq = new Request('https://x/settings/api/config', {
+      method: 'PATCH',
+      headers: { ...authHeaders(session, true), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ key: 'ai_reasoning_effort', value: '' }),
+    })
+    const clearRes = await handleConfigRoutes(clearReq, new URL('https://x/settings/api/config'))
+    expect(clearRes.status).toBe(200)
+    expect(getConfigValue(stored.contextId, 'ai_reasoning_effort')).toBe('')
   })
 })

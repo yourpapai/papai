@@ -69,9 +69,6 @@ crvy-rprtr-*.json
 # SDD runner state
 .sdd-runner/
 
-# afk-runner state
-.afk-runner/
-
 # codeindex MCP per-tree index database (see README developer tooling)
 .codeindex/
 papai-local.tar

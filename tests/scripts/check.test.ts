@@ -720,13 +720,13 @@ describe('staged enumeration agreement (check.sh arms vs the mutation gate)', ()
   // routed trees would stay green through exactly that divergence.
   const RESOLVER_PATH = path.join(REPO_ROOT, '.hooks/tdd/test-resolver.mjs')
 
-  // plugins/ and afk-runner/src/ are gateable but unrouted today: no arm matches
-  // them, so staged files there fall to `*) return 1`. A pre-existing divergence
+  // plugins/ is gateable but unrouted today: no arm matches it, so staged files
+  // there fall to `*) return 1`. A pre-existing divergence
   // recorded, not repaired (change non-goals forbid a check.sh behavioral
   // change). Keyed — each entry asserts gateable and unrouted, so a tree that
   // gains a shell arm or loses gateability fails here until its entry is
   // retired in the same change that edits the shell arms.
-  const UNROUTED_GATEABLE_ROOTS: readonly string[] = ['plugins/', 'afk-runner/src/']
+  const UNROUTED_GATEABLE_ROOTS: readonly string[] = ['plugins/']
 
   const readGateableRoots = (): readonly string[] => {
     const fn = readFileSync(RESOLVER_PATH, 'utf8').match(/export function isGateableImplFile\([\s\S]*?\n\}/u)

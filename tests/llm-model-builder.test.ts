@@ -9,11 +9,13 @@ import { createOpenAICompatible } from '@ai-sdk/openai-compatible'
 import { generateText } from 'ai'
 import { z } from 'zod'
 
+import { AI_REASONING_EFFORT_KEY, resolveEffectiveReasoningEffort } from '../src/ai-output-settings.js'
+import { setCachedConfig } from '../src/cache.js'
 import { buildChatModel, getOpenAICompatibleProvider, type ModelBuilderDeps } from '../src/llm-model-builder.js'
 import { clearModelBuilderCacheForTesting } from '../src/llm-model-builder.testing.js'
 import type { ModelMetadata } from '../src/models-dev/resolve.js'
 import { fetchWithoutTimeout } from '../src/utils/fetch.js'
-import { restoreFetch, setMockFetch } from './utils/test-helpers.js'
+import { mockLogger, restoreFetch, setMockFetch, setupTestDb } from './utils/test-helpers.js'
 
 function makeDeps(): { create: ReturnType<typeof mock>; deps: ModelBuilderDeps } {
   const create = mock((opts: Parameters<typeof createOpenAICompatible>[0]) => createOpenAICompatible(opts))
@@ -70,8 +72,10 @@ describe('llm-model-builder', () => {
 })
 
 describe('buildChatModel with metadata', () => {
-  beforeEach(() => {
+  beforeEach(async () => {
+    mockLogger()
     clearModelBuilderCacheForTesting()
+    await setupTestDb()
   })
 
   afterEach(() => {
@@ -168,5 +172,67 @@ describe('buildChatModel with metadata', () => {
 
     expect(captured.json()[0]?.['max_tokens']).toBe(111)
     expect(captured.json()[1]?.['max_tokens']).toBe(222)
+  })
+
+  it('a stored in-set level rides the request as reasoning_effort', async () => {
+    const captured = captureBodies()
+    setCachedConfig('ctx-effort-in-set', AI_REASONING_EFFORT_KEY, 'high')
+    const effort = resolveEffectiveReasoningEffort('ctx-effort-in-set', metadata({ maxOutputTokens: null }))
+
+    await generateText({
+      model: buildChatModel('k1', 'http://x', 'm1', undefined, metadata({ maxOutputTokens: null }), effort),
+      prompt: 'hi',
+    })
+
+    expect(captured.json()[0]?.['reasoning_effort']).toBe('high')
+    expect(captured.json()[0]?.['max_tokens']).toBeUndefined()
+  })
+
+  it('an unset level leaves the request byte-identical to today', async () => {
+    const captured = captureBodies()
+
+    await generateText({ model: buildChatModel('k1', 'http://x', 'm1', undefined, metadata()), prompt: 'hi' })
+    const today = captured.raw[0]
+    const effort = resolveEffectiveReasoningEffort('ctx-effort-unset', metadata())
+    await generateText({ model: buildChatModel('k1', 'http://x', 'm1', undefined, metadata(), effort), prompt: 'hi' })
+
+    expect(captured.raw[1]).toBe(today)
+  })
+
+  it('a stored level on a catalogue non-reasoning model never reaches the request', async () => {
+    const captured = captureBodies()
+    setCachedConfig('ctx-effort-non-reasoning', AI_REASONING_EFFORT_KEY, 'high')
+    const effort = resolveEffectiveReasoningEffort('ctx-effort-non-reasoning', metadata({ reasoning: false }))
+
+    await generateText({
+      model: buildChatModel('k1', 'http://x', 'm1', undefined, metadata({ reasoning: false }), effort),
+      prompt: 'hi',
+    })
+
+    expect(captured.json()[0]?.['reasoning_effort']).toBeUndefined()
+  })
+
+  it('a stored level outside the catalogue levels never reaches the request', async () => {
+    const captured = captureBodies()
+    setCachedConfig('ctx-effort-out-of-set', AI_REASONING_EFFORT_KEY, 'high')
+    const effort = resolveEffectiveReasoningEffort('ctx-effort-out-of-set', metadata({ effortLevels: ['low'] }))
+
+    await generateText({
+      model: buildChatModel('k1', 'http://x', 'm1', undefined, metadata({ effortLevels: ['low'] }), effort),
+      prompt: 'hi',
+    })
+
+    expect(captured.json()[0]?.['reasoning_effort']).toBeUndefined()
+  })
+
+  it('the effort and the maxOutputTokens cap coexist in one request', async () => {
+    const captured = captureBodies()
+    setCachedConfig('ctx-effort-capped', AI_REASONING_EFFORT_KEY, 'high')
+    const effort = resolveEffectiveReasoningEffort('ctx-effort-capped', metadata())
+
+    await generateText({ model: buildChatModel('k1', 'http://x', 'm1', undefined, metadata(), effort), prompt: 'hi' })
+
+    expect(captured.json()[0]?.['reasoning_effort']).toBe('high')
+    expect(captured.json()[0]?.['max_tokens']).toBe(777)
   })
 })
