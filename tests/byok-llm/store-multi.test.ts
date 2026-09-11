@@ -40,6 +40,7 @@ const makeProvider = (overrides: Partial<LlmProviderAccount> = {}): LlmProviderA
   apiKey: 'sk-test',
   baseProvider: null,
   baseModel: null,
+  modelHints: {},
   verification: unverified(),
   ...overrides,
 })

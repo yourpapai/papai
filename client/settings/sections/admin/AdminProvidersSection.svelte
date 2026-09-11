@@ -21,7 +21,7 @@
     refreshAdminProviderModels,
     updateAdminProvider,
   } from '../../admin-fetchers.js'
-  import type { LlmProviderType, ProviderPatch, PublicProviderAccount } from '../../fetcher-schemas-llm-providers.js'
+  import type { LlmProviderType, ModelHints, ProviderPatch, PublicProviderAccount } from '../../fetcher-schemas-llm-providers.js'
 
   let providers: PublicProviderAccount[] = $state([])
   let error: string | null = $state(null)
@@ -109,6 +109,7 @@
       apiKey: string
       baseProvider: string | null
       baseModel: string | null
+      modelHints?: ModelHints
     },
   ): Promise<boolean> {
     const patch: ProviderPatch = {
@@ -117,6 +118,7 @@
       baseUrl: input.baseUrl,
       baseProvider: input.baseProvider,
       baseModel: input.baseModel,
+      modelHints: input.modelHints,
     }
     if (input.apiKey.length > 0) patch.apiKey = input.apiKey
     const ok = await patchAndReload(id, patch)
@@ -144,6 +146,7 @@
   }
 
   function startEdit(provider: PublicProviderAccount): void {
+    error = null
     editTarget = provider
     modelsTarget = null
   }
@@ -255,11 +258,16 @@
                       baseUrl: provider.baseUrl,
                       baseProvider: provider.baseProvider,
                       baseModel: provider.baseModel,
+                      modelHints: provider.modelHints,
                     }}
+                    enumeratedModels={provider.verification.models}
                     onSave={(input) => onEdit(provider.id, input)}
                     onCancel={() => (editTarget = null)}
                     busy={saving}
                     testidPrefix="provider-edit-form" />
+                  {#if error !== null}
+                    <p class="status-error" data-testid="provider-edit-form-error">{error}</p>
+                  {/if}
                 </td>
               </tr>
             {/if}

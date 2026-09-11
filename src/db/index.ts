@@ -94,6 +94,7 @@ import { migration080ReleaseAnnouncementBodies } from './migrations/080_release_
 import { migration081AlertTaskInstancePin } from './migrations/081_alert_task_instance_pin.js'
 import { migration082AlertActivityCursor } from './migrations/082_alert_activity_cursor.js'
 import { migration083LlmProviderBaseRefs } from './migrations/083_llm_provider_base_refs.js'
+import { migration084LlmProviderModelHints } from './migrations/084_llm_provider_model_hints.js'
 
 const getDbPath = (): string => {
   const dbPath = process.env['DB_PATH']
@@ -212,6 +213,7 @@ export const MIGRATIONS: readonly Migration[] = [
   migration081AlertTaskInstancePin,
   migration082AlertActivityCursor,
   migration083LlmProviderBaseRefs,
+  migration084LlmProviderModelHints,
 ]
 
 export const initDb = (): void => {

@@ -7,11 +7,13 @@
   import Btn from '../../shared/ui/Btn.svelte'
   import Input from '../../shared/ui/Input.svelte'
   import Select from '../../shared/ui/Select.svelte'
+  import ModelHintsEditor from './ModelHintsEditor.svelte'
   import ModelMetadataHint from './ModelMetadataHint.svelte'
   import {
     PROVIDER_TYPE_BASE_URLS,
     PROVIDER_TYPE_OPTIONS,
     type LlmProviderType,
+    type ModelHints,
   } from '../fetcher-schemas-llm-providers.js'
 
   export interface ProviderFormInput {
@@ -21,6 +23,7 @@
     apiKey: string
     baseProvider: string | null
     baseModel: string | null
+    modelHints?: ModelHints
   }
 
   interface Props {
@@ -34,10 +37,12 @@
           baseUrl: string
           baseProvider: string | null
           baseModel: string | null
+          modelHints: ModelHints
         }>
       | null
     requireApiKey?: boolean
     editMode?: boolean
+    enumeratedModels?: readonly string[]
     testidPrefix?: string
   }
 
@@ -48,6 +53,7 @@
     initial = null,
     requireApiKey = true,
     editMode = false,
+    enumeratedModels = [],
     testidPrefix = 'provider-form',
   }: Props = $props()
 
@@ -57,6 +63,7 @@
   let apiKey = $state('')
   let baseProvider = $state(initial?.baseProvider ?? '')
   let baseModel = $state(initial?.baseModel ?? '')
+  let modelHints = $state<ModelHints>(initial?.modelHints ?? {})
 
   function onTypeChange(next: string): void {
     providerType = next as LlmProviderType
@@ -67,7 +74,10 @@
   const canSave = $derived(
     label.trim().length > 0 &&
       baseUrl.trim().length > 0 &&
-      (editMode || !requireApiKey || apiKey.trim().length > 0),
+      (editMode || !requireApiKey || apiKey.trim().length > 0) &&
+      Object.values(modelHints).every(
+        (hint) => hint.baseProvider.trim().length > 0 && hint.baseModel.trim().length > 0,
+      ),
   )
 
   async function save(): Promise<void> {
@@ -79,6 +89,12 @@
       apiKey: apiKey.trim(),
       baseProvider: baseProvider.trim().length > 0 ? baseProvider.trim() : null,
       baseModel: baseModel.trim().length > 0 ? baseModel.trim() : null,
+      modelHints: Object.fromEntries(
+        Object.entries(modelHints).map(([id, hint]) => [
+          id,
+          { baseProvider: hint.baseProvider.trim(), baseModel: hint.baseModel.trim() },
+        ]),
+      ),
     })
   }
 </script>
@@ -137,6 +153,17 @@
         model={baseModel.trim()} />
     {/if}
   </div>
+  {#if editMode}
+    <div class="provider-form__field">
+      <span class="provider-form__label">Per-model base hints</span>
+      <ModelHintsEditor
+        providerType={providerType}
+        baseUrl={baseUrl}
+        modelHints={modelHints}
+        {enumeratedModels}
+        onHintsChange={(next) => (modelHints = next)} />
+    </div>
+  {/if}
   <div class="provider-form__actions">
     <Btn variant="primary" size="sm" disabled={!canSave || busy} onClick={() => void save()} testid={`${testidPrefix}-save`}>
       {#snippet children()}{busy ? 'Saving…' : 'Save'}{/snippet}
