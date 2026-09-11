@@ -146,3 +146,14 @@ deleting the new repo.
   4.6 (`tests/CLAUDE.md` roots sentence), 5.1 (full gate pass — run on
   an idle machine), 5.2 (widened census), 5.3 (D6 cleanup note), then
   verify → release gate (answer `APPROVE`).
+- 2026-09-11 (final) — the resume walked 4.6 (committed `234a305a6`)
+  and 5.1 (full gate pass, committed `f999e664c` — suite + check:full +
+  grep gate green); 5.2/5.3 flaked their affected checks (same
+  spawn/real-git load family) but their work was applied and box-checked,
+  so the walk exited implement → verify (green) → release gate v8.
+  5.2's census (298 files, zero unclassed hits, survivor extensions with
+  keep rationale) and 5.3's D6 cleanup note (wait-for-terminal-state
+  condition) verified over the applied tree and landed as one hand
+  re-target commit `0b5a727a0` with record item 5.3.1. Release gate-8
+  carries a staged `APPROVE` (verify-1 green, 17/17 boxes, 15 slice
+  commits). One resume settles the run to completed.
