@@ -1,6 +1,6 @@
 ## 1. Repro — the refused forward path (red)
 
-- [ ] 1.1 Add the failing repro to `tests/opencode-agent/orchestrator.test.ts` (`phase 1 — triage`): seed a parked `INIT_OR_CLARIFY` state (attempts 0, no capture), queue one triage reply (`SPEC_REPLY`), send `/continue`; assert triage re-runs, the run ends `waiting` at `DESIGN_SPEC`, the persisted state advanced (`changeName` set, `### Captured` posted) and no refusal comment was posted. Verify: `bun test tests/opencode-agent/orchestrator.test.ts` — the new test fails (`/continue` refused with a "does not apply" comment)
+- [x] 1.1 Add the failing repro to `tests/opencode-agent/orchestrator.test.ts` (`phase 1 — triage`): seed a parked `INIT_OR_CLARIFY` state (attempts 0, no capture), queue one triage reply (`SPEC_REPLY`), send `/continue`; assert triage re-runs, the run ends `waiting` at `DESIGN_SPEC`, the persisted state advanced (`changeName` set, `### Captured` posted) and no refusal comment was posted. Verify: `bun test tests/opencode-agent/orchestrator.test.ts` — the new test fails (`/continue` refused with a "does not apply" comment)
 
 ## 2. Machine tests for the new acceptance set (red)
 

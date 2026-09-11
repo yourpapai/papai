@@ -1086,6 +1086,25 @@ describe('phase 1 — triage', () => {
     expect(latestPostedState(harness)?.phase).toBe('DESIGN_SPEC')
   })
 
+  test('/continue out of a parked INIT_OR_CLARIFY re-runs triage', async () => {
+    // The forward path out of the clarifying park: the conversation is already
+    // answered — attempts 0, nothing captured — and the maintainer types
+    // /continue to send triage back to work rather than re-reading the thread
+    // themselves. The machine takes the re-entry, triage runs again and the
+    // issue captures, exactly as a plain answer re-running triage would.
+    seedState(harness, { phase: 'INIT_OR_CLARIFY', changeName: null })
+    harness.io.replies = [SPEC_REPLY]
+
+    const result = await runPipeline({ event: comment('/continue'), deps: harness.deps })
+
+    expect(result.status).toBe('waiting')
+    expect(harness.io.posted[0]).toContain('### Captured')
+    expect(latestPostedState(harness)?.phase).toBe('DESIGN_SPEC')
+    expect(latestPostedState(harness)?.changeName).toBe(CHANGE_NAME)
+    // The run's one comment is the capture park, not a refusal of the command.
+    expect(harness.io.posted.join('\n')).not.toContain('does not apply right now')
+  })
+
   test('parks in FAILED when the model returns unusable JSON', async () => {
     harness.io.replies = ['I could not decide.']
 
