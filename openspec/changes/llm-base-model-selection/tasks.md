@@ -36,7 +36,7 @@ design.md has no open questions.
 - [x] 5.3 Write failing tests in `tests/client/settings/model-hints-editor.test.ts`: renders one row per hint (model id, base-provider input, base-model input, remove), add-control offers only enumerated `verification.models` not yet hinted, live metadata preview per row fed with the hint pair, unresolved pair shown as unresolved, remove drops the row, emitted map reflects edits. Verify: `bun test tests/client/settings/model-hints-editor.test.ts`
 - [x] 5.4 Implement `client/settings/components/ModelHintsEditor.svelte` (per design D6: rows + add-control + per-row `ModelMetadataHint`). Verify: `bun test tests/client/settings/model-hints-editor.test.ts`
 - [x] 5.5 Write failing tests in `tests/client/settings/admin-providers-section.test.ts`: edit form renders the hints editor with the provider's enumerated models and stored hints, saved PATCH body carries `modelHints`, create form does not render the editor. Verify: `bun test tests/client/settings/admin-providers-section.test.ts`
-- [ ] 5.6 Wire `client/settings/components/ProviderForm.svelte` (render `ModelHintsEditor` in `editMode` only, fold map into `ProviderFormInput`) and `client/settings/sections/admin/AdminProvidersSection.svelte` (carry `modelHints` in the saved PATCH). Verify: `bun test tests/client/settings/admin-providers-section.test.ts && bun run typecheck`
+- [x] 5.6 Wire `client/settings/components/ProviderForm.svelte` (render `ModelHintsEditor` in `editMode` only, fold map into `ProviderFormInput`) and `client/settings/sections/admin/AdminProvidersSection.svelte` (carry `modelHints` in the saved PATCH). Verify: `bun test tests/client/settings/admin-providers-section.test.ts && bun run typecheck`
 
 ## 6. Docs + full verification
 
