@@ -347,6 +347,36 @@ describe('models-dev client', () => {
     })
   })
 
+  test('a reasoning-bearing snapshot round-trips through the disk cache', async () => {
+    const body = JSON.stringify({
+      openai: {
+        models: {
+          'reasoning-model': {
+            limit: { context: 1000 },
+            reasoning: true,
+            reasoning_options: [{ kind: 'effort', values: ['low', 'high'] }],
+          },
+        },
+      },
+    })
+
+    await prewarmModelsDevSnapshot({ fetchImpl: staticFetch(body), cachePath, now: () => NOW })
+    resetModelsDevSnapshotForTest()
+    await prewarmModelsDevSnapshot({ fetchImpl: failingFetch('offline'), cachePath, now: () => NOW + 1000 })
+
+    expect(getModelsDevSnapshot().providers).toEqual({
+      openai: {
+        models: {
+          'reasoning-model': {
+            limit: { context: 1000 },
+            reasoning: true,
+            reasoningOptions: [{ kind: 'effort', values: ['low', 'high'] }],
+          },
+        },
+      },
+    })
+  })
+
   test('a fresh disk cache is served without any fetch', async () => {
     let fetches = 0
     const countingFetch = (_signal: AbortSignal): Promise<string> => {

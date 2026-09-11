@@ -35,7 +35,38 @@ const LimitSchema = z.object({
   output: z.number().optional().catch(undefined),
 })
 
-const ModelEntrySchema = z.object({ limit: LimitSchema.optional().catch(undefined) })
+const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === 'object' && value !== null
+
+const EffortOptionSchema = z.object({
+  kind: z.literal('effort'),
+  values: z
+    .array(z.unknown())
+    .transform((values) => values.filter((value): value is string => typeof value === 'string')),
+})
+
+const ReasoningOptionsSchema = z
+  .array(EffortOptionSchema.nullable().catch(null))
+  .transform((options) => {
+    const kept = options.filter((option) => option !== null)
+    return kept.length > 0 ? kept : undefined
+  })
+  .optional()
+  .catch(undefined)
+
+const aliasReasoningOptionsKey = (raw: unknown): unknown => {
+  if (!isRecord(raw)) return raw
+  if (raw['reasoningOptions'] !== undefined || raw['reasoning_options'] === undefined) return raw
+  return { ...raw, reasoningOptions: raw['reasoning_options'] }
+}
+
+const ModelEntrySchema = z.preprocess(
+  aliasReasoningOptionsKey,
+  z.object({
+    limit: LimitSchema.optional().catch(undefined),
+    reasoning: z.boolean().optional().catch(undefined),
+    reasoningOptions: ReasoningOptionsSchema,
+  }),
+)
 
 const ModelsSchema = z.record(z.string(), ModelEntrySchema.nullable().catch(null)).catch({})
 const ProviderSchema = z.object({ models: ModelsSchema })
