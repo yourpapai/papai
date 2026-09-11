@@ -712,14 +712,16 @@ describe('transition', () => {
     // The forward path out of the clarifying park: the command applies the
     // ANSWERED patch — the phase does not move, so the cascade re-runs the
     // triage handler exactly where the issue is parked — clearing the failure
-    // budget and the recorded error, and leaving `resumeFrom` alone.
-    const parked: AgentState = { ...at('INIT_OR_CLARIFY'), attempts: 2, lastError: 'boom' }
+    // budget and the recorded error, and leaving `resumeFrom` alone. The stale
+    // point is the D2 property: `resumeTransition` would consume it and fling
+    // the park into `PLANNING`.
+    const parked: AgentState = { ...at('INIT_OR_CLARIFY'), attempts: 2, lastError: 'boom', resumeFrom: 'PLANNING' }
 
     const continued = transition(parked, 'CONTINUE')
 
     expect(canTransition('INIT_OR_CLARIFY', 'CONTINUE')).toBe(true)
     expect(continued.phase).toBe('INIT_OR_CLARIFY')
-    expect(continued.resumeFrom).toBeNull()
+    expect(continued.resumeFrom).toBe('PLANNING')
     expect(continued.attempts).toBe(0)
     expect(continued.lastError).toBeNull()
   })
@@ -727,14 +729,15 @@ describe('transition', () => {
   test('APPROVED in a parked INIT_OR_CLARIFY is the same re-entry through the self-loop', () => {
     // The `/approve` shape of the same forward path: the row loops back to the
     // phase it started in, so the forwardTransition machinery does the work —
-    // same cleared budget, same cleared error, same untouched resume point.
-    const parked: AgentState = { ...at('INIT_OR_CLARIFY'), attempts: 2, lastError: 'boom' }
+    // same cleared budget, same cleared error, same untouched resume point
+    // (`forwardTransition` never reads it — the D2 property, asserted stale).
+    const parked: AgentState = { ...at('INIT_OR_CLARIFY'), attempts: 2, lastError: 'boom', resumeFrom: 'PLANNING' }
 
     const approved = transition(parked, 'APPROVED')
 
     expect(canTransition('INIT_OR_CLARIFY', 'APPROVED')).toBe(true)
     expect(approved.phase).toBe('INIT_OR_CLARIFY')
-    expect(approved.resumeFrom).toBeNull()
+    expect(approved.resumeFrom).toBe('PLANNING')
     expect(approved.attempts).toBe(0)
     expect(approved.lastError).toBeNull()
   })
