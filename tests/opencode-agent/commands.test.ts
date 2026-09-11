@@ -179,3 +179,109 @@ describe('the wrong-command refusal lists /sync exactly when it applies', () => 
     expect(rendered).not.toContain('`/sync`')
   })
 })
+
+/**
+ * `/follow-up` joins the vocabulary as the `/sync` shape with teeth: a
+ * non-moving side operation (no signal, the transition table never consulted)
+ * whose availability is scoped to **delivery reached** — the phase is one the
+ * delivery cascade passes through (`COMPLETE`/`PR_DELIVERY`) and the state
+ * names the pull request that delivery produced.
+ *
+ * The predicate is deliberately narrower than `/sync`'s branch-existence rule
+ * and phase-blind `/fix` rows: a delivered issue and a cancelled one both live
+ * in `COMPLETE`, and only the pull request tells them apart — the same split
+ * `presentationKey` and the `/sync`/`/review` refusals already make. The offer
+ * and the gate are one predicate table (`COMMAND_APPLIES`), so every list a
+ * refusal or waiting comment renders derives from the same answer the gate
+ * enforces and cannot drift from it.
+ */
+
+describe('the /follow-up vocabulary entry', () => {
+  test('joins SLASH_COMMANDS and injects no signal — a side operation, never a phase', () => {
+    expect(SLASH_COMMANDS).toContain('/follow-up')
+    // The non-moving guarantee, asserted so a later edit that gives /follow-up
+    // a signal cannot pass quietly: a signal would make it a state move with a
+    // budget question and a presentation row — exactly what the design declined.
+    expect(COMMAND_SIGNALS['/follow-up']).toBeUndefined()
+  })
+
+  test('parses from a line start, with and without an argument', () => {
+    expect(parseSlashCommand('/follow-up')).toEqual({ command: '/follow-up', argument: '' })
+    expect(parseSlashCommand('/follow-up tighten the retry backoff')).toEqual({
+      command: '/follow-up',
+      argument: 'tighten the retry backoff',
+    })
+  })
+
+  test.each([['/followup'], ['/follow-ups'], ['/follow up']])(
+    'never matches %p — no command is a prefix of another',
+    (body) => {
+      expect(parseSlashCommand(body)).toBeNull()
+    },
+  )
+})
+
+/** The two delivery-reached phases the /follow-up predicate accepts. */
+const FOLLOW_UP_PHASES: ReadonlySet<string> = new Set(['COMPLETE', 'PR_DELIVERY'])
+
+describe('acceptedCommands offers /follow-up exactly where delivery has reached', () => {
+  test.each(['COMPLETE', 'PR_DELIVERY'])('%s with a pull request offers it', (phase: Phase) => {
+    expect(acceptedCommands(withPr(phase))).toContain('/follow-up')
+  })
+
+  test.each(['COMPLETE', 'PR_DELIVERY'])('%s without a pull request does not', (phase: Phase) => {
+    // The gate reads persisted state only (D2): with no pull request named
+    // there is nothing to apply a follow-up to, and the offer must not
+    // disagree with the gate.
+    expect(acceptedCommands(state(phase))).not.toContain('/follow-up')
+  })
+
+  test.each([...PHASES.filter((phase) => !FOLLOW_UP_PHASES.has(phase))])(
+    '%s never offers it, with or without a pull request',
+    (phase: Phase) => {
+      // Unlike /sync (branch existence decides, any phase) and /fix (the
+      // transition table's CI_FAILED rows decide), /follow-up's predicate is
+      // phase-scoped: a pull request alone is not delivery reached — the
+      // implementation, review and failure phases carry one too.
+      expect(acceptedCommands(withPr(phase))).not.toContain('/follow-up')
+      expect(acceptedCommands(state(phase))).not.toContain('/follow-up')
+    },
+  )
+
+  test('a cancelled COMPLETE that names no pull request does not offer it', () => {
+    // The delivered state and the cancelled one share the phase, and only the
+    // pull request tells them apart: /cancel deleted the branch and parked
+    // here with `prNumber: null`, and there is nothing a follow-up could be
+    // applied to. The predicate reads the state, so the cancelled shape stays
+    // out without a second vocabulary entry.
+    expect(acceptedCommands(state('COMPLETE'))).not.toContain('/follow-up')
+  })
+
+  test('the delivered state offers it from either surface — the offer is keyed on state, not surface', () => {
+    // The issue-surface reading: after delivery the issue thread carries the
+    // same state the pull request does, and `/follow-up` is accepted there as
+    // the one exception to the pointer refusal. The list a maintainer is shown
+    // must not depend on which page they typed on — both derive from this one
+    // predicate, so the exception is discoverable from the issue too.
+    expect(acceptedCommands(withPr('COMPLETE'))).toContain('/follow-up')
+    expect(acceptedCommands(withPr('PR_DELIVERY'))).toContain('/follow-up')
+  })
+})
+
+describe('the wrong-command refusal lists /follow-up exactly where delivery has reached', () => {
+  test('a refusal on a delivered state names /follow-up among what works', () => {
+    const rendered = renderRefusedCommand('/review', 'COMPLETE', acceptedCommands(withPr('COMPLETE')))
+
+    expect(rendered).toContain('`/follow-up`')
+  })
+
+  test('a refusal before delivery does not name it', () => {
+    const rendered = renderRefusedCommand(
+      '/review',
+      'FAILED',
+      acceptedCommands(state('FAILED', { resumeFrom: 'REVIEW_AND_MUTATE' })),
+    )
+
+    expect(rendered).not.toContain('`/follow-up`')
+  })
+})
