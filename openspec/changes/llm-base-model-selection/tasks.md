@@ -15,7 +15,7 @@ design.md has no open questions.
 - [x] 2.1 Write failing migration test `tests/db/migrations/084_llm_provider_model_hints.test.ts`: column added, guard idempotent on re-run, pre-existing rows untouched (no backfill). Verify: `bun test tests/db/migrations/084_llm_provider_model_hints.test.ts`
 - [x] 2.2 Implement `src/db/migrations/084_llm_provider_model_hints.ts` (pattern of 083: `PRAGMA table_info` guard + `ALTER TABLE llm_providers ADD COLUMN model_hints TEXT`) and register it in the `src/db/index.ts` migration list after 083; add `modelHints: text('model_hints')` to `llmProviders` in `src/db/llm-providers-schema.ts`. Verify: `bun test tests/db/migrations/084_llm_provider_model_hints.test.ts`
 - [x] 2.3 Write failing store tests in `tests/llm-providers/store.test.ts`: hints persist through create/update and reload (survives restart/`primeLlmAdminCache`), `null` column reads as `{}`, malformed JSON reads as `{}`, verification/model-list updates do not clobber `model_hints`. Verify: `bun test tests/llm-providers/store.test.ts`
-- [ ] 2.4 Implement store changes in `src/llm-providers/store.ts` (per design D3): `toAccount` parses the column via `parseModelHints`, serialization `JSON.stringify` when non-empty else `null`, `updateLlmProvider` patch union gains `modelHints`. Verify: `bun test tests/llm-providers/store.test.ts && bun run typecheck`
+- [x] 2.4 Implement store changes in `src/llm-providers/store.ts` (per design D3): `toAccount` parses the column via `parseModelHints`, serialization `JSON.stringify` when non-empty else `null`, `updateLlmProvider` patch union gains `modelHints`. Verify: `bun test tests/llm-providers/store.test.ts && bun run typecheck`
 
 ## 3. BYOK encrypted blob
 
