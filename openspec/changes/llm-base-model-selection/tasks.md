@@ -20,7 +20,7 @@ design.md has no open questions.
 ## 3. BYOK encrypted blob
 
 - [x] 3.1 Write failing tests in `tests/byok-llm/blob-codec.test.ts`: legacy blob lifts with `modelHints: {}`, v2 blob round-trips hints, missing/malformed hints on one provider decode as `{}` leaving other providers' hints intact (per design D4). Verify: `bun test tests/byok-llm/blob-codec.test.ts`
-- [ ] 3.2 Implement decode-time normalization in `src/byok-llm/blob-codec.ts`: map v2 providers through `parseModelHints`, `fromLegacy` sets `{}`, blob stays `v: 2`. Verify: `bun test tests/byok-llm/blob-codec.test.ts && bun run typecheck`
+- [x] 3.2 Implement decode-time normalization in `src/byok-llm/blob-codec.ts`: map v2 providers through `parseModelHints`, `fromLegacy` sets `{}`, blob stays `v: 2`. Verify: `bun test tests/byok-llm/blob-codec.test.ts && bun run typecheck`
 
 ## 4. Settings API routes
 
