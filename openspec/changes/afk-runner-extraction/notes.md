@@ -79,3 +79,56 @@ deleting the new repo.
   approve. Run 3 merged into the new repo's master. Run 5 launched from
   `.worktrees/afk-runner-retire` (branch `afk-runner-retire` off
   origin/master 3633da06b).
+- 2026-09-11 — run 5 (`afk-runner-extract-c-retire`) parked at escalation
+  gate v4 with implementation effectively done; milestones and findings:
+  tasks 1–5 committed clean (1.1 resolver mirror, 2.1 deletion + workspace/
+  scripts/gitignore, 3.1 baseline purge, 3.2 mutation README, 3.3 knip).
+  Tasks 6/7 (4.1 pointer docs, 4.2 command stubs) failed on the
+  `test:affected` verify leg, not on their own grep gates — those pass in
+  the worktree — but each attempt died on a *different* real-git
+  integration test timing out at 15 s (`tests/mutation-improve/integration-git.test.ts`,
+  `tests/opencode-agent/git.test.ts`, `tests/opencode-agent/shell.test.ts`);
+  re-run file-by-file after the halt, 23/23 green → load flakes under the
+  runner's own concurrent load, not regressions. 4 declared failures >
+  budget 1 → escalation. Side issue: 3.1's commit shipped a lint red
+  (`baseline.test.ts` inlined `?? {}` in a test body —
+  no-conditional-in-test); fixed in the worktree by hoisting
+  `committedBaselineKeys()` next to the existing `committedBaseline()`
+  convention; lint + format + 47/47 file tests green, uncommitted.
+  Gate mechanics — final correction after gate-6 (both earlier theories
+  wrong; root cause read from the twin source preserved in git history at
+  `820f251ac~1:afk-runner/src/work/{implement,tasks-md}.ts`): the walk
+  picks `firstOwedItem` — the first **unchecked tasks.md box**, re-parsed
+  live every bracket — and a picked item at `attempts >=
+  TASK_FIX_ATTEMPTS (2)` throws `StageHaltError` → escalation on every
+  re-entry, no spawn, forever, until the box is hand-checked. Approve and
+  extend only re-enter the stage; the twin's escalate-retry movers reset
+  nothing (the ledger-clearing fresh-bracket re-entry is the new repo's
+  C6 D2 fix, `gate-settle.ts`, post-split). extract-a's post-extend
+  approve spawned task 3 only because the operator had ALSO hand-re-
+  targeted 1.2 — recorded as item 1.2.1 ("hand re-target: the 1.2
+  bracket exhausted mid-observation while its work is fully applied");
+  that hand re-target, not the gate answer, moved the walk.
+  Hand re-target executed for this run: 4.1's box hand-checked
+  (operator), 4.2's box checked + record items 4.2.1/4.2.2 appended
+  **after 4.2** — item ids are positional (`items.length + 1`), so
+  inserting between 4.1 and 4.2 would have re-keyed the fold's task-7
+  record onto a record item; after-4.2 keeps ids 6/7 fold-aligned and
+  shifts only never-started items. Slices landed per the runner's
+  protocol (checked box + applied work per commit, explicit paths, all
+  hooks green): `29a25874a` (4.1 pointer docs), `c06875744` (4.2 stubs +
+  records), `c43881502` (baseline.test.ts lint fix for 3.1's red).
+  The 17 h-parked gate TUI (ttys001) was running from this
+  worktree's `afk-runner/src/cli.ts`, deleted by task 2.1 — alive from
+  memory only; terminated, gates settled by hand per the file protocol
+  (`## Gate response` section at file end; markers also parse mid-file —
+  agent-mcp gate-1 carries `APPROVE` at line 5). Resume from the new repo
+  is silent on a non-TTY (evidence only in events.ndjson):
+  `bun ~/Projects/yourpapai/afk-runner/src/cli.ts resume
+  afk-runner-extract-c-retire` run from the worktree. Current state:
+  gate-6 carries the staged T1-approve; on resume the walk spawns item
+  4.3 (CLAUDE.md rows) — six items remain (4.3–4.6 docs cross-refs,
+  5.1 full gate pass, 5.2 census, 5.3 cleanup note) before verify →
+  release gate; resume deliberately not yet run — 5.1 is a full-suite
+  pass, so it should run on an idle machine. Worktree is clean of the
+  slices; only this notes.md edit is uncommitted.
