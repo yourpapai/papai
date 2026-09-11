@@ -304,7 +304,7 @@ describe('AdminProvidersSection', () => {
     expect(row!.querySelector<HTMLInputElement>('[data-testid="model-hints-base-provider"]')!.value).toBe('openai')
     expect(row!.querySelector<HTMLInputElement>('[data-testid="model-hints-base-model"]')!.value).toBe('gpt-4o')
     const select = document.querySelector<HTMLSelectElement>('[data-testid="model-hints-add-model"]')!
-    expect([...select.options].map((option) => option.value)).toStrictEqual(['gpt-4o-mini'])
+    expect([...select.options].map((option) => option.value)).toStrictEqual(['', 'gpt-4o-mini'])
   })
 
   test('saving the edit form carries modelHints in the PATCH body', async () => {

@@ -35,8 +35,10 @@
   }
 
   const addHint = (event: Event): void => {
-    const model = (event.currentTarget as HTMLSelectElement).value
+    const select = event.currentTarget as HTMLSelectElement
+    const model = select.value
     if (model === '' || model in modelHints) return
+    select.value = ''
     emit({ ...modelHints, [model]: { baseProvider: '', baseModel: '' } })
   }
 </script>
@@ -69,6 +71,7 @@
   {/each}
   {#if availableModels.length > 0}
     <select data-testid="model-hints-add-model" onchange={addHint}>
+      <option value="" disabled selected>add a model…</option>
       {#each availableModels as model (model)}
         <option value={model}>{model}</option>
       {/each}

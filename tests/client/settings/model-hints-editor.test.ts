@@ -113,7 +113,31 @@ describe('ModelHintsEditor', () => {
 
     const select = document.querySelector<HTMLSelectElement>('[data-testid="model-hints-add-model"]')!
     const offered = [...select.options].map((option) => option.value)
-    expect(offered).toStrictEqual(['m-b', 'm-c'])
+    expect(offered).toStrictEqual(['', 'm-b', 'm-c'])
+
+    select.value = 'm-b'
+    select.dispatchEvent(new Event('change', { bubbles: true }))
+    await drain()
+
+    expect(rowContaining('m-b')).toBeDefined()
+    const last = emitted.at(-1)
+    expect(last?.['m-b']).toStrictEqual({ baseProvider: '', baseModel: '' })
+  })
+
+  test('the add-control rests on its placeholder so the last unhinted model can still be added', async () => {
+    const hints: ModelHints = { 'm-a': { baseProvider: 'openai', baseModel: 'gpt-4o' } }
+    const emitted: ModelHints[] = []
+    instance = mount(ModelHintsEditor, {
+      target,
+      props: {
+        modelHints: hints,
+        enumeratedModels: ['m-a', 'm-b'],
+        onHintsChange: (next: ModelHints) => emitted.push(next),
+      },
+    })
+
+    const select = document.querySelector<HTMLSelectElement>('[data-testid="model-hints-add-model"]')!
+    expect(select.value).toBe('')
 
     select.value = 'm-b'
     select.dispatchEvent(new Event('change', { bubbles: true }))
