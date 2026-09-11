@@ -95,6 +95,8 @@ const followUpFixture = (
     tokensUsed?: number
     /** The exit code every fake check answers with. */
     checkExitCode?: number
+    /** The named check that fails, everything else passing. */
+    failCheck?: string
     /** Paths the fake `commitAll` reports as dropped protected paths. */
     dropped?: readonly string[]
     argument?: string
@@ -127,7 +129,15 @@ const followUpFixture = (
   const checks: CheckSpec[] = []
   recording.deps.runCheck = (check: CheckSpec): Promise<CommandResult> => {
     checks.push(check)
-    return Promise.resolve({ command: check.argv.join(' '), stdout: '', stderr: '', exitCode: over.checkExitCode ?? 0 })
+    // A targeted red: the named check fails, everything else passes — the
+    // checks-red verdict is about one red command, not a broken runner.
+    const failed = over.failCheck !== undefined && check.name === over.failCheck
+    return Promise.resolve({
+      command: check.argv.join(' '),
+      stdout: '',
+      stderr: failed ? '1 failure' : '',
+      exitCode: failed ? 1 : 0,
+    })
   }
 
   let reviews = 0
@@ -352,5 +362,97 @@ describe('runFollowUp · the non-moving contract', () => {
     expect(edit?.body).toContain('"phase": "COMPLETE"')
     expect(edit?.body).toContain('"reviewAttempts": 0')
     expect(result.state?.tokensSpent).toBe(2_000)
+  })
+})
+
+describe('runFollowUp · the pre-turn gates (task 4.2)', () => {
+  it('asks the token ceiling before the assessment turn — over budget is notice only, buying no turn', async () => {
+    // At the ceiling the ordinary way: everything before this job spent it, and
+    // this job's session has paid for nothing at all. The ceiling is the
+    // `applyIntent` rule — never pay a turn to learn what a refusal would say.
+    const fixture = followUpFixture({
+      state: { tokensSpent: 5_000_000 },
+      tokensUsed: 0,
+    })
+
+    const result = await runFollowUp(fixture.input)
+
+    expect(result.status).toBe('failed')
+    // No turn ran: the assessment and the apply turn both stayed unasked.
+    expect(fixture.io.prompts).toEqual([])
+    // Not even the gate's reads happened — the notice is the whole answer.
+    expect(fixture.io.gitCalls).toEqual(['ensureBranch:agent/issue-42:main'])
+    expect(fixture.sections.at(-1)?.body).toContain('AGENT_MAX_TOKENS')
+    expect(fixture.sections.at(-1)?.body).toContain('/follow-up')
+    // Nothing was spent, so the persisted state is byte-identical to the one
+    // the command started from — the block rewritten in place reads the same.
+    expect(fixture.io.edits.at(-1)?.body).toBe(fixture.seedState)
+  })
+
+  it('on checks red: nothing pushed, the branch left as found, the failure reporting what ran', async () => {
+    // The repository's own check command is the one that fails — the proof of
+    // the failure is the command list, not the exit code.
+    const fixture = followUpFixture({ failCheck: 'bun check:full', tokensUsed: 2_000 })
+
+    const result = await runFollowUp(fixture.input)
+
+    expect(result.status).toBe('failed')
+    // Both turns ran — the gate said small, the apply turn applied — and then
+    // the checks overruled the verdict.
+    expect(fixture.io.prompts).toHaveLength(2)
+    // Zero writes: no commit, no push, no reconcile. The branch is exactly as
+    // this command found it.
+    expect(writes(fixture.io)).toEqual([])
+    expect(fixture.io.gitCalls.filter((call) => call.startsWith('reconcile:'))).toEqual([])
+    const body = String(fixture.sections.at(-1)?.body)
+    expect(body).toContain('bun check:full')
+    expect(body).toContain('bun test tests/http/retry.test.ts')
+    expect(body).toContain('nothing was pushed')
+  })
+
+  it('keeps the persisted state byte-identical in shape after the decline, with only the spend rewritten', async () => {
+    const fixture = followUpFixture({
+      replies: [ASSESSMENT_TOO_BIG, APPLY_REPLY],
+      state: { reviewAttempts: 1, ciAttempts: 2 },
+      tokensUsed: 1_000,
+    })
+
+    const result = await runFollowUp(fixture.input)
+
+    expect(result.status).toBe('completed')
+    // The spend the assessment paid is the one thing that changed.
+    const edit = fixture.io.edits.at(-1)
+    expect(edit?.body).toContain('"tokensSpent": 2000')
+    expect(edit?.body).toContain('"phase": "COMPLETE"')
+    expect(edit?.body).toContain('"reviewAttempts": 1')
+    expect(edit?.body).toContain('"ciAttempts": 2')
+    expect(edit?.body).toContain('"attempts": 0')
+    expect(edit?.body).not.toContain('"resumeFrom": "')
+    expect(result.state).toMatchObject({
+      phase: 'COMPLETE',
+      reviewAttempts: 1,
+      ciAttempts: 2,
+      attempts: 0,
+      resumeFrom: null,
+    })
+    expect(fixture.sections.at(-1)?.blocks).toEqual([])
+  })
+
+  it('keeps the persisted state byte-identical in shape after a checks-red failure too', async () => {
+    const fixture = followUpFixture({
+      failCheck: 'bun check:full',
+      state: { reviewAttempts: 1 },
+      tokensUsed: 2_000,
+    })
+
+    const result = await runFollowUp(fixture.input)
+
+    expect(result.status).toBe('failed')
+    const edit = fixture.io.edits.at(-1)
+    expect(edit?.body).toContain('"tokensSpent": 3000')
+    expect(edit?.body).toContain('"phase": "COMPLETE"')
+    expect(edit?.body).toContain('"reviewAttempts": 1')
+    expect(result.state).toMatchObject({ phase: 'COMPLETE', reviewAttempts: 1 })
+    expect(fixture.sections.at(-1)?.blocks).toEqual([])
   })
 })
