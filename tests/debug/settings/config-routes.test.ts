@@ -370,6 +370,18 @@ describe('settings config routes', () => {
     expect(body.error).toContain('xhigh')
   })
 
+  test('PATCH accepts the default sentinel as provider default', async () => {
+    const req = new Request('https://x/settings/api/config', {
+      method: 'PATCH',
+      headers: { ...authHeaders(session, true), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ key: 'ai_reasoning_effort', value: 'default' }),
+    })
+    const res = await handleConfigRoutes(req, new URL('https://x/settings/api/config'))
+    expect(res.status).toBe(200)
+    const body = PatchResponseSchema.parse(await res.json())
+    expect(getConfigValue(body.contextId, 'ai_reasoning_effort')).toBe('default')
+  })
+
   test('PATCH accepts clearing the reasoning effort value', async () => {
     const setReq = new Request('https://x/settings/api/config', {
       method: 'PATCH',
