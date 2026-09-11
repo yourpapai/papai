@@ -152,6 +152,23 @@ export const renderRefusedCommand = (command: string, phase: Phase, accepted: re
   ].join('\n')
 
 /**
+ * The reply to a `/follow-up` typed with nothing to assess (issue #441).
+ *
+ * Separate from {@link renderRefusedCommand} because that one's sentence would
+ * be false here twice over: the delivered state accepts the command perfectly
+ * well, and its accepted-commands list would name `/follow-up` while refusing
+ * it. The missing thing is the request, so the whole answer is what the
+ * command needs.
+ */
+export const renderFollowUpUsage = (): string =>
+  [
+    outcomeHeading('COMMAND_REFUSED', '`/follow-up` needs an argument'),
+    '',
+    'Type `/follow-up` followed by a short description of what to change on the delivered pull request.',
+    'Nothing was assessed and nothing has changed.',
+  ].join('\n')
+
+/**
  * A link to the job, for the comments a maintainer reads when something has
  * gone wrong.
  *

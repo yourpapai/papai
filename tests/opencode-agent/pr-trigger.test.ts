@@ -191,6 +191,85 @@ describe('the /follow-up baseline: a plain comment on a delivered pull request s
   })
 })
 
+describe('the /follow-up comment rides the pull-request door’s existing guardrails (issue #441)', () => {
+  /** A `/follow-up` typed on a pull request, parsed as far as a payload allows. */
+  const pendingFollowUp = (): PendingPullRequestEvent => ({
+    kind: 'pending-pull-request',
+    eventName: 'issue_comment',
+    action: 'created',
+    senderLogin: 'maintainer',
+    senderType: 'User',
+    authorAssociation: 'OWNER',
+    prNumber: 7,
+    commentBody: '/follow-up tighten the retry backoff',
+    commentId: 99,
+    defaultBranch: 'main',
+    repositoryFullName: 'acme/widgets',
+  })
+
+  const head = (overrides: Partial<PullRequestHead> = {}): PullRequestHead => ({
+    ref: 'agent/issue-42',
+    repoFullName: 'acme/widgets',
+    state: 'open',
+    ...overrides,
+  })
+
+  /** A logger that records the guardrail refusals' fields, so the code is provable. */
+  const recordingLogger = (): { warnFields: Array<Record<string, unknown>>; log: Logger } => {
+    const warnFields: Array<Record<string, unknown>> = []
+    const at =
+      (level: LogLevel) =>
+      (fields: Record<string, unknown>, _message: string): void => {
+        if (level === 'warn') warnFields.push({ ...fields })
+      }
+    return { warnFields, log: { debug: at('debug'), info: at('info'), warn: at('warn'), error: at('error') } }
+  }
+
+  /** The resolver's answer, with the null branch already refused by the assert beside it. */
+  const mustResolve = (
+    resolved: Awaited<ReturnType<typeof resolvePullRequestTrigger>>,
+  ): NonNullable<typeof resolved> => {
+    if (resolved === null) throw new Error('the agent’s own open pull request must resolve')
+    return resolved
+  }
+
+  it('boots a job on the agent’s own open pull request exactly as every other command does', async () => {
+    const { log } = recordingLogger()
+    const github = { getPullRequestHead: (): Promise<PullRequestHead> => Promise.resolve(head()) }
+
+    const resolved = mustResolve(await resolvePullRequestTrigger(pendingFollowUp(), github, log))
+
+    expect(resolved).toMatchObject({
+      kind: 'pull-request',
+      issueNumber: 42,
+      commentBody: '/follow-up tighten the retry backoff',
+    })
+    // The guardrail layer admits it like any maintainer command — the door
+    // admits the whole vocabulary, and which commands the state accepts is
+    // decided once, by `applyCommand`, for both doors.
+    expect(
+      evaluateGuardrails(resolved, { selfLogin: 'agent-bot', selfWorkflowName: 'OpenCode Issue Agent' }).allowed,
+    ).toBe(true)
+  })
+
+  it('keeps the PR_FOREIGN_REPOSITORY refusal for a fork whose branch merely looks like the agent’s', async () => {
+    // `/follow-up` is the widest command through this door yet — it edits the
+    // delivered branch and pushes. The fork guard sits ahead of any command
+    // logic, so the refusal lands before the predicate, the size gate or any
+    // model turn: `head.ref` is attacker-controlled, and a fork's
+    // `agent/issue-42` looks like the agent's own to every other field.
+    const { warnFields, log } = recordingLogger()
+    const github = {
+      getPullRequestHead: (): Promise<PullRequestHead> => Promise.resolve(head({ repoFullName: 'attacker/widgets' })),
+    }
+
+    const resolved = await resolvePullRequestTrigger(pendingFollowUp(), github, log)
+
+    expect(resolved).toBeNull()
+    expect(warnFields.map((fields) => fields['code'])).toContain('PR_FOREIGN_REPOSITORY')
+  })
+})
+
 describe('parseTriggerEvent · pull_request.closed(merged) (D7)', () => {
   it('parses a merged agent-branch PR into a pr-merged event resolved via the head branch', () => {
     const event = parseTriggerEvent('pull_request', merged())
