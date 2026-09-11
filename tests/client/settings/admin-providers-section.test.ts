@@ -331,6 +331,31 @@ describe('AdminProvidersSection', () => {
     })
   })
 
+  test('saving trims whitespace in model hint aliases (D7 form boundary)', async () => {
+    const calls: CapturedRequest[] = []
+    setMockFetch(recordingRoute(calls, hintsPayload, true))
+    mount(AdminProvidersSection, { target })
+    await drain()
+
+    document.querySelector<HTMLButtonElement>('[data-testid="admin-providers-edit-prov_1"]')!.click()
+    await drain()
+    const row = [...document.querySelectorAll('[data-testid="model-hints-row"]')].find((candidate) =>
+      candidate.textContent?.includes('gpt-4o'),
+    )!
+    setElementValue(row.querySelector<HTMLInputElement>('[data-testid="model-hints-base-provider"]')!, ' openai ')
+    setElementValue(row.querySelector<HTMLInputElement>('[data-testid="model-hints-base-model"]')!, ' gpt-4o ')
+    flushSync()
+
+    document.querySelector<HTMLButtonElement>('[data-testid="provider-edit-form-save"]')!.click()
+    await drain()
+
+    const patched = calls.find((call) => call.method === 'PATCH')
+    expect(patched).not.toBeUndefined()
+    expect(JSON.parse(patched!.body)).toMatchObject({
+      modelHints: { 'gpt-4o': { baseProvider: 'openai', baseModel: 'gpt-4o' } },
+    })
+  })
+
   test('an incomplete hint row disables saving until the hint is filled', async () => {
     setMockFetch(recordingRoute([], hintsPayload, true))
     mount(AdminProvidersSection, { target })

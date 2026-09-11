@@ -89,7 +89,12 @@
       apiKey: apiKey.trim(),
       baseProvider: baseProvider.trim().length > 0 ? baseProvider.trim() : null,
       baseModel: baseModel.trim().length > 0 ? baseModel.trim() : null,
-      modelHints,
+      modelHints: Object.fromEntries(
+        Object.entries(modelHints).map(([id, hint]) => [
+          id,
+          { baseProvider: hint.baseProvider.trim(), baseModel: hint.baseModel.trim() },
+        ]),
+      ),
     })
   }
 </script>
