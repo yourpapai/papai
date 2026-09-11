@@ -542,3 +542,19 @@ describe('committed baseline covers the widened workspace scope', () => {
     }
   })
 })
+
+describe('committed baseline keys reference live repo files', () => {
+  const REPO_ROOT = path.join(import.meta.dir, '../../..')
+
+  // Dead keys are dead weight: the monotonic floor never consults a missing
+  // file, so a key whose file no longer exists (a deleted or moved tree) only
+  // pins noise. Retire such keys in the same change that removes the file.
+  // Baseline load lives outside the test body (no-conditional-in-test).
+  const committedBaselineKeys = (): readonly string[] =>
+    Object.keys(loadBaseline(path.join(REPO_ROOT, 'scripts/mutation/baseline.json')) ?? {})
+
+  test('every committed baseline key maps to an existing file', () => {
+    const dead = committedBaselineKeys().filter((file) => !fs.existsSync(path.join(REPO_ROOT, file)))
+    expect(dead).toEqual([])
+  })
+})

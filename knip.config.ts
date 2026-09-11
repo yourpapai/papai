@@ -20,11 +20,11 @@ import { svelteCompiler } from './knip-svelte-compiler.js'
 // docs/superpowers/specs/2026-08-04-knip-facade-import-triage-design.md.
 
 export default {
-  // The review-loop, mutation-improve, opencode-agent and
-  // afk-runner workspaces are standalone developer tools with their own check
+  // The review-loop, mutation-improve and opencode-agent
+  // workspaces are standalone developer tools with their own check
   // suites (<workspace>:lint/typecheck/format:check/test) run separately in
   // check:full. knip-bun cannot resolve their .js-extension imports.
-  ignoreWorkspaces: ['review-loop', 'mutation-improve', 'opencode-agent', 'afk-runner'],
+  ignoreWorkspaces: ['review-loop', 'mutation-improve', 'opencode-agent'],
 
   compilers: { '.svelte': svelteCompiler },
 
