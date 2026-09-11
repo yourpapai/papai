@@ -40,5 +40,5 @@ See LICENSE in the project root for details.
 ## 5. Full gates and docs
 
 - [x] 5.1 Seam-shape and affected-loop checks: `bun test:stories:contracts` (the optional trailing param keeps `buildModel` seams assignable) and `bun run test:affected`
-- [ ] 5.2 Update the affected doc page: one bullet in `docs/architecture/behaviors.md` (owner-set reasoning effort per config context, catalogue-derived options with union fallback, auxiliary LLM paths keep provider defaults). Verify: `bun run format:check`
+- [x] 5.2 Update the affected doc page: one bullet in `docs/architecture/behaviors.md` (owner-set reasoning effort per config context, catalogue-derived options with union fallback, auxiliary LLM paths keep provider defaults). Verify: `bun run format:check`
 - [ ] 5.3 Final gates over the whole tree: `bun run test`, `bun run typecheck`, `bun run lint` — all green (query a red run with `bun run test:failures` before re-running anything)
