@@ -1848,6 +1848,12 @@
     "timeout": 0,
     "scored": 37
   },
+  "src/ai-output-settings.ts": {
+    "score": 0.7407407407407407,
+    "killed": 40,
+    "timeout": 0,
+    "scored": 54
+  },
   "src/analytics/provider-scope-factory.ts": {
     "score": 0.6571428571428571,
     "killed": 69,
@@ -1908,6 +1914,18 @@
     "killed": 107,
     "timeout": 0,
     "scored": 134
+  },
+  "src/config-editor/validation.ts": {
+    "score": 0.9305555555555556,
+    "killed": 67,
+    "timeout": 0,
+    "scored": 72
+  },
+  "src/config-keys.ts": {
+    "score": 0.6358974358974359,
+    "killed": 124,
+    "timeout": 0,
+    "scored": 195
   },
   "src/config.ts": 0.6535433070866141,
   "src/context-vault/summarizer.ts": {
@@ -2108,10 +2126,10 @@
     "scored": 68
   },
   "src/llm-model-builder.ts": {
-    "score": 0.8275862068965517,
-    "killed": 24,
+    "score": 0.8666666666666667,
+    "killed": 39,
     "timeout": 0,
-    "scored": 29
+    "scored": 45
   },
   "src/llm-orchestrator-events.ts": {
     "score": 0.6031746031746031,
@@ -2205,10 +2223,16 @@
     "scored": 103
   },
   "src/models-dev/client.ts": {
-    "score": 0.7524752475247525,
-    "killed": 76,
+    "score": 0.7638888888888888,
+    "killed": 110,
     "timeout": 0,
-    "scored": 101
+    "scored": 144
+  },
+  "src/models-dev/effort-levels.ts": {
+    "score": 1,
+    "killed": 27,
+    "timeout": 0,
+    "scored": 27
   },
   "src/models-dev/provider-id.ts": {
     "score": 0.7254901960784313,
@@ -2459,6 +2483,12 @@
   "src/tools/workspace-files.ts": 0.6382978723404256,
   "src/tools/wrap-tool-execution.ts": 0.6216216216216216,
   "src/ts-ast/source-parser.ts": 0.8428571428571429,
+  "src/types/config.ts": {
+    "score": 0.75,
+    "killed": 30,
+    "timeout": 0,
+    "scored": 40
+  },
   "src/users.ts": 0.6764705882352942,
   "src/utils/current-time-format.ts": {
     "score": 0.8947368421052632,
