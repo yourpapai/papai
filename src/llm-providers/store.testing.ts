@@ -3,6 +3,10 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { clearLlmAdminCacheForTesting as _clearLlmAdminCacheForTesting } from './store.js'
+import {
+  clearLlmAdminCacheForTesting as _clearLlmAdminCacheForTesting,
+  seedLlmAdminCacheForTesting as _seedLlmAdminCacheForTesting,
+} from './store.js'
 
 export const clearLlmAdminCacheForTesting = _clearLlmAdminCacheForTesting
+export const seedLlmAdminCacheForTesting = _seedLlmAdminCacheForTesting

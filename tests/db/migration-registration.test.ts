@@ -45,9 +45,21 @@ describe('MIGRATIONS list', () => {
     expect(ids).toContain('083_llm_provider_base_refs')
   })
 
-  test('083_llm_provider_base_refs is the last migration', () => {
+  test('includes migration 084_llm_provider_model_hints', () => {
+    const ids = MIGRATIONS.map((m) => m.id)
+    expect(ids).toContain('084_llm_provider_model_hints')
+  })
+
+  test('084_llm_provider_model_hints is the last migration', () => {
     const lastMigration = requireDefined(MIGRATIONS.at(-1))
-    expect(lastMigration.id).toBe('083_llm_provider_base_refs')
+    expect(lastMigration.id).toBe('084_llm_provider_model_hints')
+  })
+
+  test('084_llm_provider_model_hints is registered immediately after 083_llm_provider_base_refs', () => {
+    const ids = MIGRATIONS.map((m) => m.id)
+    const baseRefsIndex = ids.indexOf('083_llm_provider_base_refs')
+    expect(baseRefsIndex).toBeGreaterThanOrEqual(0)
+    expect(ids[baseRefsIndex + 1]).toBe('084_llm_provider_model_hints')
   })
 
   test('083_llm_provider_base_refs is registered immediately after 082_alert_activity_cursor', () => {

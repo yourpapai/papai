@@ -10,6 +10,7 @@ import {
   AdminProvidersResponseSchema,
   LlmModelMetadataResponseSchema,
   PROVIDER_TYPE_BASE_URLS,
+  ProviderInputSchema,
   PublicProviderAccountSchema,
   VerificationSchema,
 } from '../../../client/settings/fetcher-schemas-llm-providers.js'
@@ -193,5 +194,50 @@ describe('LlmModelMetadataResponseSchema', () => {
         snapshotFetchedAt: null,
       }),
     ).toThrow()
+  })
+})
+
+describe('provider model hints schemas', () => {
+  const HINTS = {
+    'hf:zai-org/GLM-5.3-Flash': { baseProvider: 'zai-org', baseModel: 'GLM-5.3-Flash' },
+  }
+
+  const accountFixture = {
+    id: 'prov_1',
+    label: 'OpenAI',
+    providerType: 'openai',
+    baseUrl: 'https://api.openai.com/v1',
+    apiKeyMasked: '****abcd',
+    baseProvider: null,
+    baseModel: null,
+    verification: { status: 'unverified', error: null, at: null, models: [], modelsFetchedAt: null },
+  }
+
+  const inputFixture = {
+    label: 'OpenAI',
+    providerType: 'openai',
+    baseUrl: 'https://api.openai.com/v1',
+    apiKey: 'sk-test1234',
+  }
+
+  test('PublicProviderAccountSchema parses modelHints', () => {
+    const parsed = PublicProviderAccountSchema.parse({ ...accountFixture, modelHints: HINTS })
+
+    expect(parsed.modelHints).toStrictEqual(HINTS)
+  })
+
+  test('PublicProviderAccountSchema defaults absent modelHints to {}', () => {
+    const parsed = PublicProviderAccountSchema.parse(accountFixture)
+
+    expect(parsed.modelHints).toStrictEqual({})
+  })
+
+  test('ProviderInputSchema accepts an optional modelHints map and rejects a malformed one', () => {
+    const parsed = ProviderInputSchema.parse({ ...inputFixture, modelHints: HINTS })
+    expect(parsed.modelHints).toStrictEqual(HINTS)
+
+    expect(ProviderInputSchema.parse(inputFixture).modelHints).toBeUndefined()
+
+    expect(() => ProviderInputSchema.parse({ ...inputFixture, modelHints: { m: { baseModel: 'x' } } })).toThrow()
   })
 })

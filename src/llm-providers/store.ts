@@ -12,9 +12,11 @@
 import { eq } from 'drizzle-orm'
 
 import { getDrizzleDb } from '../db/drizzle.js'
-import { llmAdminRoles, llmProviders, type LlmProviderRow } from '../db/schema.js'
+import { llmProviders, type LlmProviderRow } from '../db/schema.js'
 import { logger } from '../logger.js'
 import { decryptSecretPayload, encryptSecretPayload } from '../secret-payload-crypto.js'
+import { parseModelHints, type ModelHints } from './model-hints.js'
+import { clearRoleBindingsCacheForTesting, getAdminRoleBindings, setAdminRoleBindings } from './store-roles.js'
 import {
   LLM_PROVIDER_TYPES,
   VERIFICATION_STATUSES,
@@ -50,6 +52,17 @@ const parseModelsCache = (raw: string): string[] => {
   return parsed.filter((entry): entry is string => typeof entry === 'string')
 }
 
+const parseModelHintsColumn = (raw: string): ModelHints => {
+  try {
+    return parseModelHints(JSON.parse(raw))
+  } catch {
+    return {}
+  }
+}
+
+const serializeModelHints = (hints: ModelHints): string | null =>
+  Object.keys(hints).length === 0 ? null : JSON.stringify(hints)
+
 const encryptApiKey = (apiKey: string): string => encryptSecretPayload({ apiKey })
 const decryptApiKey = (stored: string): string => {
   if (stored.startsWith(LEGACY_PREFIX)) return stored.slice(LEGACY_PREFIX.length)
@@ -67,6 +80,7 @@ const toAccount = (row: LlmProviderRow): LlmProviderAccount => ({
   apiKey: decryptApiKey(row.encryptedApiKey),
   baseProvider: row.baseProvider,
   baseModel: row.baseModel,
+  modelHints: row.modelHints === null ? {} : parseModelHintsColumn(row.modelHints),
   verification: {
     status: isVerificationStatus(row.verificationStatus) ? row.verificationStatus : 'unverified',
     error: row.verificationError,
@@ -78,13 +92,17 @@ const toAccount = (row: LlmProviderRow): LlmProviderAccount => ({
 
 // ---- in-process cache (provider registry) ----
 const cache = new Map<string, LlmProviderAccount>()
-let roleCache: LlmRoleBindings | null | undefined = undefined
 let cachePrimed = false
 
 export const clearLlmAdminCacheForTesting = (): void => {
   cache.clear()
   cachePrimed = false
-  roleCache = undefined
+  clearRoleBindingsCacheForTesting()
+}
+
+export const seedLlmAdminCacheForTesting = (account: LlmProviderAccount): void => {
+  cachePrimed = true
+  cache.set(account.id, account)
 }
 
 export const primeLlmAdminCache = (): void => {
@@ -92,7 +110,7 @@ export const primeLlmAdminCache = (): void => {
   cache.clear()
   cachePrimed = true
   for (const row of rows) cache.set(row.id, toAccount(row))
-  roleCache = readRoleBindings()
+  getAdminRoleBindings()
   log.debug({ count: rows.length }, 'llm_providers cache primed')
 }
 
@@ -155,6 +173,7 @@ export function updateLlmProvider(
     apiKey: string
     baseProvider: string | null
     baseModel: string | null
+    modelHints: ModelHints
   }>,
   updatedBy: string,
 ): LlmProviderAccount | null {
@@ -168,6 +187,7 @@ export function updateLlmProvider(
   if (patch.apiKey !== undefined) set.encryptedApiKey = encryptApiKey(patch.apiKey)
   if (patch.baseProvider !== undefined) set.baseProvider = normalizeBaseRef(patch.baseProvider)
   if (patch.baseModel !== undefined) set.baseModel = normalizeBaseRef(patch.baseModel)
+  if (patch.modelHints !== undefined) set.modelHints = serializeModelHints(patch.modelHints)
   getDrizzleDb().update(llmProviders).set(set).where(eq(llmProviders.id, id)).run()
   const fresh = getDrizzleDb().select().from(llmProviders).where(eq(llmProviders.id, id)).get()
   if (fresh === undefined) return null
@@ -230,58 +250,4 @@ export function deleteLlmProvider(id: string): void {
   log.info({ id }, 'LLM provider deleted')
 }
 
-const readRoleBindings = (): LlmRoleBindings | null => {
-  const row = getDrizzleDb().select().from(llmAdminRoles).where(eq(llmAdminRoles.id, 1)).get()
-  if (row === undefined) return null
-  const small =
-    row.smallProviderId === null || row.smallModel === null
-      ? null
-      : { providerId: row.smallProviderId, model: row.smallModel }
-  const embedding =
-    row.embeddingProviderId === null || row.embeddingModel === null
-      ? null
-      : { providerId: row.embeddingProviderId, model: row.embeddingModel }
-  return {
-    main: { providerId: row.mainProviderId, model: row.mainModel },
-    small,
-    embedding,
-  }
-}
-
-export function getAdminRoleBindings(): LlmRoleBindings | null {
-  if (roleCache === undefined) roleCache = readRoleBindings()
-  return roleCache
-}
-
-export function setAdminRoleBindings(bindings: LlmRoleBindings, updatedBy: string): void {
-  const now = Date.now()
-  getDrizzleDb()
-    .insert(llmAdminRoles)
-    .values({
-      id: 1,
-      mainProviderId: bindings.main.providerId,
-      mainModel: bindings.main.model,
-      smallProviderId: bindings.small?.providerId ?? null,
-      smallModel: bindings.small?.model ?? null,
-      embeddingProviderId: bindings.embedding?.providerId ?? null,
-      embeddingModel: bindings.embedding?.model ?? null,
-      updatedAt: now,
-      updatedBy,
-    })
-    .onConflictDoUpdate({
-      target: llmAdminRoles.id,
-      set: {
-        mainProviderId: bindings.main.providerId,
-        mainModel: bindings.main.model,
-        smallProviderId: bindings.small?.providerId ?? null,
-        smallModel: bindings.small?.model ?? null,
-        embeddingProviderId: bindings.embedding?.providerId ?? null,
-        embeddingModel: bindings.embedding?.model ?? null,
-        updatedAt: now,
-        updatedBy,
-      },
-    })
-    .run()
-  roleCache = readRoleBindings()
-  log.info({ updatedBy }, 'admin LLM role bindings set')
-}
+export { getAdminRoleBindings, setAdminRoleBindings } from './store-roles.js'

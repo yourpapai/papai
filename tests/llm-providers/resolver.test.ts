@@ -20,9 +20,10 @@ import {
 } from '../../src/byok-llm/store.js'
 import { byokLlmCredentials } from '../../src/db/byok-llm-schema.js'
 import { getDrizzleDb } from '../../src/db/drizzle.js'
+import type { ModelHints } from '../../src/llm-providers/model-hints.js'
 import { resolveAdminLlmConfig, resolveLlmConfig } from '../../src/llm-providers/resolver.js'
 import { createLlmProvider, setAdminRoleBindings } from '../../src/llm-providers/store.js'
-import { clearLlmAdminCacheForTesting } from '../../src/llm-providers/store.testing.js'
+import { clearLlmAdminCacheForTesting, seedLlmAdminCacheForTesting } from '../../src/llm-providers/store.testing.js'
 import type { EffectiveLlmConfig, LlmConfigResult } from '../../src/llm-providers/types.js'
 import { prewarmModelsDevSnapshot } from '../../src/models-dev/client.js'
 import { resetModelsDevSnapshotForTest } from '../../src/models-dev/client.testing.js'
@@ -370,5 +371,202 @@ describe('resolved role metadata', () => {
 
     expect(r.main.metadata.source).toBe('none')
     expect(r.main.metadata.contextWindow).toBeNull()
+  })
+
+  describe('per-model hint precedence', () => {
+    const seedHintedAdmin = (model: string, modelHints: ModelHints): void => {
+      const provider = createLlmProvider(
+        {
+          label: 'gw',
+          providerType: 'custom',
+          baseUrl: 'https://gw.example.com/v1',
+          apiKey: 'sk-gw',
+          baseProvider: 'openai',
+          baseModel: 'gpt-provider-level',
+        },
+        'admin',
+      )
+      seedLlmAdminCacheForTesting({ ...provider, modelHints })
+      setAdminRoleBindings({ main: { providerId: provider.id, model }, small: null, embedding: null }, 'admin')
+    }
+
+    test('admin path: a hint overrides the provider-level pair for the hinted model', async () => {
+      await seedSnapshot({
+        openai: { models: { 'gpt-provider-level': { limit: { context: 111_222, output: 3_000 } } } },
+        anthropic: { models: { 'claude-hinted': { limit: { context: 200_000, output: 8_000 } } } },
+      })
+      seedHintedAdmin('gateway-model', {
+        'gateway-model': { baseProvider: 'anthropic', baseModel: 'claude-hinted' },
+      })
+
+      const r = unwrapOk(resolveAdminLlmConfig())
+
+      expect(r.main.metadata).toEqual({
+        providerId: 'anthropic',
+        modelId: 'claude-hinted',
+        contextWindow: 200_000,
+        maxOutputTokens: 8_000,
+        source: 'models-dev',
+        via: 'override',
+      })
+    })
+
+    test('admin path: an unhinted sibling model keeps the provider-level pair', async () => {
+      await seedSnapshot({
+        openai: { models: { 'gpt-provider-level': { limit: { context: 111_222, output: 3_000 } } } },
+      })
+      seedHintedAdmin('sibling-model', {
+        'gateway-model': { baseProvider: 'anthropic', baseModel: 'claude-hinted' },
+      })
+
+      const r = unwrapOk(resolveAdminLlmConfig())
+
+      expect(r.main.metadata).toEqual({
+        providerId: 'openai',
+        modelId: 'gpt-provider-level',
+        contextWindow: 111_222,
+        maxOutputTokens: 3_000,
+        source: 'models-dev',
+        via: 'override',
+      })
+    })
+
+    test('admin path: a hint applies to its exact model id', async () => {
+      await seedSnapshot({
+        openai: { models: { 'gpt-provider-level': { limit: { context: 111_222 } } } },
+        anthropic: { models: { 'claude-hinted': { limit: { context: 200_000 } } } },
+      })
+      const key = 'hf:zai-org/GLM-5.3-Flash'
+      seedHintedAdmin(key, { [key]: { baseProvider: 'anthropic', baseModel: 'claude-hinted' } })
+
+      const r = unwrapOk(resolveAdminLlmConfig())
+
+      expect(r.main.metadata.providerId).toBe('anthropic')
+      expect(r.main.metadata.modelId).toBe('claude-hinted')
+      expect(r.main.metadata.contextWindow).toBe(200_000)
+      expect(r.main.metadata.via).toBe('override')
+    })
+
+    test('admin path: a model id that only extends the hint key does not match it', async () => {
+      await seedSnapshot({ openai: { models: { 'gpt-provider-level': { limit: { context: 111_222 } } } } })
+      const key = 'hf:zai-org/GLM-5.3-Flash'
+      seedHintedAdmin('hf:zai-org/GLM-5.3-Flash-turbo', {
+        [key]: { baseProvider: 'anthropic', baseModel: 'claude-hinted' },
+      })
+
+      const r = unwrapOk(resolveAdminLlmConfig())
+
+      expect(r.main.metadata.providerId).toBe('openai')
+      expect(r.main.metadata.modelId).toBe('gpt-provider-level')
+      expect(r.main.metadata.contextWindow).toBe(111_222)
+    })
+
+    test('admin path: a hint naming a pair absent from the catalogue degrades to the none chain', async () => {
+      await seedSnapshot({ openai: { models: { 'gpt-provider-level': { limit: { context: 111_222 } } } } })
+      seedHintedAdmin('gateway-model', {
+        'gateway-model': { baseProvider: 'anthropic', baseModel: 'absent-model' },
+      })
+
+      const r = unwrapOk(resolveAdminLlmConfig())
+
+      expect(r.main.metadata).toEqual({
+        providerId: null,
+        modelId: null,
+        contextWindow: null,
+        maxOutputTokens: null,
+        source: 'none',
+        via: null,
+      })
+    })
+
+    test('byok path: a hint overrides the provider-level pair for the hinted model', async () => {
+      await seedSnapshot({
+        openai: { models: { 'gpt-byok-level': { limit: { context: 64_000, output: 2_000 } } } },
+        google: { models: { 'gemini-hinted': { limit: { context: 1_000_000, output: 32_768 } } } },
+      })
+      seedByok('ctx', {
+        v: 2,
+        providers: [
+          {
+            id: 'prov_byok',
+            label: 'gateway',
+            providerType: 'custom',
+            baseUrl: 'https://byok-gw/v1',
+            apiKey: 'local',
+            baseProvider: 'openai',
+            baseModel: 'gpt-byok-level',
+            modelHints: { 'byok-model': { baseProvider: 'google', baseModel: 'gemini-hinted' } },
+            verification: UNVERIFIED,
+          },
+        ],
+        roles: { main: { providerId: 'prov_byok', model: 'byok-model' }, small: null, embedding: null },
+      })
+
+      const r = unwrapOk(resolveLlmConfig('ctx'))
+
+      expect(r.main.source).toBe('byok')
+      expect(r.main.metadata).toEqual({
+        providerId: 'google',
+        modelId: 'gemini-hinted',
+        contextWindow: 1_000_000,
+        maxOutputTokens: 32_768,
+        source: 'models-dev',
+        via: 'override',
+      })
+    })
+
+    test('byok path: an unhinted model falls through to the provider-level pair', async () => {
+      await seedSnapshot({ openai: { models: { 'gpt-byok-level': { limit: { context: 64_000, output: 2_000 } } } } })
+      seedByok('ctx', {
+        v: 2,
+        providers: [
+          {
+            id: 'prov_byok',
+            label: 'gateway',
+            providerType: 'custom',
+            baseUrl: 'https://byok-gw/v1',
+            apiKey: 'local',
+            baseProvider: 'openai',
+            baseModel: 'gpt-byok-level',
+            modelHints: { 'byok-model': { baseProvider: 'google', baseModel: 'gemini-hinted' } },
+            verification: UNVERIFIED,
+          },
+        ],
+        roles: { main: { providerId: 'prov_byok', model: 'byok-sibling' }, small: null, embedding: null },
+      })
+
+      const r = unwrapOk(resolveLlmConfig('ctx'))
+
+      expect(r.main.metadata.providerId).toBe('openai')
+      expect(r.main.metadata.modelId).toBe('gpt-byok-level')
+      expect(r.main.metadata.contextWindow).toBe(64_000)
+    })
+
+    test('admin path: an unhinted model on a hinted account still infers from the catalogue', async () => {
+      await seedSnapshot({ openai: { models: { 'gpt-main': { limit: { context: 111_222 } } } } })
+      const provider = createLlmProvider(
+        { label: 'openai-direct', providerType: 'openai', baseUrl: 'https://admin/v1', apiKey: 'sk-admin' },
+        'admin',
+      )
+      seedLlmAdminCacheForTesting({
+        ...provider,
+        modelHints: { 'other-model': { baseProvider: 'anthropic', baseModel: 'claude-hinted' } },
+      })
+      setAdminRoleBindings(
+        { main: { providerId: provider.id, model: 'gpt-main' }, small: null, embedding: null },
+        'admin',
+      )
+
+      const r = unwrapOk(resolveAdminLlmConfig())
+
+      expect(r.main.metadata).toEqual({
+        providerId: 'openai',
+        modelId: 'gpt-main',
+        contextWindow: 111_222,
+        maxOutputTokens: null,
+        source: 'models-dev',
+        via: 'inferred',
+      })
+    })
   })
 })
