@@ -1386,10 +1386,10 @@
     "scored": 98
   },
   "opencode-agent/src/prompts.ts": {
-    "score": 0.4117647058823529,
-    "killed": 63,
+    "score": 0.41935483870967744,
+    "killed": 65,
     "timeout": 0,
-    "scored": 153
+    "scored": 155
   },
   "opencode-agent/src/protected-paths.ts": {
     "score": 0.7058823529411765,
@@ -1571,11 +1571,17 @@
     "timeout": 0,
     "scored": 36
   },
-  "opencode-agent/src/transitions.ts": {
-    "score": 0.9738562091503268,
-    "killed": 149,
+  "opencode-agent/src/transition-table.ts": {
+    "score": 0.9655172413793104,
+    "killed": 28,
     "timeout": 0,
-    "scored": 153
+    "scored": 29
+  },
+  "opencode-agent/src/transitions.ts": {
+    "score": 0.9857142857142858,
+    "killed": 138,
+    "timeout": 0,
+    "scored": 140
   },
   "opencode-agent/src/trigger-events.ts": {
     "score": 0.8529411764705882,
