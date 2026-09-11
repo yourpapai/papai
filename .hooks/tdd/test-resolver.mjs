@@ -20,16 +20,15 @@ export function isTestFile(filePath) {
  * @returns {boolean} True if this is a gateable implementation file
  */
 export function isGateableImplFile(filePath, projectRoot) {
-  // Must be under src/, client/, plugins/, review-loop/src/, afk-runner/src/, or opencode-agent/src/
+  // Must be under src/, client/, plugins/, review-loop/src/, or opencode-agent/src/
   // (barrel index.ts excluded), match IMPL_PATTERN, and NOT match TEST_PATTERN
   const rel = path.relative(projectRoot, path.resolve(projectRoot, filePath))
   const isSrc = rel.startsWith('src/') || rel.startsWith('src\\')
   const isClient = rel.startsWith('client/') || rel.startsWith('client\\')
   const isPlugins = rel.startsWith('plugins/') || rel.startsWith('plugins\\')
   const isReviewLoop = rel.startsWith('review-loop/src/') || rel.startsWith('review-loop\\src\\')
-  const isAfkRunner = rel.startsWith('afk-runner/src/') || rel.startsWith('afk-runner\\src\\')
   const isOpencodeAgent = rel.startsWith('opencode-agent/src/') || rel.startsWith('opencode-agent\\src\\')
-  if (!isSrc && !isClient && !isPlugins && !isReviewLoop && !isAfkRunner && !isOpencodeAgent) return false
+  if (!isSrc && !isClient && !isPlugins && !isReviewLoop && !isOpencodeAgent) return false
   if (isOpencodeAgent && path.basename(rel) === 'index.ts') return false
   if (!IMPL_PATTERN.test(rel)) return false
   if (TEST_PATTERN.test(rel)) return false
@@ -60,13 +59,6 @@ export function suggestTestPath(implRelPath) {
     const ext = path.extname(withoutPrefix)
     const base = withoutPrefix.slice(0, -ext.length)
     return path.join('tests', 'review-loop', `${base}.test${ext}`)
-  }
-  // afk-runner/src/foo.ts → tests/afk-runner/foo.test.ts
-  if (implRelPath.startsWith('afk-runner/src/') || implRelPath.startsWith('afk-runner\\src\\')) {
-    const withoutPrefix = implRelPath.replace(/^afk-runner[/\\]src[/\\]/u, '')
-    const ext = path.extname(withoutPrefix)
-    const base = withoutPrefix.slice(0, -ext.length)
-    return path.join('tests', 'afk-runner', `${base}.test${ext}`)
   }
   // opencode-agent/src/foo.ts → tests/opencode-agent/foo.test.ts (flat across the src/ subtree)
   if (implRelPath.startsWith('opencode-agent/src/') || implRelPath.startsWith('opencode-agent\\src\\')) {
@@ -121,18 +113,6 @@ export function findTestFile(implAbsPath, projectRoot) {
 
     for (const suffix of ['.test', '.spec']) {
       const candidate = path.join(projectRoot, 'tests', 'review-loop', `${base}${suffix}${ext}`)
-      if (fs.existsSync(candidate)) return candidate
-    }
-  }
-
-  // afk-runner/src/foo.ts → tests/afk-runner/foo.test.ts
-  if (rel.startsWith('afk-runner/src/') || rel.startsWith('afk-runner\\src\\')) {
-    const withoutPrefix = rel.replace(/^afk-runner[/\\]src[/\\]/u, '')
-    const ext = path.extname(withoutPrefix)
-    const base = withoutPrefix.slice(0, -ext.length)
-
-    for (const suffix of ['.test', '.spec']) {
-      const candidate = path.join(projectRoot, 'tests', 'afk-runner', `${base}${suffix}${ext}`)
       if (fs.existsSync(candidate)) return candidate
     }
   }
@@ -229,11 +209,6 @@ export function resolveImplPath(testRelPath, projectRoot) {
     if (dir === 'review-loop' || dir.startsWith('review-loop/') || dir.startsWith('review-loop\\')) {
       const withoutReviewLoop = dir.replace(/^review-loop[/\\]?/u, '')
       return path.join('review-loop', 'src', withoutReviewLoop, `${base}${ext}`)
-    }
-    // tests/afk-runner/foo.test.ts → afk-runner/src/foo.ts
-    if (dir === 'afk-runner' || dir.startsWith('afk-runner/') || dir.startsWith('afk-runner\\')) {
-      const withoutAfkRunner = dir.replace(/^afk-runner[/\\]?/u, '')
-      return path.join('afk-runner', 'src', withoutAfkRunner, `${base}${ext}`)
     }
     // tests/opencode-agent/foo.test.ts → the unique existing foo.ts under opencode-agent/src/**
     // (flat layout; zero or several namesakes resolve no counterpart — never a nonexistent path)
