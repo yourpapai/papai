@@ -4,6 +4,8 @@
 // See LICENSE in the project root for details.
 
 import { describe, expect, test } from 'bun:test'
+import { readFileSync } from 'node:fs'
+import path from 'node:path'
 
 import { TRANSITIONS } from '../../opencode-agent/src/transition-table.js'
 import { PHASES } from '../../opencode-agent/src/types.js'
@@ -45,5 +47,22 @@ describe('the transition table', () => {
     const admitting = PHASES.filter((phase) => TRANSITIONS[phase]['REVIEW_REQUESTED'] !== undefined)
 
     expect(admitting).toEqual(['COMPLETE'])
+  })
+
+  test('the INIT_OR_CLARIFY row comment audits the /continue its row omits', () => {
+    // CONTINUE is accepted in INIT_OR_CLARIFY by a branch in `canTransition`
+    // before any row is consulted, so the table itself cannot carry it; the
+    // row comment is where the audit of that deliberate absence has to live —
+    // the INCOMPLETE paragraph carries its own CONTINUE exactly this way.
+    // Without the sentence the row reads as refusing a command
+    // `acceptedCommands` offers in the same phase.
+    const source = readFileSync(
+      path.join(import.meta.dir, '..', '..', 'opencode-agent', 'src', 'transition-table.ts'),
+      'utf8',
+    )
+    const rowAt = source.indexOf('INIT_OR_CLARIFY: {')
+    const rowComment = source.slice(source.lastIndexOf('*/', rowAt), rowAt)
+
+    expect(rowComment).toContain('/continue')
   })
 })
