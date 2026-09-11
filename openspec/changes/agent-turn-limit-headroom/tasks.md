@@ -4,7 +4,7 @@ Test-first order per design.md Migration Plan; every implementation task is driv
 
 ## 1. Turn-limit tracker module (test-first)
 
-- [ ] 1.1 Write failing tracker tests in `tests/run-control/turn-limit.test.ts`: `maxSteps` is forwarded to the injected predicate, the predicate's verdict passes through unchanged, `hit` latches true the first time the condition returns true, and `hit` stays false while verdicts are false. Verify: `bun test tests/run-control/turn-limit.test.ts` (red)
+- [x] 1.1 Write failing tracker tests in `tests/run-control/turn-limit.test.ts`: `maxSteps` is forwarded to the injected predicate, the predicate's verdict passes through unchanged, `hit` latches true the first time the condition returns true, and `hit` stays false while verdicts are false. Verify: `bun test tests/run-control/turn-limit.test.ts` (red)
 - [ ] 1.2 Implement `src/run-control/turn-limit.ts`: export `TURN_LIMIT_STOP_REASON = 'turn_limit'` and `createTurnLimitTracker(stepCountIs, maxSteps)` returning `{ condition, hit }` where `condition` calls the injected predicate and latches `hit` on its first true verdict. Verify: `bun test tests/run-control/turn-limit.test.ts` (green)
 
 ## 2. Budget constant raise (test-first)
