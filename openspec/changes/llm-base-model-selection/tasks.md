@@ -41,4 +41,4 @@ design.md has no open questions.
 ## 6. Docs + full verification
 
 - [x] 6.1 Update the models-dev-catalogue precedence sentence in `docs/architecture/behaviors.md` to state the per-model → provider-level → inference/prefix-table chain. Verify: `bun run lint` (format:check included) and re-read the diff
-- [ ] 6.2 Run the full gate: `bun run test`, then `bun run typecheck`, `bun run lint`, and `bun check:full`; query failures via `bun run test:failures` / `bun run test:show` instead of re-running, and fix until all green
+- [x] 6.2 Run the full gate: `bun run test`, then `bun run typecheck`, `bun run lint`, and `bun check:full`; query failures via `bun run test:failures` / `bun run test:show` instead of re-running, and fix until all green
