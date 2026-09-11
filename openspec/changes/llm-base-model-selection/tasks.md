@@ -27,7 +27,7 @@ design.md has no open questions.
 - [x] 4.1 Write failing tests in `tests/debug/settings/admin/llm-providers-routes.test.ts`: PATCH persists `modelHints`, GET echoes it (`{}` when none), PATCH with malformed hints returns 422 and leaves stored config unchanged. Verify: `bun test tests/debug/settings/admin/llm-providers-routes.test.ts`
 - [x] 4.2 Implement admin route changes in `src/debug/settings/admin/llm-providers-routes.ts` (per design D5): `ProviderPatchSchema` gains `modelHints: ModelHintsSchema.optional()`, `publicAccount` echoes `modelHints`. Verify: `bun test tests/debug/settings/admin/llm-providers-routes.test.ts`
 - [x] 4.3 Write failing tests in `tests/debug/settings/admin/byok-routes.test.ts`: `upsert-provider` accepts optional `modelHints` and round-trips it into the blob readback. Verify: `bun test tests/debug/settings/admin/byok-routes.test.ts`
-- [ ] 4.4 Implement BYOK route changes: `ProviderInBlobSchema` gains optional `modelHints` (src/debug/settings/byok-routes.ts) and `publicByokProvider` echoes it (src/debug/settings/byok-field-response.ts). Verify: `bun test tests/debug/settings/admin/byok-routes.test.ts && bun run typecheck`
+- [x] 4.4 Implement BYOK route changes: `ProviderInBlobSchema` gains optional `modelHints` (src/debug/settings/byok-routes.ts) and `publicByokProvider` echoes it (src/debug/settings/byok-field-response.ts). Verify: `bun test tests/debug/settings/admin/byok-routes.test.ts && bun run typecheck`
 
 ## 5. Settings UI
 
