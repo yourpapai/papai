@@ -20,7 +20,7 @@ Test-first order per design.md Migration Plan; every implementation task is driv
 
 ## 4. Behavior preservation
 
-- [ ] 4.1 Confirm cap-out still ends in the existing truncated-verdict flow with no new user-visible surface (no user-facing text or error change), across the verified-completion, run-control, and orchestrator lanes the change can reach. Verify: `bun run test:affected`
+- [x] 4.1 Confirm cap-out still ends in the existing truncated-verdict flow with no new user-visible surface (no user-facing text or error change), across the verified-completion, run-control, and orchestrator lanes the change can reach. Verify: `bun run test:affected`
 
 ## 5. Docs and full gates
 
