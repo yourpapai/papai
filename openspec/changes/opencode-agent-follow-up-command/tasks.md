@@ -13,7 +13,7 @@
 
 ## 3. Workflow arm (forced red-first)
 
-- [ ] 3.1 Run `bun test tests/opencode-agent/workflow.test.ts` and confirm it now fails: the PR-comment arm's `contains` list in `.github/workflows/agent-pipeline.yml` lacks `/follow-up` while `SLASH_COMMANDS` carries it
+- [x] 3.1 Run `bun test tests/opencode-agent/workflow.test.ts` and confirm it now fails: the PR-comment arm's `contains` list in `.github/workflows/agent-pipeline.yml` lacks `/follow-up` while `SLASH_COMMANDS` carries it
 - [ ] 3.2 Add `/follow-up` to the arm's `contains` list (single-line edit; no other workflow change) — verify with `bun test tests/opencode-agent/workflow.test.ts` and `bun workflows:lint`
 
 ## 4. Follow-up handler, size gate, and notices
