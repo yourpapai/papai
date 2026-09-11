@@ -2868,12 +2868,16 @@ describe('commands and budgets', () => {
   })
 
   test('rejects /approve arriving in a phase that cannot accept it', async () => {
+    // PLANNING, not the opening phase: `/approve` in a parked INIT_OR_CLARIFY
+    // is the forward path's re-entry now (issue #438), so the refusal case
+    // needs a phase whose rows name no APPROVED at all.
     const harness = makeHarness()
+    seedState(harness, { phase: 'PLANNING' })
 
     const result = await runPipeline({ event: comment('/approve'), deps: harness.deps })
 
     expect(result.status).toBe('skipped')
-    expect(result.reason).toContain('not valid in INIT_OR_CLARIFY')
+    expect(result.reason).toContain('not valid in PLANNING')
   })
 
   test('says so on the issue rather than only in the job log', async () => {
@@ -2889,10 +2893,13 @@ describe('commands and budgets', () => {
     expect(refusal).toContain('/changes')
     expect(refusal).toContain('INIT_OR_CLARIFY')
     // Derived from the transition table, so it cannot promise a command the
-    // machine would refuse in turn.
+    // machine would refuse in turn — and cannot omit the two re-entries the
+    // forward path put on this phase.
     expect(refusal).toContain('/cancel')
     expect(refusal).toContain('/ask')
-    expect(refusal).not.toContain('`/approve`')
+    expect(refusal).toContain('`/approve`')
+    expect(refusal).toContain('`/continue`')
+    expect(refusal).not.toContain('`/review`')
   })
 
   test('/changes is accepted once the agent can read back its own spec', async () => {
