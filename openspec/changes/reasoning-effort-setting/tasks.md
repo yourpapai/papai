@@ -30,7 +30,7 @@ See LICENSE in the project root for details.
 
 ## 4. Request wiring
 
-- [ ] 4.1 TDD red: extend `tests/llm-model-builder.test.ts` with request-body captures via `setMockFetch` — set + in-set → body carries `reasoning_effort`; unset → body byte-identical to today; catalogue `reasoning: false` + stored level → key absent; stored value outside catalogue levels → key absent; effort + maxOutputTokens coexist in one request. Verify: `bun test tests/llm-model-builder.test.ts` (fails)
+- [x] 4.1 TDD red: extend `tests/llm-model-builder.test.ts` with request-body captures via `setMockFetch` — set + in-set → body carries `reasoning_effort`; unset → body byte-identical to today; catalogue `reasoning: false` + stored level → key absent; stored value outside catalogue levels → key absent; effort + maxOutputTokens coexist in one request. Verify: `bun test tests/llm-model-builder.test.ts` (fails)
 - [ ] 4.2 Implement the optional trailing effort param and the `providerOptions: { openaiCompatible: { reasoningEffort } }` middleware merge in `src/llm-model-builder.ts` (single wrap when a cap or an effort is present). Verify: `bun test tests/llm-model-builder.test.ts`
 - [ ] 4.3 TDD red: extend `tests/llm-orchestrator.test.ts` — the `buildModel` spy receives the effective effort for the context's stored setting; unset → not passed; the turn verifier inherits the same model instance. Verify: `bun test tests/llm-orchestrator.test.ts` (fails)
 - [ ] 4.4 Implement the optional effort argument through `LlmOrchestratorDeps.buildModel` (src/llm-orchestrator-types.ts) and the gate resolution in `callLlm` (src/llm-orchestrator.ts). Verify: `bun test tests/llm-orchestrator.test.ts`

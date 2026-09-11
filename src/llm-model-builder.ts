@@ -46,6 +46,7 @@ export function buildChatModel(
   modelName: string,
   deps: ModelBuilderDeps = defaultDeps,
   metadata?: ModelMetadata,
+  _reasoningEffort?: string | null,
 ): LanguageModel {
   const model = getOpenAICompatibleProvider(apiKey, baseUrl, deps)(modelName)
   const resolved = metadata ?? resolveModelMetadata({ baseUrl, model: modelName })
