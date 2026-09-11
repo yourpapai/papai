@@ -90,10 +90,10 @@
     "scored": 79
   },
   "opencode-agent/src/cascade.ts": {
-    "score": 0.8923076923076924,
-    "killed": 58,
+    "score": 0.9130434782608695,
+    "killed": 63,
     "timeout": 0,
-    "scored": 65
+    "scored": 69
   },
   "opencode-agent/src/check-loop.ts": {
     "score": 0.9682539682539683,
@@ -198,10 +198,10 @@
     "scored": 34
   },
   "opencode-agent/src/commands.ts": {
-    "score": 0.9523809523809523,
-    "killed": 100,
+    "score": 0.957983193277311,
+    "killed": 114,
     "timeout": 0,
-    "scored": 105
+    "scored": 119
   },
   "opencode-agent/src/comment-intent.ts": {
     "score": 0.7610619469026548,
@@ -310,6 +310,18 @@
     "killed": 35,
     "timeout": 0,
     "scored": 47
+  },
+  "opencode-agent/src/follow-up-notices.ts": {
+    "score": 0.4953271028037383,
+    "killed": 53,
+    "timeout": 0,
+    "scored": 107
+  },
+  "opencode-agent/src/follow-up-prompts.ts": {
+    "score": 0.6197183098591549,
+    "killed": 44,
+    "timeout": 0,
+    "scored": 71
   },
   "opencode-agent/src/git-commit.ts": {
     "score": 0.8888888888888888,
@@ -557,6 +569,18 @@
     "timeout": 0,
     "scored": 1
   },
+  "opencode-agent/src/phases/follow-up-commit.ts": {
+    "score": 0.7590361445783133,
+    "killed": 63,
+    "timeout": 0,
+    "scored": 83
+  },
+  "opencode-agent/src/phases/follow-up.ts": {
+    "score": 0.6666666666666666,
+    "killed": 26,
+    "timeout": 0,
+    "scored": 39
+  },
   "opencode-agent/src/phases/implement-commit.ts": {
     "score": 0.8235294117647058,
     "killed": 28,
@@ -762,10 +786,10 @@
     "scored": 25
   },
   "opencode-agent/src/run-report.ts": {
-    "score": 0.5444444444444444,
-    "killed": 49,
+    "score": 0.6632653061224489,
+    "killed": 65,
     "timeout": 0,
-    "scored": 90
+    "scored": 98
   },
   "opencode-agent/src/run-spend.ts": {
     "score": 0.65,
@@ -808,6 +832,12 @@
     "killed": 56,
     "timeout": 0,
     "scored": 83
+  },
+  "opencode-agent/src/side-operations.ts": {
+    "score": 0.8846153846153846,
+    "killed": 46,
+    "timeout": 0,
+    "scored": 52
   },
   "opencode-agent/src/state-manager.ts": {
     "score": 0.90625,
@@ -870,16 +900,16 @@
     "scored": 136
   },
   "opencode-agent/src/trigger-outcome.ts": {
-    "score": 0.7142857142857143,
-    "killed": 10,
+    "score": 0.7857142857142857,
+    "killed": 11,
     "timeout": 0,
     "scored": 14
   },
   "opencode-agent/src/triggers.ts": {
-    "score": 0.8187919463087249,
-    "killed": 122,
+    "score": 0.8333333333333334,
+    "killed": 120,
     "timeout": 0,
-    "scored": 149
+    "scored": 144
   },
   "opencode-agent/src/turn-answer.ts": {
     "score": 0.625,

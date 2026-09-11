@@ -33,5 +33,5 @@
 
 ## 6. Full verification
 
-- [ ] 6.1 Run the full suite and checks: `bun test`, `bun run typecheck`, `bun run lint`, `bun check:full`, `bun workflows:lint`
+- [x] 6.1 Run the full suite and checks: `bun test`, `bun run typecheck`, `bun run lint`, `bun check:full`, `bun workflows:lint`
 - [ ] 6.2 Update affected `docs/architecture/*.md` pages (coding-sessions.md command mentions, if any) — verify with `bun run lint` and `bun run format:check`
