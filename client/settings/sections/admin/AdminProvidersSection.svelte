@@ -146,6 +146,7 @@
   }
 
   function startEdit(provider: PublicProviderAccount): void {
+    error = null
     editTarget = provider
     modelsTarget = null
   }

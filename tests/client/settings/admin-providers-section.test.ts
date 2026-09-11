@@ -78,6 +78,14 @@ const patchRejectsRoute =
     return Promise.resolve(json(payload))
   }
 
+const postRejectsRoute =
+  (payload: unknown, status: number) =>
+  (url: string, init?: RequestInit): Promise<Response> => {
+    void url
+    if (init?.method === 'POST') return Promise.resolve(json({ error: 'refresh failed' }, status))
+    return Promise.resolve(json(payload))
+  }
+
 const setInput = (testid: string, value: string): void => {
   const input = document.querySelector<HTMLInputElement>(`[data-testid="${testid}"]`)!
   input.value = value
@@ -397,6 +405,21 @@ describe('AdminProvidersSection', () => {
     expect(surfaced).not.toBeNull()
     expect(surfaced!.textContent).toContain('invalid request body')
     expect(document.querySelector('[data-testid="provider-edit-form"]')).not.toBeNull()
+  })
+
+  test('opening the edit form clears a stale error left by a failed refresh', async () => {
+    setMockFetch(postRejectsRoute(populatedPayload, 500))
+    mount(AdminProvidersSection, { target })
+    await drain()
+
+    document.querySelector<HTMLButtonElement>('[data-testid="admin-providers-refresh-models-prov_1"]')!.click()
+    await drain()
+
+    document.querySelector<HTMLButtonElement>('[data-testid="admin-providers-edit-prov_1"]')!.click()
+    await drain()
+
+    expect(document.querySelector('[data-testid="provider-edit-form"]')).not.toBeNull()
+    expect(document.querySelector('[data-testid="provider-edit-form-error"]')).toBeNull()
   })
 
   test('the create form does not render the hints editor', async () => {
