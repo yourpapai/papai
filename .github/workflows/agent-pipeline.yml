@@ -351,8 +351,23 @@ jobs:
     # as the empty string, which the pipeline's config reads as the `opencode`
     # default — so the default route installs nothing and is otherwise
     # identical to the pre-backend workflow.
+    #
+    # AGENT_MCP_SERVERS rides the same job-level declaration for the same
+    # one-value-many-readers reason, and because a step `if:` may read `env`
+    # but not `secrets`: the gated codeindex steps below (and the report step
+    # after the pipeline) ask `contains(env.AGENT_MCP_SERVERS, 'codeindex')`
+    # against this exact spelling, which is also what the pipeline step
+    # forwards. Two spellings on purpose (the secret wins, like
+    # AGENT_GITHUB_TOKEN): a token-bearing declaration belongs in a secret,
+    # which GitHub masks in logs and encrypts at rest, while a token-free one
+    # may live in a variable, visible to non-admin maintainers and diffable in
+    # settings — this repository carries the knob as a secret. Hoisting it to
+    # job env widens which steps can see the value, but every step in this job
+    # is maintainer-authored workflow code, and the model runs only inside the
+    # pipeline step, which already forwarded it.
     env:
       AGENT_BACKEND: ${{ vars.AGENT_BACKEND }}
+      AGENT_MCP_SERVERS: ${{ secrets.AGENT_MCP_SERVERS || vars.AGENT_MCP_SERVERS }}
 
     steps:
       # First, before anything that takes time, because what it records is when
@@ -474,6 +489,102 @@ jobs:
           bun add --global @anthropic-ai/claude-code@2.1.251
           echo "$HOME/.bun/bin" >> "$GITHUB_PATH"
 
+      # The codeindex experiment. Every step in this block — checkout, install,
+      # prebuild, canary, and the report step after the pipeline — is gated on
+      # the same AGENT_MCP_SERVERS knob that injects the servers, so removing
+      # the codeindex entry leaves the job byte-identical to a pre-experiment
+      # one and the whole experiment reverts with no commit. The gate reads the
+      # job-level env spelling the pipeline step also forwards — the secret
+      # wins over the variable, so a declaration living in either one
+      # provisions — and keys on the `codeindex` server name rather than bare
+      # non-emptiness: this repository carries AGENT_MCP_SERVERS as a secret,
+      # and a secret declaring only other servers must not buy codeindex's
+      # ~1 min of setup. See docs/operations/codeindex-ci-experiment.md for
+      # the enable, revert, read, decide and cleanup procedures.
+      #
+      # A sibling checkout rather than a package because codeindex ships
+      # clone-based, and ../codeindex — outside the workspace, so the implement
+      # phase's `git add --all` can never see it — is exactly where
+      # scripts/codeindex-cli.ts resolves it on CI (.git is a directory here),
+      # so no CODEINDEX_DIR override is needed. The private sibling needs
+      # AGENT_GITHUB_TOKEN: the repo-scoped GITHUB_TOKEN cannot cross
+      # repositories. Pinned to a SHA like superpowers above for the same
+      # reason — third-party code this job executes, and a moving ref would
+      # change the index and query-log contract under review. Bump
+      # deliberately; the ledger names the maintenance.
+      # `persist-credentials: false` for the same reason the main checkout
+      # carries it: no token may survive in a .git/config the model's bash can
+      # read.
+      #
+      # Checked out *into* the workspace and moved out afterwards, in two
+      # steps, because actions/checkout validates `path` against
+      # GITHUB_WORKSPACE and refuses anything above it — a `path: ../codeindex`
+      # fails the job outright with "Repository path '…' is not under '…'".
+      # The move is the step that puts the tree where the shim resolves it; no
+      # step runs between the two, so the workspace never holds the sibling
+      # while the model can reach it.
+      - name: Check out the codeindex sibling
+        if: contains(env.AGENT_MCP_SERVERS, 'codeindex')
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: yourpapai/codeindex
+          ref: a4977856770d636d15e708a16ab7753a3256beef
+          path: .codeindex-sibling
+          token: ${{ secrets.AGENT_GITHUB_TOKEN || secrets.GITHUB_TOKEN }}
+          persist-credentials: false
+
+      # `rm -rf` first so a re-run on a self-hosted runner with a dirty
+      # workspace parent moves into an empty destination instead of nesting
+      # ../codeindex/codeindex, which would resolve to a tree without a
+      # package.json and fail the install below with a worse message.
+      - name: Move the codeindex sibling out of the workspace
+        if: contains(env.AGENT_MCP_SERVERS, 'codeindex')
+        run: |
+          rm -rf "$GITHUB_WORKSPACE/../codeindex"
+          mv "$GITHUB_WORKSPACE/.codeindex-sibling" "$GITHUB_WORKSPACE/../codeindex"
+
+      # The sibling's dependencies, from its own lockfile at the pinned ref.
+      # Its install scripts are maintainer-reviewed code, not model-influenced
+      # content — the same trust line the base-branch install above draws —
+      # and they run outside the workspace the model edits.
+      - name: Install codeindex dependencies
+        if: contains(env.AGENT_MCP_SERVERS, 'codeindex')
+        working-directory: ../codeindex
+        run: bun install --frozen-lockfile
+
+      # The prebuild, and the whole reason provisioning exists: a cold index
+      # database answers EMPTY query results immediately while the watcher's
+      # boot catch-up builds in the background — a silent wrong-answer trap
+      # that would spend model tokens navigating against nothing. Runs in the
+      # workspace, not the sibling: the shim spawns the real CLI with cwd =
+      # papai workspace, so .codeindex.json and .codeindex/ resolve here.
+      # Deliberately not best-effort — a failure fails the job here, before
+      # the pipeline step, rather than letting model turns run against a cold
+      # or missing index (and before any model tokens are spent).
+      - name: Prebuild the codeindex index
+        if: contains(env.AGENT_MCP_SERVERS, 'codeindex')
+        run: bun run codeindex:index
+
+      # The canary: a fixed symbol query against the just-built index, at zero
+      # model spend. `kaneoAutoProvision` is a real exported symbol inside the
+      # indexed roots; an empty answer means index, shim or resolution is
+      # broken, and the run would silently navigate with empty results — fail
+      # here instead, naming the canary and the likely causes. jq is
+      # preinstalled on hosted runners; the CLI prints a JSON array.
+      - name: Canary the codeindex index
+        if: contains(env.AGENT_MCP_SERVERS, 'codeindex')
+        run: |
+          count="$(bun run scripts/codeindex-cli.ts symbol kaneoAutoProvision | jq 'length')"
+          if [ "$count" -eq 0 ]; then
+            echo '::error::codeindex canary returned no results for kaneoAutoProvision'
+            echo 'Likely causes: the prebuild above did not populate .codeindex/index.db; the' \
+              'shim resolved a sibling other than ../codeindex (is CODEINDEX_DIR set?); the pinned' \
+              'codeindex ref changed the CLI output shape; or the canary symbol moved out of the' \
+              'indexed roots (src/client/plugins).'
+            exit 1
+          fi
+          echo "codeindex canary: $count result(s) for kaneoAutoProvision"
+
       # `id:` is load-bearing, not decoration: the pipeline writes
       # `reported=true` to $GITHUB_OUTPUT for every path that has already put a
       # comment on the issue, and the fallback step below is gated on
@@ -545,13 +656,8 @@ jobs:
           # would mask that path and let it rot untested.
           AGENT_CHECK_COMMAND: ${{ vars.AGENT_CHECK_COMMAND }}
           AGENT_REVIEW_COMMAND: ${{ vars.AGENT_REVIEW_COMMAND }}
-          # MCP servers for the agent, as a JSON document — the one non-scalar
-          # knob left. Two spellings on purpose (the secret wins,
-          # like AGENT_GITHUB_TOKEN): a token-bearing declaration belongs in a
-          # secret, which GitHub masks in logs and encrypts at rest, while a
-          # token-free one may live in a variable, visible to non-admin
-          # maintainers and diffable in settings. See opencode-agent/README.md.
-          AGENT_MCP_SERVERS: ${{ secrets.AGENT_MCP_SERVERS || vars.AGENT_MCP_SERVERS }}
+          # AGENT_MCP_SERVERS is inherited from the job-level env, where the
+          # gated codeindex steps' `if:` reads it — one spelling, every reader.
           # Who git commits claim to be. Defaults to github-actions[bot] /
           # 41898282+github-actions[bot]@users.noreply.github.com — the token's
           # real service identity, whose noreply verifies. Explicit vars win
@@ -610,6 +716,21 @@ jobs:
             --event-path "$GITHUB_EVENT_PATH" \
             --event-name "$GITHUB_EVENT_NAME" \
             --repo-root "$GITHUB_WORKSPACE"
+
+      # The experiment's per-run evidence. The codeindex server logged every
+      # MCP query to .codeindex/queries.db as it ran; the servers are dead by
+      # now, so this is a plain read-only SQLite open with no contention and
+      # no pipeline coupling. `tee -a` puts the markdown in the step summary
+      # while stdout lands in the job log, one render for both surfaces.
+      #
+      # `always()`, because the run this report is most wanted for is the one
+      # where the pipeline died: absence of usage must stay observable rather
+      # than indistinguishable from a missing report. The script renders a
+      # missing-log line instead of throwing, so telemetry cannot turn a
+      # green run red — or an already-red one redder.
+      - name: Emit the codeindex usage report
+        if: always() && contains(env.AGENT_MCP_SERVERS, 'codeindex')
+        run: bun scripts/codeindex-ci-report.ts | tee -a "$GITHUB_STEP_SUMMARY"
 
       # The encrypted debug transcript, if this run had a key.
       #

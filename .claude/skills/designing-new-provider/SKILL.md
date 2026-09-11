@@ -66,6 +66,7 @@ Create one `TodoWrite` task per step and complete them **in order**. Do not para
 4. **Research.** Execute the "Mandatory research steps" from the brief, in order:
    - Read every `CLAUDE.md` listed in the brief (`CLAUDE.md`, `src/providers/CLAUDE.md`, `src/chat/CLAUDE.md`, `src/tools/CLAUDE.md`, `tests/CLAUDE.md`).
    - Read the relevant interface in full (`src/providers/types.ts` for task, `src/chat/types.ts` for chat).
+   - Navigate those interfaces and the reference implementations structurally with the `codeindex` MCP tools (`code_symbol` / `code_search` / `code_impact`) — the Codebase Search Protocol in `CLAUDE.md` carries the full rules.
    - Read at least one full reference implementation: YouTrack (`src/providers/youtrack/`) for task, Telegram (`src/chat/telegram/`) for chat.
    - **Fetch the target API documentation via `context7`** — do not rely on training data. APIs drift. If `context7` lacks the docs, fall back to web search and cite the official URL.
    - Build the capability matrix and domain-type mapping defined in the brief.

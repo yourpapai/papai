@@ -559,6 +559,55 @@ Notes:
 - `bun run test` excludes client and E2E suites (configured in `bunfig.toml`); run `bun test:client` and `bun test:e2e` separately. It is a wrapper (`scripts/test/run-cli.ts`) that builds the client bundles when missing, chooses parallel or serial from the core count (parallel needs 8+; it is measurably slower on 4), and writes `reports/test/last-run.{log,junit.xml,json}`. **Query that report instead of re-running the suite to filter its output** — `bun run test:failures`, `test:show <id>`, `test:log <pattern>`, `test:status`, `test:slowest`. Bare `bun test` remains Bun's built-in runner and leaves no report.
 - `bun check` runs staged-file checks, while `bun check:full` runs the wider repo checks.
 
+### codeindex MCP (structural code search)
+
+Agents (and humans) query this repo structurally — symbol lookup, keyword search,
+caller/impact analysis — through the `codeindex` MCP server (`code_symbol`,
+`code_search`, `code_impact`, `code_index`), registered project-wide in `.mcp.json`
+and pre-approved for Claude Code via `.claude/settings.json`. It indexes the product
+roots `src/`, `client/`, and `plugins/` (`.codeindex.json`); freshness is owned by the
+server itself (boot probe plus in-session `fs.watch` watcher) — no client-side reindex
+component ships in this repo.
+
+**Setup.** codeindex lives in a separate repository and is distributed by clone, not npm:
+
+```bash
+# from the papai checkout (or any of its worktrees)
+git clone <codeindex-remote-url> ../codeindex
+cd ../codeindex && bun install
+```
+
+The committed shim (`scripts/codeindex-cli.ts`) resolves the sibling clone relative to
+the primary checkout from any worktree. If the clone lives elsewhere, point `CODEINDEX_DIR`
+at it. When resolution fails the shim refuses with `codeindex repo not found at <dir>` /
+`Set CODEINDEX_DIR or clone the sibling repo at ../codeindex` — the two remedies are
+exactly the two setup options above.
+
+**Scripts.**
+
+```bash
+bun run codeindex:index    # full index build
+bun run codeindex:reindex  # incremental refresh (manual escape hatch)
+bun run codeindex:stats    # index statistics
+```
+
+**Per-worktree index.** Each checkout/worktree keeps its own index database under the
+git-ignored `.codeindex/` directory — delete a worktree and its index goes with it. The
+index is built lazily: a tree with no database gets one on the first tool call (or first
+`codeindex:index` run). An existing pre-v5 database is rebuilt once automatically on the
+v5 schema — that one-time rebuild is expected and needs no action.
+
+The agent CI pipeline can also run codeindex — as a gated experiment with its own
+provisioning (sibling checkout, index prebuild, canary, per-job usage report) in the
+`agent` job, enabled by declaring a `codeindex` server in the `AGENT_MCP_SERVERS` knob
+(secret or variable — this repository uses the secret spelling); see
+[`docs/operations/codeindex-ci-experiment.md`](docs/operations/codeindex-ci-experiment.md)
+for the enable/revert/read/decide procedures.
+
+**Verified against.** The integration was last verified against codeindex commit `d6eb4e8`
+(2026-09-10): all four MCP tools answering from a worktree, including `plugins/` symbols,
+with no client-side reindex process on edits.
+
 ---
 
 ## Testing

@@ -29,6 +29,10 @@ skill); regenerating Figma frames from code.
 Background reading: `docs/architecture/figma-codegen.md` (registry, push,
 verify loop end to end).
 
+Symbol, caller, and impact lookups while resolving mapped sources go through
+the `codeindex` MCP tools (`code_symbol` / `code_search` / `code_impact`) —
+the Codebase Search Protocol in `CLAUDE.md` carries the full rules.
+
 ## The registry
 
 `scripts/figma/registry.json` is the source of truth for the component↔code

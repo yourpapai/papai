@@ -46,12 +46,18 @@ export function buildChatModel(
   modelName: string,
   deps: ModelBuilderDeps = defaultDeps,
   metadata?: ModelMetadata,
+  reasoningEffort?: string | null,
 ): LanguageModel {
   const model = getOpenAICompatibleProvider(apiKey, baseUrl, deps)(modelName)
   const resolved = metadata ?? resolveModelMetadata({ baseUrl, model: modelName })
-  if (resolved.maxOutputTokens === null) return model
-  return wrapLanguageModel({
-    model,
-    middleware: defaultSettingsMiddleware({ settings: { maxOutputTokens: resolved.maxOutputTokens } }),
-  })
+  const settings: {
+    maxOutputTokens?: number
+    providerOptions?: { openaiCompatible: { reasoningEffort: string } }
+  } = {}
+  if (resolved.maxOutputTokens !== null) settings.maxOutputTokens = resolved.maxOutputTokens
+  if (reasoningEffort !== undefined && reasoningEffort !== null) {
+    settings.providerOptions = { openaiCompatible: { reasoningEffort } }
+  }
+  if (settings.maxOutputTokens === undefined && settings.providerOptions === undefined) return model
+  return wrapLanguageModel({ model, middleware: defaultSettingsMiddleware({ settings }) })
 }

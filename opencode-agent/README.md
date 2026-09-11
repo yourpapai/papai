@@ -2019,6 +2019,15 @@ worker is its own `opencode run` subprocess, so every local server is booted
 once per concurrent worker — one more reason `AGENT_REVIEW_POOL_SIZE` defaults
 to `1`.
 
+The one declared server today is the `codeindex` experiment: a token-free
+local declaration whose provisioning (a pinned sibling checkout at
+`../codeindex`, an index prebuild, a canary query, and a per-job usage
+report) is gated in `agent-pipeline.yml` on the same knob declaring a
+`codeindex` server — remove that entry and every added step goes inert
+without a commit. The operating procedures (enable, revert, read the
+statistics, decide keep-vs-revert) live in
+[`docs/operations/codeindex-ci-experiment.md`](../docs/operations/codeindex-ci-experiment.md).
+
 `GITHUB_TOKEN` and `GITHUB_REPOSITORY` need no operator setup on GitHub
 Actions, unlike the variables above. `GITHUB_REPOSITORY` is one of the
 [default environment variables](https://docs.github.com/en/actions/reference/workflows-and-actions/variables#default-environment-variables)
