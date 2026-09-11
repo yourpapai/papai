@@ -12,8 +12,15 @@ export type ModelsDevLimit = {
   readonly output?: number
 }
 
+export type ModelsDevReasoningOption = {
+  readonly kind: string
+  readonly values: readonly string[]
+}
+
 export type ModelsDevModelEntry = {
   readonly limit?: ModelsDevLimit
+  readonly reasoning?: boolean
+  readonly reasoningOptions?: readonly ModelsDevReasoningOption[]
 }
 
 export type ModelsDevProvider = {

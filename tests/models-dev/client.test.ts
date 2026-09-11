@@ -225,6 +225,128 @@ describe('models-dev client', () => {
     })
   })
 
+  test('a catalogue model keeps its reasoning flag and effort options', async () => {
+    const body = JSON.stringify({
+      openai: {
+        models: {
+          'reasoning-model': {
+            limit: { context: 1000, output: 100 },
+            reasoning: true,
+            reasoning_options: [{ kind: 'effort', values: ['low', 'medium', 'high'], min: 1 }],
+          },
+          'plain-model': { reasoning: false },
+        },
+      },
+    })
+
+    await prewarmModelsDevSnapshot({ fetchImpl: staticFetch(body), cachePath, now: () => NOW })
+
+    expect(getModelsDevSnapshot().providers).toEqual({
+      openai: {
+        models: {
+          'reasoning-model': {
+            limit: { context: 1000, output: 100 },
+            reasoning: true,
+            reasoningOptions: [{ kind: 'effort', values: ['low', 'medium', 'high'] }],
+          },
+          'plain-model': { reasoning: false },
+        },
+      },
+    })
+  })
+
+  test('effort values keep catalogue order and drop null and non-string entries', async () => {
+    const body = JSON.stringify({
+      openai: {
+        models: {
+          'messy-values': {
+            reasoning_options: [
+              { kind: 'effort', values: [null, 'high', 42, 'medium', false, ['low'], 'low'] },
+              { kind: 'effort', values: [] },
+            ],
+          },
+        },
+      },
+    })
+
+    await prewarmModelsDevSnapshot({ fetchImpl: staticFetch(body), cachePath, now: () => NOW })
+
+    expect(getModelsDevSnapshot().providers).toEqual({
+      openai: {
+        models: {
+          'messy-values': {
+            reasoningOptions: [
+              { kind: 'effort', values: ['high', 'medium', 'low'] },
+              { kind: 'effort', values: [] },
+            ],
+          },
+        },
+      },
+    })
+  })
+
+  test('budget-kind reasoning options are ignored', async () => {
+    const body = JSON.stringify({
+      openai: {
+        models: {
+          'budget-model': {
+            reasoning: true,
+            reasoning_options: [
+              { kind: 'budget', values: [1024, 4096], min: 0 },
+              { kind: 'effort', values: ['low', 'high'] },
+            ],
+          },
+        },
+      },
+    })
+
+    await prewarmModelsDevSnapshot({ fetchImpl: staticFetch(body), cachePath, now: () => NOW })
+
+    expect(getModelsDevSnapshot().providers).toEqual({
+      openai: {
+        models: {
+          'budget-model': {
+            reasoning: true,
+            reasoningOptions: [{ kind: 'effort', values: ['low', 'high'] }],
+          },
+        },
+      },
+    })
+  })
+
+  test('malformed reasoning fields leave the entry fields absent without failing the parse', async () => {
+    const body = JSON.stringify({
+      openai: {
+        models: {
+          'bad-reasoning': {
+            reasoning: 'yes',
+            reasoning_options: [{ kind: 'effort', values: ['low'] }],
+          },
+          'options-not-array': { reasoning: true, reasoning_options: { kind: 'effort', values: ['low'] } },
+          'no-valid-entries': { reasoning_options: [42, null, 'oops'] },
+          'entries-without-values': {
+            reasoning_options: [{ kind: 'effort' }, { kind: 'effort', values: 'nope' }],
+          },
+          good: { limit: { context: 1000, output: 100 } },
+        },
+      },
+    })
+
+    await prewarmModelsDevSnapshot({ fetchImpl: staticFetch(body), cachePath, now: () => NOW })
+
+    expect(getModelsDevSnapshot().providers).toEqual({
+      openai: {
+        models: {
+          'bad-reasoning': { reasoningOptions: [{ kind: 'effort', values: ['low'] }] },
+          'options-not-array': { reasoning: true },
+          'no-valid-entries': {},
+          'entries-without-values': {},
+          good: { limit: { context: 1000, output: 100 } },
+        },
+      },
+    })
+  })
+
   test('a fresh disk cache is served without any fetch', async () => {
     let fetches = 0
     const countingFetch = (_signal: AbortSignal): Promise<string> => {
