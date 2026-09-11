@@ -87,6 +87,11 @@ export const clearLlmAdminCacheForTesting = (): void => {
   roleCache = undefined
 }
 
+export const seedLlmAdminCacheForTesting = (account: LlmProviderAccount): void => {
+  cachePrimed = true
+  cache.set(account.id, account)
+}
+
 export const primeLlmAdminCache = (): void => {
   const rows = getDrizzleDb().select().from(llmProviders).all()
   cache.clear()
