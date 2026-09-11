@@ -19,7 +19,7 @@
 
 ## 5. Docs
 
-- [ ] 5.1 Update `opencode-agent/README.md`: the phase table's `INIT_OR_CLARIFY` row, the command table's `/approve` and `/continue` rows (both name the `INIT_OR_CLARIFY` re-entry), and one sentence on the forward path; read the tables against `acceptedCommands` for a parked state so they cannot overpromise. Verify: `bun run format:check`
+- [x] 5.1 Update `opencode-agent/README.md`: the phase table's `INIT_OR_CLARIFY` row, the command table's `/approve` and `/continue` rows (both name the `INIT_OR_CLARIFY` re-entry), and one sentence on the forward path; read the tables against `acceptedCommands` for a parked state so they cannot overpromise. Verify: `bun run format:check`
 
 ## 6. Full verification
 
