@@ -9,7 +9,7 @@ Test-first order per design.md Migration Plan; every implementation task is driv
 
 ## 2. Budget constant raise (test-first)
 
-- [ ] 2.1 Update `tests/run-control/invoke-wiring.test.ts` to import `AGENT_MAX_STEPS` from `src/llm-orchestrator-invoke.js` and assert `stepCountArgs` equals `[AGENT_MAX_STEPS]` instead of the literal `[50]` in both the no-run and active-run cases. Verify: `bun test tests/run-control/invoke-wiring.test.ts` (red)
+- [x] 2.1 Update `tests/run-control/invoke-wiring.test.ts` to import `AGENT_MAX_STEPS` from `src/llm-orchestrator-invoke.js` and assert `stepCountArgs` equals `[AGENT_MAX_STEPS]` instead of the literal `[50]` in both the no-run and active-run cases. Verify: `bun test tests/run-control/invoke-wiring.test.ts` (red)
 - [ ] 2.2 Export `AGENT_MAX_STEPS` from `src/llm-orchestrator-invoke.ts` and raise it to 125 (the call site already consumes the constant, so no enforcement change). Verify: `bun test tests/run-control/invoke-wiring.test.ts` (green)
 
 ## 3. Cap-out marker and warn (test-first)

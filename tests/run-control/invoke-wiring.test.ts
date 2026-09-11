@@ -11,7 +11,7 @@ import type { ToolExecutionEndEvent } from 'ai'
 import { MockLanguageModelV3 } from 'ai/test'
 
 import { NO_ANALYTICS_SCOPE } from '../../src/analytics/provider-request-scope.js'
-import { invokeModel } from '../../src/llm-orchestrator-invoke.js'
+import { AGENT_MAX_STEPS, invokeModel } from '../../src/llm-orchestrator-invoke.js'
 import type { InvokeModelArgs, LlmOrchestratorDeps } from '../../src/llm-orchestrator-types.js'
 import { defaultDeps } from '../../src/llm-orchestrator.js'
 import { runRegistry } from '../../src/run-control/registry.js'
@@ -105,7 +105,7 @@ describe('invokeModel run-control wiring', () => {
     const sw = captured.opts?.stopWhen
     assert.ok(Array.isArray(sw), 'stopWhen should be an array')
     expect(sw).toHaveLength(2)
-    expect(stepCountArgs).toEqual([50])
+    expect(stepCountArgs).toEqual([AGENT_MAX_STEPS])
     // stopWhen[1] is the no-progress guard (behavior covered by no-progress-condition.test.ts).
     assert.ok(typeof sw[1] === 'function', 'stopWhen[1] should be the no-progress condition')
     // A start-of-turn call (empty steps) must never stop the loop.
@@ -123,7 +123,7 @@ describe('invokeModel run-control wiring', () => {
     const sw = captured.opts?.stopWhen
     assert.ok(Array.isArray(sw), 'stopWhen should be an array')
     expect(sw).toHaveLength(3)
-    expect(stepCountArgs).toEqual([50])
+    expect(stepCountArgs).toEqual([AGENT_MAX_STEPS])
     const liveCondition = sw[2]
     assert.ok(liveCondition !== undefined, 'stopWhen[2] should be the live stop condition')
     expect(liveCondition({ steps: [] })).toBe(false)

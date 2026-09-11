@@ -32,7 +32,7 @@ const log = logger.child({ scope: 'llm-orchestrator:invoke' })
  * total budget for one user turn — not a per-round cap. Kept generous so ordinary requests
  * finish in one turn; the no-progress guard stops a stalled turn well before this.
  */
-const AGENT_MAX_STEPS = 50
+export const AGENT_MAX_STEPS = 125
 
 /**
  * Per-turn LLM attempt ordinals. One turn may drive several outbound attempts
