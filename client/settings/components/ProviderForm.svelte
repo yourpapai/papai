@@ -74,7 +74,10 @@
   const canSave = $derived(
     label.trim().length > 0 &&
       baseUrl.trim().length > 0 &&
-      (editMode || !requireApiKey || apiKey.trim().length > 0),
+      (editMode || !requireApiKey || apiKey.trim().length > 0) &&
+      Object.values(modelHints).every(
+        (hint) => hint.baseProvider.trim().length > 0 && hint.baseModel.trim().length > 0,
+      ),
   )
 
   async function save(): Promise<void> {

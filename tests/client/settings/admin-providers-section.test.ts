@@ -70,6 +70,14 @@ interface CapturedRequest {
 
 const metadataRoute = (url: string): boolean => url.includes('/settings/api/llm-model-metadata')
 
+const patchRejectsRoute =
+  (payload: unknown, status: number) =>
+  (url: string, init?: RequestInit): Promise<Response> => {
+    void url
+    if (init?.method === 'PATCH') return Promise.resolve(json({ error: 'invalid request body' }, status))
+    return Promise.resolve(json(payload))
+  }
+
 const setInput = (testid: string, value: string): void => {
   const input = document.querySelector<HTMLInputElement>(`[data-testid="${testid}"]`)!
   input.value = value
@@ -321,6 +329,49 @@ describe('AdminProvidersSection', () => {
     expect(JSON.parse(patched!.body)).toMatchObject({
       modelHints: { 'gpt-4o': { baseProvider: 'openai', baseModel: 'gpt-4o-turbo' } },
     })
+  })
+
+  test('an incomplete hint row disables saving until the hint is filled', async () => {
+    setMockFetch(recordingRoute([], hintsPayload, true))
+    mount(AdminProvidersSection, { target })
+    await drain()
+
+    document.querySelector<HTMLButtonElement>('[data-testid="admin-providers-edit-prov_1"]')!.click()
+    await drain()
+    expect(document.querySelector('[data-testid="provider-edit-form-error"]')).toBeNull()
+
+    const select = document.querySelector<HTMLSelectElement>('[data-testid="model-hints-add-model"]')!
+    select.value = 'gpt-4o-mini'
+    select.dispatchEvent(new Event('change', { bubbles: true }))
+    await drain()
+
+    const save = document.querySelector<HTMLButtonElement>('[data-testid="provider-edit-form-save"]')!
+    expect(save.disabled).toBe(true)
+
+    const row = [...document.querySelectorAll('[data-testid="model-hints-row"]')].find((candidate) =>
+      candidate.textContent?.includes('gpt-4o-mini'),
+    )!
+    setElementValue(row.querySelector<HTMLInputElement>('[data-testid="model-hints-base-provider"]')!, 'openai')
+    setElementValue(row.querySelector<HTMLInputElement>('[data-testid="model-hints-base-model"]')!, 'gpt-4o-mini')
+    flushSync()
+
+    expect(save.disabled).toBe(false)
+  })
+
+  test('a rejected edit save surfaces the server error next to the form', async () => {
+    setMockFetch(patchRejectsRoute(hintsPayload, 422))
+    mount(AdminProvidersSection, { target })
+    await drain()
+
+    document.querySelector<HTMLButtonElement>('[data-testid="admin-providers-edit-prov_1"]')!.click()
+    await drain()
+    document.querySelector<HTMLButtonElement>('[data-testid="provider-edit-form-save"]')!.click()
+    await drain()
+
+    const surfaced = document.querySelector('[data-testid="provider-edit-form-error"]')
+    expect(surfaced).not.toBeNull()
+    expect(surfaced!.textContent).toContain('invalid request body')
+    expect(document.querySelector('[data-testid="provider-edit-form"]')).not.toBeNull()
   })
 
   test('the create form does not render the hints editor', async () => {

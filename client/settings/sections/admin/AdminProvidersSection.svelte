@@ -264,6 +264,9 @@
                     onCancel={() => (editTarget = null)}
                     busy={saving}
                     testidPrefix="provider-edit-form" />
+                  {#if error !== null}
+                    <p class="status-error" data-testid="provider-edit-form-error">{error}</p>
+                  {/if}
                 </td>
               </tr>
             {/if}
