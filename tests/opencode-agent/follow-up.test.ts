@@ -269,11 +269,25 @@ describe('runFollowUp · the size gate', () => {
   it('states the verdict and reason on the applied path too', async () => {
     const fixture = followUpFixture()
 
-    await runFollowUp(fixture.input)
+    const result = await runFollowUp(fixture.input)
 
     const body = String(fixture.sections.at(-1)?.body)
     expect(body).toContain('small')
     expect(body).toContain('A one-line constant change in a file the change already touched.')
+    // The run posted its one comment, so it says so — the workflow's fallback
+    // step reads this flag, and a false claim silences the one comment that
+    // explains a silence.
+    expect(result.reported).toBe(true)
+  })
+
+  it('states the verdict and reason on the declined path, in the run reason too', async () => {
+    const fixture = followUpFixture({ replies: [ASSESSMENT_TOO_BIG, APPLY_REPLY] })
+
+    const result = await runFollowUp(fixture.input)
+
+    expect(result.status).toBe('completed')
+    expect(result.reason).toContain('declined as too big')
+    expect(result.reason).toContain('This asks for a new capability, not a tweak.')
   })
 })
 

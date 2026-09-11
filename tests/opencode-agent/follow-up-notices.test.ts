@@ -71,6 +71,21 @@ describe('renderFollowUpApplied', () => {
     expect(rendered).toContain('`.github/workflows/ci.yml`')
     expect(rendered).toContain('by hand')
   })
+
+  it('says no files changed when the apply turn edited nothing', () => {
+    const rendered = renderFollowUpApplied({
+      reason: 'A one-line change.',
+      summary: 's',
+      files: [],
+      checks: ['bun check:full'],
+      sha: 'nothing to push — no commit was made',
+      dropped: [],
+    })
+
+    expect(rendered).toContain('No files changed.')
+    // No drop, no drop line: the remedy must not invent work for a maintainer.
+    expect(rendered).not.toContain('by hand')
+  })
 })
 
 describe('renderFollowUpChecksRed', () => {
@@ -86,6 +101,19 @@ describe('renderFollowUpChecksRed', () => {
     expect(rendered).toContain('exit 1')
     expect(rendered).toContain('nothing was pushed')
     expect(rendered).toContain('exactly as this command found it')
+  })
+
+  it('names the remedy without a pull request when there is none to name', () => {
+    const rendered = renderFollowUpChecksRed(
+      ['bun check:full'],
+      [{ name: 'bun check:full', exitCode: 1, output: 'x' }],
+      null,
+    )
+
+    // The remedy sentence stands alone — no empty parentheses where a URL
+    // would have been.
+    expect(rendered).toContain('open the pull request and apply it there')
+    expect(rendered).not.toContain('()')
   })
 })
 

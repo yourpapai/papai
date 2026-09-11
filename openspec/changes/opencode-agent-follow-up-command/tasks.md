@@ -24,7 +24,7 @@
 - [x] 4.4 Implement `follow-up-notices.ts`: renderers for usage refusal, over-budget notice, applied report (decision + reason, files, checks, sha), too-big decline with issue draft, checks-red failure, hard failure — verify with `bun run typecheck`
 - [x] 4.5 Implement `phases/follow-up.ts` (`runFollowUp`, `runSync`/`answer.ts` shape): `ensureBranch` (standard drift guard), token-ceiling check, one `plan`-profile `promptForJson` assessment turn over the enveloped request + change-folder digest + branch diff stat, one `build`-profile apply turn with the pinned instructions, pipeline re-runs the model-named test commands plus `AGENT_CHECK_COMMAND` via the `check-loop.ts` runner seam, `commitAll` under commit-repair, `git-reconcile` merge, push, single exit via `postAnswer` with spend folded into the carried state — verify with `bun test tests/opencode-agent/`
 - [x] 4.6 Wire the dispatch: `driveMachine` calls `runFollowUp` beside `runSync`, ahead of both budget stops — verify with `bun test tests/opencode-agent/` (the 4.1–4.2 tests go green end to end)
-- [ ] 4.7 Confirm the mutation ratchet is satisfied on the new module: run `bun run test:mutate:changed` and check the verdict-branch and zero-commit-guarantee mutants are killed (persisted-state assertions are the killers)
+- [x] 4.7 Confirm the mutation ratchet is satisfied on the new module: run `bun run test:mutate:changed` and check the verdict-branch and zero-commit-guarantee mutants are killed (persisted-state assertions are the killers)
 
 ## 5. Docs
 

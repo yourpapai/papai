@@ -97,7 +97,10 @@ const fixture = (
     return Promise.resolve({
       kind,
       totals: { files: 1, lines: 4 },
-      dropped: [...(kind === 'committed' ? (over.dropped ?? []) : (over.dropped ?? ['.github/workflows/ci.yml']))],
+      // Dropped paths come only from what the test seeds: the blocked test
+      // seeds its own, so the clean path proves the drop line's absence rather
+      // than inheriting one.
+      dropped: [...(over.dropped ?? [])],
     })
   }
   recording.deps.git.push = (branch: string): Promise<void> => {
@@ -164,6 +167,7 @@ describe('applyAndPush · the checks', () => {
     )
 
     expect(end.status).toBe('completed')
+    expect(end.reason).toContain('Applied the follow-up on agent/issue-42')
     const ran = fx.checks.map((check) => check.argv.join(' '))
     expect(ran).toContain('bun test tests/http/retry.test.ts')
     expect(ran).toContain('bun check:full')
@@ -188,6 +192,7 @@ describe('applyAndPush · the refusals', () => {
     )
 
     expect(end.status).toBe('failed')
+    expect(end.reason).toContain('The follow-up failed its checks')
     expect(fx.io.gitCalls.filter((call) => /^(commit|push):/u.test(call))).toEqual([])
     // The comment rides the end; posting it is `finish`'s write (follow-up.ts).
     expect(end.comment).toContain('bun check:full')
@@ -234,5 +239,48 @@ describe('applyAndPush · the refusals', () => {
     expect(fx.io.gitCalls.filter((call) => call.startsWith('push:'))).toEqual([])
     expect(end.comment).toContain('`.github/workflows/ci.yml`')
     expect(end.comment).toContain('by hand')
+    // The blocked path still names what the apply turn edited — the drop is
+    // the workflow file's alone, and the rest of the work is on the record.
+    expect(end.comment).toContain('src/http/retry.ts')
+    expect(end.comment).toContain('nothing to push')
+  })
+
+  it('reports a clean tree — the apply turn changed nothing — without pushing', async () => {
+    const fx = fixture({ commitOutcome: 'clean' })
+
+    const end = await applyAndPush(
+      fx.input,
+      'agent/issue-42',
+      'A one-line change.',
+      APPLIED,
+      { nonce: 'n', wrap: (l, b) => `[${l}] ${b}` },
+      await fx.input.deps.agent(),
+    )
+
+    expect(end.status).toBe('completed')
+    expect(fx.io.gitCalls.filter((call) => call.startsWith('push:'))).toEqual([])
+    expect(end.comment).toContain('No files changed.')
+    expect(end.comment).toContain('nothing to push')
+    // A clean tree drops nothing, so the by-hand remedy must not appear: the
+    // drop line's absence is the fact a maintainer acts on.
+    expect(end.comment).not.toContain('by hand')
+  })
+
+  it('rethrows a push refusal that is not the workflows-permission sentence', async () => {
+    // The translation is matched on GitHub's own sentence, and only that one:
+    // any other push error is an ordinary broken run, and swallowing it here
+    // would report a remedy for a failure it does not describe.
+    const fx = fixture({ pushError: new Error('git failed (1): remote hung up unexpectedly') })
+
+    await expect(
+      applyAndPush(
+        fx.input,
+        'agent/issue-42',
+        'A one-line change.',
+        APPLIED,
+        { nonce: 'n', wrap: (l, b) => `[${l}] ${b}` },
+        await fx.input.deps.agent(),
+      ),
+    ).rejects.toThrow('remote hung up unexpectedly')
   })
 })
