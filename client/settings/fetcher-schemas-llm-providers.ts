@@ -34,6 +34,15 @@ export const VerificationSchema = z.object({
 })
 export type Verification = z.infer<typeof VerificationSchema>
 
+export const ModelHintsSchema = z.record(
+  z.string(),
+  z.object({
+    baseProvider: z.string().min(1),
+    baseModel: z.string().min(1),
+  }),
+)
+export type ModelHints = z.infer<typeof ModelHintsSchema>
+
 export const PublicProviderAccountSchema = z.object({
   id: z.string(),
   label: z.string(),
@@ -42,6 +51,7 @@ export const PublicProviderAccountSchema = z.object({
   apiKeyMasked: z.string(),
   baseProvider: z.string().nullable().default(null),
   baseModel: z.string().nullable().default(null),
+  modelHints: ModelHintsSchema.default({}),
   verification: VerificationSchema,
 })
 export type PublicProviderAccount = z.infer<typeof PublicProviderAccountSchema>
@@ -68,6 +78,7 @@ export const ProviderInputSchema = z.object({
   apiKey: z.string().min(1),
   baseProvider: z.string().nullable().optional(),
   baseModel: z.string().nullable().optional(),
+  modelHints: ModelHintsSchema.optional(),
 })
 export type ProviderInput = z.infer<typeof ProviderInputSchema>
 export type ProviderPatch = Partial<ProviderInput> & { models?: string[] }
