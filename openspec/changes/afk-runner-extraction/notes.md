@@ -132,3 +132,17 @@ deleting the new repo.
   release gate; resume deliberately not yet run — 5.1 is a full-suite
   pass, so it should run on an idle machine. Worktree is clean of the
   slices; only this notes.md edit is uncommitted.
+- 2026-09-11 (later) — resume after the 4.1/4.2 hand re-targets worked
+  as predicted: the walk spawned 4.3, 4.4 fresh; both flaked their
+  affected checks on the same spawn/real-git timing family under loaded
+  144–391 s suite runs, but 4.4's slice commit (`e7e877dfe`) swept in
+  4.3's already-applied CLAUDE.md edit, so both boxes read checked and
+  their verifies pass (`rg -n "afk" CLAUDE.md` — every hit
+  new-repo-pointing). The 4.5 bracket exhausted the same way (edit
+  applied, `rg -n "afk" docs/architecture/commands.md` empty) → gate-7.
+  Hand re-target executed: 4.5 box checked + record item 4.5.1 appended
+  after 4.5 (positional ids 10–12 stay fold-aligned), slice landed as
+  `f654f2728`; gate-7 carries the staged T1-approve. Remaining walk:
+  4.6 (`tests/CLAUDE.md` roots sentence), 5.1 (full gate pass — run on
+  an idle machine), 5.2 (widened census), 5.3 (D6 cleanup note), then
+  verify → release gate (answer `APPROVE`).
