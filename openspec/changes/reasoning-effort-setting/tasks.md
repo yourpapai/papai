@@ -21,7 +21,7 @@ See LICENSE in the project root for details.
 
 ## 3. Settings surface (fields, routes, UI)
 
-- [ ] 3.1 TDD red: extend `tests/config-keys.test.ts` — the `ai_reasoning_effort` select field's options are derived per active model through the LLM config resolution: catalogue levels / union fallback for unknown or unconfigured / default-only for a catalogue non-reasoning model; the other AI-output fields are returned unchanged without mutating the shared constants. Verify: `bun test tests/config-keys.test.ts` (fails)
+- [x] 3.1 TDD red: extend `tests/config-keys.test.ts` — the `ai_reasoning_effort` select field's options are derived per active model through the LLM config resolution: catalogue levels / union fallback for unknown or unconfigured / default-only for a catalogue non-reasoning model; the other AI-output fields are returned unchanged without mutating the shared constants. Verify: `bun test tests/config-keys.test.ts` (fails)
 - [ ] 3.2 Implement the field entry and per-model option decoration in `src/config-keys.ts`. Verify: `bun test tests/config-keys.test.ts`
 - [ ] 3.3 TDD red: extend `tests/debug/settings/config-routes.test.ts` — GET returns the derived options for the context's active model; PATCH stores a union value while the active model is catalogue-unknown; PATCH rejects a clearly invalid value with 422 listing the allowed set; unsetting (empty) is accepted. Verify: `bun test tests/debug/settings/config-routes.test.ts`
 - [ ] 3.4 Close any route-level gap (expected near-zero: GET and PATCH already flow through `getConfigFieldsForContext` and `validateConfigField` against `field.options`). Verify: `bun test tests/debug/settings/config-routes.test.ts`
