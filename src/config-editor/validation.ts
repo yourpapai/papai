@@ -35,8 +35,17 @@ export function validateConfigField(field: ConfigField, value: string): Validati
   if (field.storageKey === 'timezone') return validateTimezone(value)
   if (field.storageKey === 'ai_reasoning_effort' && value === 'default') return { valid: true }
   if (field.options !== undefined && value !== '' && !field.options.some((option) => option.value === value)) {
-    const allowed = field.options.map((option) => option.value).join(', ')
-    return { valid: false, error: `${field.label} must be one of: ${allowed}` }
+    const allowed = field.options
+      .map((option) => option.value)
+      .filter((option) => option !== '')
+      .join(', ')
+    return {
+      valid: false,
+      error:
+        allowed.length > 0
+          ? `${field.label} must be one of: ${allowed}`
+          : `${field.label} is not available for the active model`,
+    }
   }
   return { valid: true }
 }

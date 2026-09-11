@@ -90,6 +90,20 @@ describe('config-editor validation', () => {
       expect(bad.error).toContain('must be one of')
     })
 
+    test('a default-only effort list rejects a level with a non-empty message', () => {
+      const effortField = field('ai_reasoning_effort', {
+        label: 'Reasoning effort',
+        kind: 'ai-output',
+        required: false,
+        control: 'select',
+        options: [{ value: '', label: 'Provider default' }],
+      })
+
+      const bad = validateConfigField(effortField, 'high')
+      expect(bad.valid).toBe(false)
+      expect(bad.error).toBe('Reasoning effort is not available for the active model')
+    })
+
     test('other select fields still reject the default sentinel', () => {
       const languageField = field('language', {
         kind: 'preference',
