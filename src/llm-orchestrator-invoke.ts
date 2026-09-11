@@ -16,6 +16,7 @@ import { createNoProgressCondition } from './run-control/no-progress-condition.j
 import { runRegistry } from './run-control/registry.js'
 import { composePrepareSteps, createSteeringPrepareStep } from './run-control/steering-prepare-step.js'
 import { createStopRequestedCondition } from './run-control/stop-condition.js'
+import { createTurnLimitTracker, TURN_LIMIT_STOP_REASON } from './run-control/turn-limit.js'
 import { RunAbortedError } from './run-control/types.js'
 import { buildProviderlessSystemPrompt, buildSystemPrompt } from './system-prompt.js'
 import { createDisclosurePrepareStep } from './tools/disclosure/prepare-step.js'
@@ -82,7 +83,12 @@ export const resolveSystemPrompt = (
     : buildSystemPrompt(provider, contextId, enabledToolNames, opts)
 }
 
-const callGenerateText = async (a: GenerateArgs): ReturnType<LlmOrchestratorDeps['generateText']> => {
+type GeneratedTurn = {
+  result: Awaited<ReturnType<LlmOrchestratorDeps['generateText']>>
+  turnLimitHit: boolean
+}
+
+const callGenerateText = async (a: GenerateArgs): Promise<GeneratedTurn> => {
   const { contextId, turnId, model, systemPrompt, messages, tools, toolsContext, deps, disclosure, ctx } = a
   const run = runRegistry.get(contextId)
   const disclosureStep =
@@ -90,10 +96,11 @@ const callGenerateText = async (a: GenerateArgs): ReturnType<LlmOrchestratorDeps
   const prepareStep =
     run === undefined ? disclosureStep : composePrepareSteps(createSteeringPrepareStep(run), disclosureStep)
   // Budget cap + no-progress guard always apply; a live force-stop condition is added when a run is active.
+  const turnLimit = createTurnLimitTracker(deps.stepCountIs, AGENT_MAX_STEPS)
   const stopWhen =
     run === undefined
-      ? [deps.stepCountIs(AGENT_MAX_STEPS), createNoProgressCondition()]
-      : [deps.stepCountIs(AGENT_MAX_STEPS), createNoProgressCondition(), createStopRequestedCondition(run)]
+      ? [turnLimit.condition, createNoProgressCondition()]
+      : [turnLimit.condition, createNoProgressCondition(), createStopRequestedCondition(run)]
   const finishHandler = buildToolCallFinishHandler(ctx)
   try {
     // `toolsContext` is keyed by every name in the final ToolSet. The generic
@@ -116,7 +123,8 @@ const callGenerateText = async (a: GenerateArgs): ReturnType<LlmOrchestratorDeps
       ...(prepareStep === undefined ? {} : { prepareStep }),
       ...(disclosure === undefined ? {} : { repairToolCall: createRepairToolCall(disclosure, contextId) }),
     }
-    return await deps.generateText(Object.assign({}, baseOptions, { toolsContext }))
+    const result = await deps.generateText(Object.assign({}, baseOptions, { toolsContext }))
+    return { result, turnLimitHit: turnLimit.hit }
   } catch (error) {
     if (run !== undefined && run.abortController.signal.aborted) {
       log.info({ contextId, turnId }, 'Run force-aborted by user')
@@ -142,6 +150,10 @@ const buildToolCallContext = (args: InvokeArgs, mainModel: string, turnId: strin
   ...(args.progressReporter === undefined ? {} : { progressReporter: args.progressReporter }),
   ...(args.liveStatus === undefined ? {} : { liveStatus: args.liveStatus }),
 })
+
+const warnTurnLimitReached = (contextId: string, turnId: string, steps: number): void => {
+  log.warn({ contextId, turnId, steps }, 'Agent turn ended at the step cap (turn_limit)')
+}
 
 export const invokeModel = async (args: InvokeArgs): ReturnType<LlmOrchestratorDeps['generateText']> => {
   const {
@@ -172,7 +184,7 @@ export const invokeModel = async (args: InvokeArgs): ReturnType<LlmOrchestratorD
   const timedModel = wrapModelForTtft(model, ttft)
   emitLlmStart(contextId, mainModel, messages, tools, turnId, attempt)
   const ctx = buildToolCallContext(args, mainModel, turnId)
-  const result = await callGenerateText({
+  const { result, turnLimitHit } = await callGenerateText({
     contextId,
     turnId,
     model: timedModel,
@@ -184,9 +196,11 @@ export const invokeModel = async (args: InvokeArgs): ReturnType<LlmOrchestratorD
     disclosure,
     ctx,
   })
+  if (turnLimitHit) warnTurnLimitReached(contextId, turnId, result.steps.length)
   emitLlmEnd(contextId, chatUserId, contextType, mainModel, result, start, messages, tools, turnId, {
     ...attempt,
     timeToFirstTokenMs: ttft.read(),
+    ...(turnLimitHit ? { stopReason: TURN_LIMIT_STOP_REASON } : {}),
   })
   return result
 }
