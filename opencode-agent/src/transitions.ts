@@ -153,7 +153,7 @@ const timeStopTransition = (state: AgentState, patch: Partial<AgentState>): Part
  * of one move, free to disagree with the first.
  *
  * The third `CONTINUE` never gets here: out of `INIT_OR_CLARIFY` the command is
- * the ANSWERED shape handled in {@link transition} above — a parked triage has
+ * the ANSWERED shape handled in {@link transition} below — a parked triage has
  * nothing to resume.
  *
  * The `INIT_OR_CLARIFY` fallback is for a hand-edited block that names no resume
