@@ -8,6 +8,7 @@ import { afterEach, describe, expect, test } from 'bun:test'
 import { resolveMaxTokens } from '../../src/model-context.js'
 import { prewarmModelsDevSnapshot } from '../../src/models-dev/client.js'
 import { resetModelsDevSnapshotForTest } from '../../src/models-dev/client.testing.js'
+import { FALLBACK_EFFORT_LEVELS, effortLevelsFor } from '../../src/models-dev/effort-levels.js'
 import type { ModelMetadata, ModelMetadataInput, ModelsDevSnapshot } from '../../src/models-dev/resolve.js'
 import { resolveModelMetadata } from '../../src/models-dev/resolve.js'
 
@@ -327,6 +328,34 @@ describe('resolveModelMetadata', () => {
       source: 'models-dev',
       via: 'inferred',
     })
+  })
+
+  test('ambiguous names with disagreeing reasoning flags drop the flag so the derived set is order-independent', () => {
+    const snapshot = snapshotWith({
+      alpha: {
+        models: { 'shared-model': { limit: { context: 100_000 }, reasoning: true } },
+      },
+      beta: {
+        models: { 'shared-model': { limit: { context: 100_000 }, reasoning: false } },
+      },
+    })
+    const flipped = snapshotWith({
+      alpha: {
+        models: { 'shared-model': { limit: { context: 100_000 }, reasoning: false } },
+      },
+      beta: {
+        models: { 'shared-model': { limit: { context: 100_000 }, reasoning: true } },
+      },
+    })
+    for (const providers of [snapshot, flipped]) {
+      expect(resolve({ model: 'shared-model' }, providers)).toMatchObject({
+        contextWindow: 100_000,
+        reasoning: undefined,
+        source: 'models-dev',
+        via: 'inferred',
+      })
+      expect(effortLevelsFor(resolve({ model: 'shared-model' }, providers))).toEqual(FALLBACK_EFFORT_LEVELS)
+    }
   })
 
   test('existing metadata literals without the reasoning fields stay valid', () => {

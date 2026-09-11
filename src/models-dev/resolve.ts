@@ -136,8 +136,13 @@ const ambiguousNameResult = (model: string, providers: ModelsDevSnapshot['provid
     const levels = matches.every((match) => sameLevels(match.effortLevels, first.effortLevels))
       ? first.effortLevels
       : null
+    // The reasoning flag is catalogue data feeding the same derived level set (src/models-dev/effort-levels.ts
+    // consults `reasoning === false` exactly when levels are absent), so it follows the same agreement rule:
+    // on disagreement report no flag, making the derived set the fallback union for every provider order.
+    const reasoning = matches.every((match) => match.reasoning === first.reasoning) ? first.reasoning : undefined
     return {
       ...first,
+      reasoning,
       maxOutputTokens: cap,
       effortLevels: levels,
       modelId: model,
