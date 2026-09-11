@@ -4,7 +4,7 @@
 // See LICENSE in the project root for details.
 
 import { getCachedConfig } from './cache.js'
-import { FALLBACK_EFFORT_LEVELS } from './models-dev/effort-levels.js'
+import { isEffortLevel } from './models-dev/effort-levels.js'
 import type { ModelMetadata } from './models-dev/resolve.js'
 
 export const AI_TOOL_VISIBILITY_KEY = 'ai_tool_visibility'
@@ -42,10 +42,10 @@ function parseReasoningEffort(value: string | null): string | null {
   return value
 }
 
-export function resolveEffectiveReasoningEffort(configContextId: string, _metadata: ModelMetadata): string | null {
+export function resolveEffectiveReasoningEffort(configContextId: string, metadata: ModelMetadata): string | null {
   const parsed = parseReasoningEffort(getCachedConfig(configContextId, AI_REASONING_EFFORT_KEY))
   if (parsed === null) return null
-  return FALLBACK_EFFORT_LEVELS.includes(parsed) ? parsed : null
+  return isEffortLevel(metadata, parsed) ? parsed : null
 }
 
 export function getAiOutputSettings(contextId: string): AiOutputSettings {

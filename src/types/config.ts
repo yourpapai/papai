@@ -26,6 +26,7 @@ export type AiOutputConfigKey =
   | 'ai_reasoning_visibility'
   | 'ai_output_detail_level'
   | 'ai_live_status'
+  | 'ai_reasoning_effort'
 
 // Internal config keys: storable via the config store but never declared as a
 // ConfigField, so they stay invisible to the settings UI and config editor.
@@ -72,6 +73,7 @@ export const ALL_CONFIG_KEYS: readonly ConfigKey[] = [
   'ai_reasoning_visibility',
   'ai_output_detail_level',
   'ai_live_status',
+  'ai_reasoning_effort',
   'language_prompted',
 ]
 
