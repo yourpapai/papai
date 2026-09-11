@@ -25,4 +25,4 @@
 
 - [x] 6.1 Run the mutation ratchet over the touched gateable files: `bun run test:mutate:changed` for `opencode-agent/src/transitions.ts`, `prompts.ts`, `commands.ts` — no record regresses on `scripts/mutation/baseline.json` (transitions.ts floor 0.974, 149 kills)
 - [x] 6.2 Run `bun check:full`; on failure read `reports/checks/<name>.log` rather than re-running
-- [ ] 6.3 Final: full `bun run test` (budget ≥ 20 min; on interruption query `bun run test:status`/`test:log` instead of restarting), `bun run typecheck`, `bun run lint`; sweep `docs/architecture/*.md` for stale statements about `/continue`/`/approve` being refused in `INIT_OR_CLARIFY` and update any affected page (expected: none — the command surface is documented only in `opencode-agent/README.md`)
+- [x] 6.3 Final: full `bun run test` (budget ≥ 20 min; on interruption query `bun run test:status`/`test:log` instead of restarting), `bun run typecheck`, `bun run lint`; sweep `docs/architecture/*.md` for stale statements about `/continue`/`/approve` being refused in `INIT_OR_CLARIFY` and update any affected page (expected: none — the command surface is documented only in `opencode-agent/README.md`)
