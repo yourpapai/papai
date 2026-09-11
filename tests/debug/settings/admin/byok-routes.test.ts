@@ -3,7 +3,7 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { beforeEach, describe, expect, test } from 'bun:test'
+import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
 
 import { z } from 'zod'
 
@@ -54,6 +54,10 @@ describe('settings admin BYOK routes', () => {
     addAdmin('admin-1', 'pi-1')
     adminSession = await establishSession({ platformInstanceId: 'pi-1', platformUserId: 'admin-1' })
     userSession = await establishSession({ platformInstanceId: 'pi-1', platformUserId: 'user-1' })
+  })
+
+  afterEach(() => {
+    restoreFetch()
   })
 
   test('non-admin cannot read BYOK summaries', async () => {
@@ -159,6 +163,5 @@ describe('settings admin BYOK routes', () => {
       .parse(await getRes.json())
     const echoed = body.providers.find((p) => p.id === 'prov-hints')
     expect(echoed?.modelHints).toStrictEqual(hints)
-    restoreFetch()
   })
 })
