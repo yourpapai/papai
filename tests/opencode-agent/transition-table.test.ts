@@ -60,7 +60,14 @@ describe('the transition table', () => {
       path.join(import.meta.dir, '..', '..', 'opencode-agent', 'src', 'transition-table.ts'),
       'utf8',
     )
-    const rowAt = source.indexOf('INIT_OR_CLARIFY: {')
+    // The anchor is the row key alone, never `INIT_OR_CLARIFY: {`: the mutation
+    // gate's dry run reads the Stryker-instrumented copy of this file, where the
+    // literal has grown a coverage prefix (`INIT_OR_CLARIFY: stryMutAct…("1") ?
+    // {} : (stryCov…("1"), {`), so the brace shape exists only outside the
+    // sandbox and anchoring on it fails the initial test run before a single
+    // mutant is tried. The audited property is unchanged: the comment block
+    // immediately preceding the row must still name `/continue`.
+    const rowAt = source.indexOf('INIT_OR_CLARIFY:')
     const rowComment = source.slice(source.lastIndexOf('*/', rowAt), rowAt)
 
     expect(rowComment).toContain('/continue')
