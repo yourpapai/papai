@@ -8,7 +8,7 @@
 
 ## 2. Surface exception
 
-- [ ] 2.1 Write failing tests: `/follow-up` accepted on the originating issue while a PR is open (exception), every other command still refused with the pointer to the PR, `/follow-up` on the issue before any PR gets the ordinary wrong-command refusal, reply posted on the surface typed — run `bun test tests/opencode-agent/` (red)
+- [x] 2.1 Write failing tests: `/follow-up` accepted on the originating issue while a PR is open (exception), every other command still refused with the pointer to the PR, `/follow-up` on the issue before any PR gets the ordinary wrong-command refusal, reply posted on the surface typed — run `bun test tests/opencode-agent/` (red)
 - [ ] 2.2 Implement: extend `commandSurface` in `feedback-target.ts` to take the command and return 'accepted' for `/follow-up` on the issue once a PR exists; `applyTrigger` unchanged — verify with `bun test tests/opencode-agent/`
 
 ## 3. Workflow arm (forced red-first)
