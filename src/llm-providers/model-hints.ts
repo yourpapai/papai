@@ -8,8 +8,8 @@ import { z } from 'zod'
 export const ModelHintsSchema = z.record(
   z.string(),
   z.object({
-    baseProvider: z.string().min(1),
-    baseModel: z.string().min(1),
+    baseProvider: z.string().trim().min(1),
+    baseModel: z.string().trim().min(1),
   }),
 )
 

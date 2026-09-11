@@ -33,7 +33,7 @@ describe('llm-providers model hints', () => {
       })
     })
 
-    test('rejects an empty alias', async () => {
+    test('rejects an empty or whitespace-only alias', async () => {
       const rows: readonly HintValueRow[] = [
         {
           label: 'empty baseProvider',
@@ -43,9 +43,27 @@ describe('llm-providers model hints', () => {
           label: 'empty baseModel',
           value: { 'hf:zai-org/GLM-5.3-Flash': { baseProvider: 'zai-org', baseModel: '' } },
         },
+        {
+          label: 'whitespace-only baseProvider',
+          value: { 'hf:zai-org/GLM-5.3-Flash': { baseProvider: ' ', baseModel: 'GLM-5.3-Flash' } },
+        },
+        {
+          label: 'whitespace-only baseModel',
+          value: { 'hf:zai-org/GLM-5.3-Flash': { baseProvider: 'zai-org', baseModel: '  ' } },
+        },
       ]
       await assertEach(rows, (row) => {
         expect(ModelHintsSchema.safeParse(row.value).success).toBe(false)
+      })
+    })
+
+    test('trims padded aliases in the parsed output', () => {
+      const result = ModelHintsSchema.safeParse({
+        'hf:zai-org/GLM-5.3-Flash': { baseProvider: ' zai-org ', baseModel: '\tGLM-5.3-Flash\n' },
+      })
+      expect(result.success).toBe(true)
+      expect(result.data).toStrictEqual({
+        'hf:zai-org/GLM-5.3-Flash': { baseProvider: 'zai-org', baseModel: 'GLM-5.3-Flash' },
       })
     })
 
@@ -95,6 +113,10 @@ describe('llm-providers model hints', () => {
         {
           label: 'empty baseProvider',
           value: { 'hf:zai-org/GLM-5.3-Flash': { baseProvider: '', baseModel: 'GLM-5.3-Flash' } },
+        },
+        {
+          label: 'whitespace-only baseProvider',
+          value: { 'hf:zai-org/GLM-5.3-Flash': { baseProvider: ' ', baseModel: 'GLM-5.3-Flash' } },
         },
         {
           label: 'non-string baseProvider',
