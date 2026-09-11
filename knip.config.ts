@@ -209,6 +209,11 @@ export default {
     // Storybook fixture harness (client/stories/**, knip-ignored by config).
     // Zero production consumers today; the types pin the 5 live BYOK keys.
     'client/shared/api-types.ts': ['types'],
+    // ModelHints pins the client-side per-model hints record mirrored from the
+    // server's llm-base-model-selection change (openspec/changes/
+    // llm-base-model-selection): consumed by the in-flight ModelHintsEditor
+    // (change task 5.4) and by tests outside knip's production project scope.
+    'client/settings/fetcher-schemas-llm-providers.ts': ['types'],
   },
 
   includeEntryExports: true,
