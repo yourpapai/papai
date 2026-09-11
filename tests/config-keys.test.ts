@@ -82,6 +82,7 @@ describe('getConfigKeysForContext', () => {
       'ai_reasoning_visibility',
       'ai_output_detail_level',
       'ai_live_status',
+      'ai_reasoning_effort',
     ])
   })
 
@@ -104,6 +105,7 @@ describe('getConfigKeysForContext', () => {
       'ai_reasoning_visibility',
       'ai_output_detail_level',
       'ai_live_status',
+      'ai_reasoning_effort',
     ])
   })
 
@@ -122,6 +124,7 @@ describe('getConfigKeysForContext', () => {
       'ai_reasoning_visibility',
       'ai_output_detail_level',
       'ai_live_status',
+      'ai_reasoning_effort',
     ])
   })
 
@@ -138,6 +141,7 @@ describe('getConfigKeysForContext', () => {
       'ai_reasoning_visibility',
       'ai_output_detail_level',
       'ai_live_status',
+      'ai_reasoning_effort',
     ])
   })
 
@@ -162,6 +166,7 @@ describe('getConfigKeysForContext', () => {
       'ai_reasoning_visibility',
       'ai_output_detail_level',
       'ai_live_status',
+      'ai_reasoning_effort',
     ])
   })
 
@@ -190,6 +195,7 @@ describe('getConfigKeysForContext', () => {
       'ai_reasoning_visibility',
       'ai_output_detail_level',
       'ai_live_status',
+      'ai_reasoning_effort',
     ])
   })
 
