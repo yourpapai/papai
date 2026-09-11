@@ -4,7 +4,7 @@
 - [x] 1.2 Write failing tests for `acceptedCommands`: `/follow-up` offered exactly in `COMPLETE`/`PR_DELIVERY` with a pull request named (including the issue-surface state), offered nowhere else, and absent on a cancelled `COMPLETE` that names no PR — run `bun test tests/opencode-agent/`
 - [x] 1.3 Implement: add `/follow-up` to `SLASH_COMMANDS`, add the `COMMAND_APPLIES` predicate (`COMPLETE`/`PR_DELIVERY` with `prNumber`), deliberately no `COMMAND_SIGNALS` entry — verify with `bun test tests/opencode-agent/commands.test.ts`
 - [x] 1.4 Write failing tests for the refusal and dispatch paths: undelivered `/follow-up` gets the `refuseUnknown` wording naming delivered pull requests (with the accepted-commands list), `sideOperation` returns the `followUp` flag only on the predicate, argument-less `/follow-up` is refused with usage and buys no turn, fork look-alike still refused with no turn — run `bun test tests/opencode-agent/` (red)
-- [ ] 1.5 Implement: `refuseUnknown` `/follow-up` wording, `sideOperation` `/follow-up` branch (usage refusal for an empty argument), `followUp?: boolean` on `TriggerOutcome` and `MachineInput` — verify with `bun test tests/opencode-agent/` and `bun run typecheck`
+- [x] 1.5 Implement: `refuseUnknown` `/follow-up` wording, `sideOperation` `/follow-up` branch (usage refusal for an empty argument), `followUp?: boolean` on `TriggerOutcome` and `MachineInput` — verify with `bun test tests/opencode-agent/` and `bun run typecheck`
 
 ## 2. Surface exception
 
