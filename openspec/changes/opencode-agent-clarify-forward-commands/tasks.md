@@ -15,7 +15,7 @@
 ## 4. Orchestrator expectations and prose
 
 - [x] 4.1 Update `commands and budgets` in `tests/opencode-agent/orchestrator.test.ts`: seed `PLANNING` for the `/approve`-refused case (reason becomes "not valid in PLANNING"); the `/changes` refusal hint now includes `/approve` and `/continue` and still excludes `/review`. Verify: `bun test tests/opencode-agent/orchestrator.test.ts` — fully green
-- [ ] 4.2 Add one line to `TRIAGE_INSTRUCTIONS` in `opencode-agent/src/prompts.ts`: invite plain thread replies; never suggest a slash command a phase may refuse. Verify: `bun test tests/opencode-agent/` and `bun run lint`
+- [x] 4.2 Add one line to `TRIAGE_INSTRUCTIONS` in `opencode-agent/src/prompts.ts`: invite plain thread replies; never suggest a slash command a phase may refuse. Verify: `bun test tests/opencode-agent/` and `bun run lint`
 
 ## 5. Docs
 
