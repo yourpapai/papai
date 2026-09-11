@@ -91,7 +91,11 @@ import type { Phase, TransitionSignal } from './types.js'
  * is worse than waiting for the `/continue` that finishes it.
  */
 export const TRANSITIONS: Record<Phase, Partial<Record<TransitionSignal, Phase>>> = {
-  INIT_OR_CLARIFY: { NEEDS_CLARIFICATION: 'INIT_OR_CLARIFY', CAPTURED: 'DESIGN_SPEC' },
+  // APPROVED loops back for the same reason NEEDS_CLARIFICATION does (issue
+  // #438): a maintainer's /approve while the issue is parked on its clarifying
+  // questions is a re-entry, not a move — the cascade re-runs triage where the
+  // issue stands instead of jumping the conversation it is still having.
+  INIT_OR_CLARIFY: { NEEDS_CLARIFICATION: 'INIT_OR_CLARIFY', APPROVED: 'INIT_OR_CLARIFY', CAPTURED: 'DESIGN_SPEC' },
   DESIGN_SPEC: { CHANGES_REQUESTED: 'INIT_OR_CLARIFY', APPROVED: 'PLANNING' },
   PLANNING: { PLAN_POSTED: 'PLAN_REVIEW' },
   PLAN_REVIEW: { CHANGES_REQUESTED: 'PLANNING', APPROVED: 'REVIEW_AND_MUTATE' },
