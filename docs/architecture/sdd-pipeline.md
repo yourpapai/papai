@@ -9,11 +9,11 @@ See LICENSE in the project root for details.
 
 > **Historical surface (deleted at R5).** The `sdd-runner/` workspace described here was deleted by
 > the retirement (`sdd-runner-retirement`) after the R4 cut-over had moved every operator entry
-> point to afk-runner; rollback is `git revert` of the deletion commit. The live engine and its
-> runner commands are [`afk-runner.md`](afk-runner.md); afk-runner's spec coverage is the umbrella
-> capabilities `afk-runner-{pipeline,autonomy,cli,output}` (born by `afk-runner-spec-home`). The
-> process sections below (stages, event model, depth profiles, gate protocol, admission vs
-> division) stay canonical: `afk-runner/` implements the same pipeline.
+> point to afk-runner, and `afk-runner/` was later deleted from papai too — the live engine lives in the external repo `yourpapai/afk-runner`, its runner commands documented in `docs/architecture/afk-runner.md` there
+> (papai's same-named path is a one-line pointer); rollback is `git revert` of the deletion commit. Its spec coverage is the umbrella
+> capabilities `afk-runner-{pipeline,autonomy,cli,output}` (born by `afk-runner-spec-home`), carried by `yourpapai/afk-runner`'s openspec.
+> The process sections below (stages, event model, depth profiles, gate protocol, admission vs division) stay canonical:
+> `yourpapai/afk-runner` implements the same pipeline.
 
 The `sdd-runner/` workspace automates the outer loop of spec-driven development: a runner sub-project orchestrates drafting, fresh-eyes review, convergence, and decomposition across spawned `opencode run` agents inside one OpenSpec change, reporting progress at pipeline altitude and concentrating human attention at a single gate. The stages compose end-to-end via `src/orchestrator.ts` (`runStart`/`runResume`/`runGateResume`); `src/report.ts` synthesizes evidence-backed run/PR reports from `events.ndjson`, the change folder, and the branch git log.
 
@@ -34,7 +34,7 @@ INTAKE → DRAFT → REVIEW LOOP → DECOMPOSE → ATOMICITY → GATE → (exit)
 - **Decompose**: tasks.md generation.
 - **Atomicity**: split/merge tasks (skipped at S).
 - **Gate**: single human gate with checkbox protocol.
-- **Implement/Verify/Release** (armed runs only, U3): the sequential tasks.md walk — one implementer spawn per item, per-task affected check, runner-made slice commits — then the compiled verification boundary (red routes back into implement as a normal outcome with the log as fix context), then a `release`-mode gate presenting the execution digest. Full mechanics in [`afk-runner.md`](afk-runner.md) ("Execution half since U3"); unarmed runs never enter these states (they stay pending and final approval completes as before).
+- **Implement/Verify/Release** (armed runs only, U3): the sequential tasks.md walk — one implementer spawn per item, per-task affected check, runner-made slice commits — then the compiled verification boundary (red routes back into implement as a normal outcome with the log as fix context), then a `release`-mode gate presenting the execution digest. Full mechanics in the external repo `yourpapai/afk-runner` (`docs/architecture/afk-runner.md` there, "Execution half since U3"); unarmed runs never enter these states (they stay pending and final approval completes as before).
 
 ### Admission vs division
 
@@ -159,7 +159,7 @@ The round verdict is three-valued: `converged` (nothing open above a nitpick, �
 
 ### Severity-based convergence
 
-A cap-hit round with **zero open BLOCKERs and zero open MATERIALs** flows into decompose → atomicity → final gate **without presenting an early gate**, however many open nitpicks survived — the verdict's three-nitpick allowance governs whether the loop keeps running, not whether a human is needed. A cap-hit with any open BLOCKER or MATERIAL still presents the early gate. The review loop itself keeps reporting `cap-hit`; in the afk runner the reclassification is fold-derived (`reviewOutcomeOf` reads the open set; `runReviewWork` routes).
+A cap-hit round with **zero open BLOCKERs and zero open MATERIALs** flows into decompose → atomicity → final gate **without presenting an early gate**, however many open nitpicks survived — the verdict's three-nitpick allowance governs whether the loop keeps running, not whether a human is needed. A cap-hit with any open BLOCKER or MATERIAL still presents the early gate. The review loop itself keeps reporting `cap-hit`; in the external runner (`yourpapai/afk-runner`) the reclassification is fold-derived (`reviewOutcomeOf` reads the open set; `runReviewWork` routes).
 
 A cap-hit whose verdict is `needs-review` buys **exactly one** verification round before the tail, so the last round's edits are not shipped unreviewed. The bound is fold-derived: the round runs as `round_open(n+1, cap+1)` — the extend mover's shape — and a round already opened above the depth's base cap means the chain spent its round, so a second can never be granted for the same cap-hit. The budget guard declines it with R4's metered semantics (unknown cost refuses only on a metered run; a null ceiling never refuses; a projection reaching a numeric ceiling does) and the run continues to its final gate with no `auto_decision` for the refusal — a human sees the unreviewed edits either way. A **thrash-ended** round never buys the round (loop-memory): `concerns` cluster ids on the convergence record deny it in `owesVerificationRound` and settle it in `reviewOutcomeOf`, both fold-derived, so the denial re-derives after a crash mid-thrash.
 
