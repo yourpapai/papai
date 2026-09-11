@@ -109,6 +109,88 @@ describe('the /fix comment rides the pull-request door’s existing guardrails (
   })
 })
 
+describe('the /follow-up baseline: a plain comment on a delivered pull request still buys nothing', () => {
+  /**
+   * Issue #441 adds `/follow-up` to this door. The scenario it is asked about —
+   * the run delivered, the pull request open, a maintainer typing an ordinary
+   * comment on it — must stay a no-op: prose widens the door to nothing. The
+   * absences below are the baseline the command sits on, pinned before it
+   * arrives so its implementation cannot quietly move the cheap filter.
+   */
+
+  /** A maintainer's ordinary post-delivery prose — praise and a nit, no command. */
+  const pendingProse = (): PendingPullRequestEvent => ({
+    kind: 'pending-pull-request',
+    eventName: 'issue_comment',
+    action: 'created',
+    senderLogin: 'maintainer',
+    senderType: 'User',
+    authorAssociation: 'OWNER',
+    prNumber: 7,
+    commentBody: 'Lovely work. One nit: the docstring in retry.ts has a typo.',
+    commentId: 100,
+    defaultBranch: 'main',
+    repositoryFullName: 'acme/widgets',
+  })
+
+  /** A head lookup that records its calls, so "no lookup" is provable, not assumed. */
+  const lookup = (): {
+    calls: number[]
+    github: { getPullRequestHead: (prNumber: number) => Promise<PullRequestHead> }
+  } => {
+    const calls: number[] = []
+    return {
+      calls,
+      github: {
+        getPullRequestHead: (prNumber: number): Promise<PullRequestHead> => {
+          calls.push(prNumber)
+          return Promise.resolve({ ref: 'agent/issue-42', repoFullName: 'acme/widgets', state: 'open' })
+        },
+      },
+    }
+  }
+
+  /** A logger that records the door's debug and warn fields, so silence is provable. */
+  const recordingLogger = (): {
+    debugFields: Array<Record<string, unknown>>
+    warnFields: Array<Record<string, unknown>>
+    log: Logger
+  } => {
+    const debugFields: Array<Record<string, unknown>> = []
+    const warnFields: Array<Record<string, unknown>> = []
+    const at =
+      (level: LogLevel) =>
+      (fields: Record<string, unknown>, _message: string): void => {
+        if (level === 'debug') debugFields.push({ ...fields })
+        if (level === 'warn') warnFields.push({ ...fields })
+      }
+    return {
+      debugFields,
+      warnFields,
+      log: { debug: at('debug'), info: at('info'), warn: at('warn'), error: at('error') },
+    }
+  }
+
+  it('starts no run, posts no reply, and performs no pull-request lookup', async () => {
+    // Delivered or not is a fact the door never learns: the drop happens at the
+    // free slash-command test, before the head lookup — let alone a thread
+    // read — could say. `null` is the door's "nothing to do", which the entry
+    // door turns into a silent skip (pinned end to end in `cli.test.ts`). The
+    // door's only voice is a warn refusal, so prose earns neither a refusal nor
+    // a reply: the one trace it leaves is a debug line naming the cheap filter
+    // that dropped it, never a conversation.
+    const api = lookup()
+    const { debugFields, warnFields, log } = recordingLogger()
+
+    const resolved = await resolvePullRequestTrigger(pendingProse(), api.github, log)
+
+    expect(resolved).toBeNull()
+    expect(api.calls).toEqual([])
+    expect(warnFields).toEqual([])
+    expect(debugFields.map((fields) => fields['code'])).toContain('PR_NO_COMMAND')
+  })
+})
+
 describe('parseTriggerEvent · pull_request.closed(merged) (D7)', () => {
   it('parses a merged agent-branch PR into a pr-merged event resolved via the head branch', () => {
     const event = parseTriggerEvent('pull_request', merged())
