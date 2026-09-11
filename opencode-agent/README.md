@@ -133,11 +133,14 @@ A maintainer can also drive a parked triage forward without being asked: in
 moves — the phase does not change, and triage runs again where the issue
 stands, exactly as a plain reply does.
 
-A `/retry` or `/continue` **note** is maintainer guidance, not a re-plan: it is
-enveloped into the resumed handler's prompt under a fixed framing (the plan and
-change folder remain the source of truth; `/changes` is the re-planning
-channel), and it is never persisted — its lifetime is the prompt it rode in.
-An argument-less `/retry` or `/continue` behaves exactly as before.
+A `/retry` or `/continue` **note** is maintainer guidance, not a re-plan. When
+the command resumes stopped implementation work, the note is enveloped into the
+resumed handler's prompt under a fixed framing: the plan and change folder remain
+the source of truth, and `/changes` on the issue is the channel for changing what
+is being built. From a parked triage (`INIT_OR_CLARIFY`), the note rides as
+ordinary thread text instead — triage reads the whole conversation, so no framing
+is added. Either way it is never persisted: its lifetime is the prompt it rode
+in. An argument-less `/retry` or `/continue` behaves exactly as before.
 
 ### `/sync`
 
