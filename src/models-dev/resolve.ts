@@ -45,6 +45,8 @@ export type ModelMetadata = {
   readonly modelId: string | null
   readonly contextWindow: number | null
   readonly maxOutputTokens: number | null
+  readonly reasoning?: boolean | null
+  readonly effortLevels?: readonly string[] | null
   readonly source: 'models-dev' | 'prefix-table' | 'none'
   readonly via: 'override' | 'inferred' | null
 }
@@ -62,6 +64,21 @@ const limitsOf = (
   maxOutputTokens: entry?.limit?.output ?? null,
 })
 
+const reasoningOf = (
+  entry: ModelsDevModelEntry | undefined,
+): { reasoning?: boolean; effortLevels?: readonly string[] } => {
+  const levels = entry?.reasoningOptions?.[0]?.values
+  const shaped: { reasoning?: boolean; effortLevels?: readonly string[] } = {}
+  if (entry?.reasoning !== undefined) shaped.reasoning = entry.reasoning
+  if (levels !== undefined) shaped.effortLevels = levels
+  return shaped
+}
+
+const sameLevels = (a: readonly string[] | undefined, b: readonly string[] | undefined): boolean => {
+  if (a === undefined || b === undefined) return a === b
+  return a.length === b.length && a.every((level, index) => level === b[index])
+}
+
 const prefixTableResult = (model: string): ModelMetadata => {
   const contextWindow = prefixTableContextWindow(model)
   if (contextWindow !== null) {
@@ -73,38 +90,41 @@ const prefixTableResult = (model: string): ModelMetadata => {
 const isDeclared = (value: string | null | undefined): value is string =>
   value !== undefined && value !== null && value !== ''
 
-export function resolveModelMetadata(input: ModelMetadataInput, deps?: ResolveModelMetadataDeps): ModelMetadata {
-  const { providers } = (deps?.getSnapshot ?? getModelsDevSnapshot)()
-  const model = input.model
-
-  if (isDeclared(input.baseProvider) && isDeclared(input.baseModel)) {
-    const entry = providers[input.baseProvider]?.models[input.baseModel]
-    if (entry !== undefined) {
-      return {
-        providerId: input.baseProvider,
-        modelId: input.baseModel,
-        ...limitsOf(entry),
-        source: 'models-dev',
-        via: 'override',
-      }
-    }
-    return prefixTableResult(model)
+const overrideResult = (input: ModelMetadataInput, providers: ModelsDevSnapshot['providers']): ModelMetadata | null => {
+  if (!isDeclared(input.baseProvider) || !isDeclared(input.baseModel)) return null
+  const entry = providers[input.baseProvider]?.models[input.baseModel]
+  if (entry === undefined) return prefixTableResult(input.model)
+  return {
+    providerId: input.baseProvider,
+    modelId: input.baseModel,
+    ...limitsOf(entry),
+    ...reasoningOf(entry),
+    source: 'models-dev',
+    via: 'override',
   }
+}
 
+const inferredResult = (input: ModelMetadataInput, providers: ModelsDevSnapshot['providers']): ModelMetadata | null => {
   const providerId = inferProviderId({ providerType: input.providerType, baseUrl: input.baseUrl })
-  if (providerId !== null) {
-    const entry = providers[providerId]?.models[model]
-    if (entry !== undefined) {
-      return { providerId, modelId: model, ...limitsOf(entry), source: 'models-dev', via: 'inferred' }
-    }
-    return prefixTableResult(model)
+  if (providerId === null) return null
+  const entry = providers[providerId]?.models[input.model]
+  if (entry === undefined) return prefixTableResult(input.model)
+  return {
+    providerId,
+    modelId: input.model,
+    ...limitsOf(entry),
+    ...reasoningOf(entry),
+    source: 'models-dev',
+    via: 'inferred',
   }
+}
 
+const ambiguousNameResult = (model: string, providers: ModelsDevSnapshot['providers']): ModelMetadata => {
   const matches = Object.keys(providers)
     .sort()
     .flatMap((candidateId) => {
       const entry = providers[candidateId]?.models[model]
-      return entry === undefined ? [] : [{ providerId: candidateId, ...limitsOf(entry) }]
+      return entry === undefined ? [] : [{ providerId: candidateId, ...limitsOf(entry), ...reasoningOf(entry) }]
     })
   // Ambiguous-name tie-break shared with resolveMaxTokens (src/model-context.ts, design D4): trust
   // the catalogue only when every provider carrying this id agrees on the context window. An output
@@ -113,8 +133,24 @@ export function resolveModelMetadata(input: ModelMetadataInput, deps?: ResolveMo
   const first = matches[0]
   if (first !== undefined && matches.every((match) => match.contextWindow === first.contextWindow)) {
     const cap = matches.every((match) => match.maxOutputTokens === first.maxOutputTokens) ? first.maxOutputTokens : null
-    return { ...first, maxOutputTokens: cap, modelId: model, source: 'models-dev', via: 'inferred' }
+    const levels = matches.every((match) => sameLevels(match.effortLevels, first.effortLevels))
+      ? first.effortLevels
+      : null
+    return {
+      ...first,
+      maxOutputTokens: cap,
+      effortLevels: levels,
+      modelId: model,
+      source: 'models-dev',
+      via: 'inferred',
+    }
   }
-
   return prefixTableResult(model)
+}
+
+export function resolveModelMetadata(input: ModelMetadataInput, deps?: ResolveModelMetadataDeps): ModelMetadata {
+  const { providers } = (deps?.getSnapshot ?? getModelsDevSnapshot)()
+  return (
+    overrideResult(input, providers) ?? inferredResult(input, providers) ?? ambiguousNameResult(input.model, providers)
+  )
 }
