@@ -23,8 +23,6 @@ import { createDisclosurePrepareStep } from './tools/disclosure/prepare-step.js'
 import { createRepairToolCall } from './tools/disclosure/repair-tool-call.js'
 import { buildToolsContextRecord } from './tools/wrap-tool-execution.js'
 
-// Re-exported for existing importers/tests that reach these through this module.
-
 const log = logger.child({ scope: 'llm-orchestrator:invoke' })
 
 /**
