@@ -15,7 +15,7 @@ Test-first order per design.md Migration Plan; every implementation task is driv
 ## 3. Cap-out marker and warn (test-first)
 
 - [x] 3.1 Add failing integration tests in `tests/llm-orchestrator-invoke.test.ts`: a real AI SDK loop whose mock model returns tool-calls for `AGENT_MAX_STEPS` steps must produce an `llm:end` event carrying `stopReason: 'turn_limit'` and `steps === AGENT_MAX_STEPS`, plus a structured warn naming `contextId`, `turnId`, and `steps` (identifiers only); a turn finishing naturally (`stop`) must carry no `stopReason` field and emit no warn. Verify: `bun test tests/llm-orchestrator-invoke.test.ts` (red)
-- [ ] 3.2 Add optional `stopReason?: 'turn_limit'` to the `emitLlmEnd` analytics param in `src/llm-orchestrator-events.ts`, spread into event data only when present (no analytics schema or fact changes). Verify: `bun test tests/analytics/llm-tool-integration.test.ts` (green; marker assertions still red)
+- [x] 3.2 Add optional `stopReason?: 'turn_limit'` to the `emitLlmEnd` analytics param in `src/llm-orchestrator-events.ts`, spread into event data only when present (no analytics schema or fact changes). Verify: `bun test tests/analytics/llm-tool-integration.test.ts` (green; marker assertions still red)
 - [ ] 3.3 Wire the tracker in `src/llm-orchestrator-invoke.ts`: build it in `callGenerateText`, use `tracker.condition` in both `stopWhen` branches, return `{ result, turnLimitHit }`; in `invokeModel` emit one pino warn `{ contextId, turnId, steps }` on hit and pass `stopReason: 'turn_limit'` to `emitLlmEnd`. Verify: `bun test tests/llm-orchestrator-invoke.test.ts tests/run-control/invoke-wiring.test.ts` (green)
 
 ## 4. Behavior preservation
