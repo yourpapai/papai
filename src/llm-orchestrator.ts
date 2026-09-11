@@ -5,7 +5,7 @@
 
 import { generateText, isStepCount, type ModelMessage } from 'ai'
 
-import { getAiOutputSettings } from './ai-output-settings.js'
+import { getAiOutputSettings, resolveEffectiveReasoningEffort } from './ai-output-settings.js'
 import { createAiProgressReporter, type AiProgressReporter } from './ai-progress-reporter.js'
 import { NO_ANALYTICS_SCOPE } from './analytics/provider-request-scope.js'
 import { resolveNormalTurnProviderScope } from './analytics/provider-scope-factory.js'
@@ -48,8 +48,15 @@ export const resolveAiOutputSettingsContextId = (contextId: string): string =>
 export const defaultDeps: LlmOrchestratorDeps = {
   generateText: (...args) => generateText(...args),
   stepCountIs: (...args) => isStepCount(...args),
-  buildModel: (config) =>
-    buildChatModel(config.main.apiKey, config.main.baseUrl, config.main.model, undefined, config.main.metadata),
+  buildModel: (config, reasoningEffort) =>
+    buildChatModel(
+      config.main.apiKey,
+      config.main.baseUrl,
+      config.main.model,
+      undefined,
+      config.main.metadata,
+      reasoningEffort,
+    ),
   resolve: (contextId: string) => defaultTaskProviderResolver.resolve(contextId),
   maybeAutoProvision: (reply, contextId, chatUserId, username, scope) =>
     maybeAutoProvisionProvider(reply, contextId, chatUserId, username, scope),
@@ -114,7 +121,7 @@ const prepareTurnProvider = async (args: CallLlmArgs): Promise<TaskProvider | nu
 const callLlm = async (args: CallLlmArgs): Promise<CallLlmResult> => {
   const { reply, contextId, chatUserId, contextType, deps, configId, resolvedLlm, turnId } = args
   const mainModel = resolvedLlm.main.model
-  const model = deps.buildModel(resolvedLlm)
+  const model = deps.buildModel(resolvedLlm, resolveEffectiveReasoningEffort(configId, resolvedLlm.main.metadata))
   const provider = await prepareTurnProvider(args)
   // One immutable actor scope per turn, resolved from the authorized-turn
   // registry (falls back to the explicit NO_ANALYTICS_SCOPE sentinel).

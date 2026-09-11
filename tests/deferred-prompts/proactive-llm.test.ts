@@ -11,8 +11,10 @@ import { beforeEach, describe, expect, mock, test } from 'bun:test'
 
 import { NoSuchToolError, type ModelMessage } from 'ai'
 
+import { AI_REASONING_EFFORT_KEY } from '../../src/ai-output-settings.js'
 import { NO_ANALYTICS_SCOPE } from '../../src/analytics/provider-request-scope.js'
 import { updateByokLlmConfig } from '../../src/byok-llm/store.js'
+import { setCachedConfig } from '../../src/cache.js'
 import { toScopedContextId, toScopedThreadContextId } from '../../src/chat/scoped-context.js'
 import { setConfig } from '../../src/config.testing.js'
 import {
@@ -20,6 +22,7 @@ import {
   type DebugEvent,
   unsubscribe as unsubscribeDebugBus,
 } from '../../src/debug/event-bus.js'
+import { getConfigContextId } from '../../src/deferred-prompts/proactive-llm-helpers.js'
 import { dispatchExecution } from '../../src/deferred-prompts/proactive-llm.js'
 import type { DeferredExecutionContext } from '../../src/deferred-prompts/proactive-llm.js'
 import type { ExecutionMetadata } from '../../src/deferred-prompts/types.js'
@@ -101,6 +104,7 @@ type BuildModelCall = {
     source: 'models-dev' | 'prefix-table' | 'none'
     via: 'override' | 'inferred' | null
   }
+  effort?: string | null
 }
 
 // Helper defined outside test blocks — no-conditional-in-test requires predicate helpers at module scope
@@ -242,8 +246,9 @@ describe('dispatchExecution', () => {
         modelId: string,
         _deps: unknown,
         metadata: BuildModelCall['metadata'],
+        effort: string | null | undefined,
       ): string => {
-        buildModelCalls.push({ apiKey, baseURL: baseUrl, modelId, metadata })
+        buildModelCalls.push({ apiKey, baseURL: baseUrl, modelId, metadata, effort })
         return `openai-compatible:${modelId}`
       },
       getOpenAICompatibleProvider:
@@ -565,6 +570,7 @@ describe('dispatchExecution', () => {
             source: 'none',
             via: null,
           },
+          effort: null,
         },
       ])
       expect(generateTextCalls[0]!.model).toBe('openai-compatible:byok-main-deferred')
@@ -625,6 +631,51 @@ describe('dispatchExecution', () => {
       expect(messageIncludesText(verifierMessages, 'check overdue')).toBe(true)
       // …and the finalize instruction rides after it.
       expect(verifierMessages.length).toBeGreaterThan(1)
+    })
+
+    test('proactive generation passes the effective reasoning effort to buildModel', async () => {
+      setupUserConfig()
+      const configContextId = getConfigContextId(makeExecCtx())
+      setCachedConfig(configContextId, AI_REASONING_EFFORT_KEY, 'high')
+      const provider = createMockProvider()
+
+      await dispatchExecution(makeExecCtx(), 'scheduled', 'check overdue', metadata, () => provider)
+
+      expect(buildModelCalls).toHaveLength(1)
+      expect(buildModelCalls[0]?.effort).toBe('high')
+    })
+
+    test('an unset stored level reaches proactive buildModel as no effort', async () => {
+      setupUserConfig()
+      const provider = createMockProvider()
+
+      await dispatchExecution(makeExecCtx(), 'scheduled', 'check overdue', metadata, () => provider)
+
+      expect(buildModelCalls).toHaveLength(1)
+      expect(buildModelCalls[0]?.effort).toBeNull()
+    })
+
+    test('the proactive verification pass inherits the built model', async () => {
+      setupUserConfig()
+      const provider = createMockProvider()
+      generateTextImpl = (args: GenerateTextCall): Promise<GenerateTextResult> => {
+        generateTextCalls.push(args)
+        return Promise.resolve({
+          text: '',
+          toolCalls: [],
+          toolResults: [],
+          steps: [],
+          finalStep: { response: { messages: [] } },
+        })
+      }
+
+      await dispatchExecution(makeExecCtx(), 'scheduled', 'check overdue', metadata, () => provider)
+
+      expect(buildModelCalls).toHaveLength(1)
+      expect(generateTextCalls).toHaveLength(2)
+      // both generation passes ride the single built model instance
+      expect(generateTextCalls[1]!.model).toBe(generateTextCalls[0]!.model)
+      expect(generateTextCalls[0]!.model).toContain('main-model')
     })
 
     test('full generation applies the step-cap stop condition through the injected deps', async () => {
@@ -862,18 +913,21 @@ describe('dispatchExecution', () => {
           baseURL: 'https://byok-full-trim.invalid/v1',
           modelId: 'byok-full-main',
           metadata: trimMetadata,
+          effort: null,
         },
         {
           apiKey: 'sk-byok-full-trim',
           baseURL: 'https://byok-full-trim.invalid/v1',
           modelId: 'byok-full-small',
           metadata: trimMetadata,
+          effort: undefined,
         },
         {
           apiKey: 'sk-byok-full-trim',
           baseURL: 'https://byok-full-trim.invalid/v1',
           modelId: 'byok-full-small',
           metadata: trimMetadata,
+          effort: undefined,
         },
       ])
     })
@@ -1152,8 +1206,9 @@ describe('dispatchExecution logging (tracked logger, busted module)', () => {
         modelId: string,
         _deps: unknown,
         metadata: BuildModelCall['metadata'],
+        effort: string | null | undefined,
       ): string => {
-        buildModelCalls.push({ apiKey, baseURL: baseUrl, modelId, metadata })
+        buildModelCalls.push({ apiKey, baseURL: baseUrl, modelId, metadata, effort })
         return `openai-compatible:${modelId}`
       },
       getOpenAICompatibleProvider:

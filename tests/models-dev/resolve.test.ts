@@ -8,6 +8,7 @@ import { afterEach, describe, expect, test } from 'bun:test'
 import { resolveMaxTokens } from '../../src/model-context.js'
 import { prewarmModelsDevSnapshot } from '../../src/models-dev/client.js'
 import { resetModelsDevSnapshotForTest } from '../../src/models-dev/client.testing.js'
+import { FALLBACK_EFFORT_LEVELS, effortLevelsFor } from '../../src/models-dev/effort-levels.js'
 import type { ModelMetadata, ModelMetadataInput, ModelsDevSnapshot } from '../../src/models-dev/resolve.js'
 import { resolveModelMetadata } from '../../src/models-dev/resolve.js'
 
@@ -185,6 +186,188 @@ describe('resolveModelMetadata', () => {
       source: 'models-dev',
       via: 'inferred',
     })
+  })
+
+  test('catalogue effort options thread through the override path', () => {
+    const snapshot = snapshotWith({
+      anthropic: {
+        models: {
+          'claude-opus-4': {
+            limit: { context: 200_000, output: 32_000 },
+            reasoning: true,
+            reasoningOptions: [{ kind: 'effort', values: ['low', 'medium', 'high'] }],
+          },
+        },
+      },
+    })
+    expect(
+      resolve({ baseProvider: 'anthropic', baseModel: 'claude-opus-4', model: 'claude-opus-4' }, snapshot),
+    ).toMatchObject({
+      providerId: 'anthropic',
+      modelId: 'claude-opus-4',
+      contextWindow: 200_000,
+      maxOutputTokens: 32_000,
+      reasoning: true,
+      effortLevels: ['low', 'medium', 'high'],
+      source: 'models-dev',
+      via: 'override',
+    })
+  })
+
+  test('catalogue effort options thread through the inferred path', () => {
+    const snapshot = snapshotWith({
+      openai: {
+        models: {
+          'o4-mini': {
+            limit: { context: 200_000, output: 100_000 },
+            reasoning: true,
+            reasoningOptions: [{ kind: 'effort', values: ['medium', 'high'] }],
+          },
+        },
+      },
+    })
+    expect(resolve({ providerType: 'openai', model: 'o4-mini' }, snapshot)).toMatchObject({
+      providerId: 'openai',
+      modelId: 'o4-mini',
+      contextWindow: 200_000,
+      maxOutputTokens: 100_000,
+      reasoning: true,
+      effortLevels: ['medium', 'high'],
+      source: 'models-dev',
+      via: 'inferred',
+    })
+  })
+
+  test('a reasoning flag without effort options threads the flag alone', () => {
+    const snapshot = snapshotWith({
+      openai: { models: { o3: { limit: { context: 200_000 }, reasoning: true } } },
+    })
+    expect(resolve({ providerType: 'openai', model: 'o3' }, snapshot)).toMatchObject({
+      providerId: 'openai',
+      modelId: 'o3',
+      reasoning: true,
+      source: 'models-dev',
+      via: 'inferred',
+    })
+  })
+
+  test('a non-reasoning catalogue flag threads as false', () => {
+    const snapshot = snapshotWith({
+      openai: { models: { 'gpt-4o-mini': { limit: { context: 128_000 }, reasoning: false } } },
+    })
+    expect(resolve({ providerType: 'openai', model: 'gpt-4o-mini' }, snapshot)).toMatchObject({
+      providerId: 'openai',
+      modelId: 'gpt-4o-mini',
+      reasoning: false,
+      source: 'models-dev',
+      via: 'inferred',
+    })
+  })
+
+  test('ambiguous names with agreeing level lists keep the catalogue levels', () => {
+    const snapshot = snapshotWith({
+      beta: {
+        models: {
+          'shared-model': {
+            limit: { context: 100_000, output: 8_000 },
+            reasoning: true,
+            reasoningOptions: [{ kind: 'effort', values: ['low', 'high'] }],
+          },
+        },
+      },
+      alpha: {
+        models: {
+          'shared-model': {
+            limit: { context: 100_000, output: 8_000 },
+            reasoning: true,
+            reasoningOptions: [{ kind: 'effort', values: ['low', 'high'] }],
+          },
+        },
+      },
+    })
+    expect(resolve({ model: 'shared-model' }, snapshot)).toMatchObject({
+      providerId: 'alpha',
+      modelId: 'shared-model',
+      contextWindow: 100_000,
+      maxOutputTokens: 8_000,
+      reasoning: true,
+      effortLevels: ['low', 'high'],
+      source: 'models-dev',
+      via: 'inferred',
+    })
+  })
+
+  test('ambiguous names with disagreeing level lists resolve effortLevels to null', () => {
+    const snapshot = snapshotWith({
+      alpha: {
+        models: {
+          'shared-model': {
+            limit: { context: 100_000, output: 8_000 },
+            reasoning: true,
+            reasoningOptions: [{ kind: 'effort', values: ['low', 'high'] }],
+          },
+        },
+      },
+      beta: {
+        models: {
+          'shared-model': {
+            limit: { context: 100_000, output: 8_000 },
+            reasoning: true,
+            reasoningOptions: [{ kind: 'effort', values: ['low', 'medium', 'high'] }],
+          },
+        },
+      },
+    })
+    expect(resolve({ model: 'shared-model' }, snapshot)).toMatchObject({
+      providerId: 'alpha',
+      modelId: 'shared-model',
+      contextWindow: 100_000,
+      maxOutputTokens: 8_000,
+      reasoning: true,
+      effortLevels: null,
+      source: 'models-dev',
+      via: 'inferred',
+    })
+  })
+
+  test('ambiguous names with disagreeing reasoning flags drop the flag so the derived set is order-independent', () => {
+    const snapshot = snapshotWith({
+      alpha: {
+        models: { 'shared-model': { limit: { context: 100_000 }, reasoning: true } },
+      },
+      beta: {
+        models: { 'shared-model': { limit: { context: 100_000 }, reasoning: false } },
+      },
+    })
+    const flipped = snapshotWith({
+      alpha: {
+        models: { 'shared-model': { limit: { context: 100_000 }, reasoning: false } },
+      },
+      beta: {
+        models: { 'shared-model': { limit: { context: 100_000 }, reasoning: true } },
+      },
+    })
+    for (const providers of [snapshot, flipped]) {
+      expect(resolve({ model: 'shared-model' }, providers)).toMatchObject({
+        contextWindow: 100_000,
+        reasoning: undefined,
+        source: 'models-dev',
+        via: 'inferred',
+      })
+      expect(effortLevelsFor(resolve({ model: 'shared-model' }, providers))).toEqual(FALLBACK_EFFORT_LEVELS)
+    }
+  })
+
+  test('existing metadata literals without the reasoning fields stay valid', () => {
+    const metadata: ModelMetadata = {
+      providerId: null,
+      modelId: null,
+      contextWindow: null,
+      maxOutputTokens: null,
+      source: 'none',
+      via: null,
+    }
+    expect(metadata.source).toBe('none')
   })
 
   test('a model unknown to both catalogue and prefix table resolves to none', () => {

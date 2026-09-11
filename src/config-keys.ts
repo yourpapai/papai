@@ -6,14 +6,23 @@
 import {
   AI_LIVE_STATUS_KEY,
   AI_OUTPUT_DETAIL_LEVEL_KEY,
+  AI_REASONING_EFFORT_KEY,
   AI_REASONING_VISIBILITY_KEY,
   AI_TOOL_VISIBILITY_KEY,
 } from './ai-output-settings.js'
 import { getContextSettings } from './instances/context-store.js'
 import { getTaskInstance } from './instances/task-store.js'
+import { resolveLlmConfig } from './llm-providers/resolver.js'
+import { effortLevelsFor } from './models-dev/effort-levels.js'
+import type { ModelMetadata } from './models-dev/resolve.js'
 import { pluginRegistry } from './plugins/registry.js'
 import { getTaskProviderDescriptor, listTaskProviderTypes } from './providers/registry.js'
-import { isAllowedDynamicConfigKey, KANEO_PLUGIN_WORKSPACE_KEY, type ConfigField } from './types/config.js'
+import {
+  isAllowedDynamicConfigKey,
+  KANEO_PLUGIN_WORKSPACE_KEY,
+  type ConfigField,
+  type ConfigFieldOption,
+} from './types/config.js'
 
 const PREFERENCE_FIELDS: readonly ConfigField[] = [
   {
@@ -100,7 +109,37 @@ const AI_OUTPUT_FIELDS: readonly ConfigField[] = [
       { value: 'on', label: 'On' },
     ],
   },
+  {
+    key: AI_REASONING_EFFORT_KEY,
+    storageKey: AI_REASONING_EFFORT_KEY,
+    label: 'Reasoning effort',
+    required: false,
+    sensitive: false,
+    kind: 'ai-output',
+    control: 'select',
+  },
 ]
+
+const UNRESOLVED_MODEL_METADATA: ModelMetadata = {
+  providerId: null,
+  modelId: null,
+  contextWindow: null,
+  maxOutputTokens: null,
+  source: 'none',
+  via: null,
+}
+
+const reasoningEffortOptions = (metadata: ModelMetadata): readonly ConfigFieldOption[] => [
+  { value: '', label: 'Provider default' },
+  ...effortLevelsFor(metadata).map((level) => ({ value: level, label: level })),
+]
+
+const aiOutputFieldsForContext = (contextId: string): readonly ConfigField[] => {
+  const resolved = resolveLlmConfig(contextId)
+  const metadata = resolved.ok ? resolved.main.metadata : UNRESOLVED_MODEL_METADATA
+  const options = reasoningEffortOptions(metadata)
+  return AI_OUTPUT_FIELDS.map((field) => (field.storageKey === AI_REASONING_EFFORT_KEY ? { ...field, options } : field))
+}
 
 const storageKeyForProviderField = (
   descriptor: NonNullable<ReturnType<typeof getTaskProviderDescriptor>>,
@@ -137,14 +176,14 @@ function getPluginContextFields(): readonly ConfigField[] {
 export function getConfigFieldsForContext(contextId: string): readonly ConfigField[] {
   const pluginFields = getPluginContextFields()
   const settings = getContextSettings(contextId)
-  if (settings === null) return [...pluginFields, ...PREFERENCE_FIELDS, ...AI_OUTPUT_FIELDS]
+  if (settings === null) return [...pluginFields, ...PREFERENCE_FIELDS, ...aiOutputFieldsForContext(contextId)]
 
   const instance = getTaskInstance(settings.taskInstanceId)
   if (instance === null || instance.status !== 'active')
-    return [...pluginFields, ...PREFERENCE_FIELDS, ...AI_OUTPUT_FIELDS]
+    return [...pluginFields, ...PREFERENCE_FIELDS, ...aiOutputFieldsForContext(contextId)]
 
   const descriptor = getTaskProviderDescriptor(instance.type)
-  if (descriptor === undefined) return [...pluginFields, ...PREFERENCE_FIELDS, ...AI_OUTPUT_FIELDS]
+  if (descriptor === undefined) return [...pluginFields, ...PREFERENCE_FIELDS, ...aiOutputFieldsForContext(contextId)]
 
   const providerFields = descriptor.contextConfigSchema
     .map((field): ConfigField => ({
@@ -157,7 +196,7 @@ export function getConfigFieldsForContext(contextId: string): readonly ConfigFie
     }))
     .filter((field) => field.storageKey !== KANEO_PLUGIN_WORKSPACE_KEY)
 
-  return [...providerFields, ...pluginFields, ...PREFERENCE_FIELDS, ...AI_OUTPUT_FIELDS]
+  return [...providerFields, ...pluginFields, ...PREFERENCE_FIELDS, ...aiOutputFieldsForContext(contextId)]
 }
 
 export function getConfigKeysForContext(contextId: string): readonly string[] {

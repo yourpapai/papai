@@ -70,6 +70,54 @@ describe('config-editor validation', () => {
       expect(validateConfigField(enumField, '').valid).toBe(true)
     })
 
+    test('the reasoning effort field accepts the free-string default sentinel', () => {
+      const effortField = field('ai_reasoning_effort', {
+        kind: 'ai-output',
+        required: false,
+        control: 'select',
+        options: [
+          { value: '', label: 'Provider default' },
+          { value: 'low', label: 'low' },
+        ],
+      })
+
+      expect(validateConfigField(effortField, 'default').valid).toBe(true)
+      expect(validateConfigField(effortField, '').valid).toBe(true)
+      expect(validateConfigField(effortField, 'low').valid).toBe(true)
+
+      const bad = validateConfigField(effortField, 'bogus')
+      expect(bad.valid).toBe(false)
+      expect(bad.error).toContain('must be one of')
+    })
+
+    test('a default-only effort list rejects a level with a non-empty message', () => {
+      const effortField = field('ai_reasoning_effort', {
+        label: 'Reasoning effort',
+        kind: 'ai-output',
+        required: false,
+        control: 'select',
+        options: [{ value: '', label: 'Provider default' }],
+      })
+
+      const bad = validateConfigField(effortField, 'high')
+      expect(bad.valid).toBe(false)
+      expect(bad.error).toBe('Reasoning effort is not available for the active model')
+    })
+
+    test('other select fields still reject the default sentinel', () => {
+      const languageField = field('language', {
+        kind: 'preference',
+        required: false,
+        control: 'select',
+        options: [
+          { value: 'en', label: 'English' },
+          { value: 'ru', label: 'Русский' },
+        ],
+      })
+
+      expect(validateConfigField(languageField, 'default').valid).toBe(false)
+    })
+
     test('validates timezone - must be valid IANA or UTC offset', () => {
       const result = validateConfigField(field('timezone'), 'invalid')
       expect(result.valid).toBe(false)

@@ -18,6 +18,10 @@ import { getAllConfig, setConfig } from '../src/config.testing.js'
 import { taskInstances } from '../src/db/schema.js'
 import { setContextSettings } from '../src/instances/context-store.js'
 import { insertTaskInstance } from '../src/instances/task-store.js'
+import { createLlmProvider, setAdminRoleBindings } from '../src/llm-providers/store.js'
+import { clearLlmAdminCacheForTesting } from '../src/llm-providers/store.testing.js'
+import { prewarmModelsDevSnapshot } from '../src/models-dev/client.js'
+import { resetModelsDevSnapshotForTest } from '../src/models-dev/client.testing.js'
 import {
   registerContributedTaskProviderType,
   unregisterContributedTaskProviderType,
@@ -78,6 +82,7 @@ describe('getConfigKeysForContext', () => {
       'ai_reasoning_visibility',
       'ai_output_detail_level',
       'ai_live_status',
+      'ai_reasoning_effort',
     ])
   })
 
@@ -100,6 +105,7 @@ describe('getConfigKeysForContext', () => {
       'ai_reasoning_visibility',
       'ai_output_detail_level',
       'ai_live_status',
+      'ai_reasoning_effort',
     ])
   })
 
@@ -118,6 +124,7 @@ describe('getConfigKeysForContext', () => {
       'ai_reasoning_visibility',
       'ai_output_detail_level',
       'ai_live_status',
+      'ai_reasoning_effort',
     ])
   })
 
@@ -134,6 +141,7 @@ describe('getConfigKeysForContext', () => {
       'ai_reasoning_visibility',
       'ai_output_detail_level',
       'ai_live_status',
+      'ai_reasoning_effort',
     ])
   })
 
@@ -158,6 +166,7 @@ describe('getConfigKeysForContext', () => {
       'ai_reasoning_visibility',
       'ai_output_detail_level',
       'ai_live_status',
+      'ai_reasoning_effort',
     ])
   })
 
@@ -186,6 +195,7 @@ describe('getConfigKeysForContext', () => {
       'ai_reasoning_visibility',
       'ai_output_detail_level',
       'ai_live_status',
+      'ai_reasoning_effort',
     ])
   })
 
@@ -345,6 +355,152 @@ describe('getConfigFieldsForContext', () => {
     const tokenField = fields.find((f) => f.storageKey.endsWith(':provider:token'))
 
     expect(tokenField?.label).toBe('My Distinct Token Label')
+  })
+})
+
+describe('getConfigFieldsForContext reasoning effort options', () => {
+  const effortFieldFor = (contextId: string): ConfigField | undefined =>
+    getConfigFieldsForContext(contextId).find((field) => field.storageKey === 'ai_reasoning_effort')
+
+  const defaultOption = { value: '', label: 'Provider default' }
+
+  const unionOptions = [
+    defaultOption,
+    { value: 'none', label: 'none' },
+    { value: 'minimal', label: 'minimal' },
+    { value: 'low', label: 'low' },
+    { value: 'medium', label: 'medium' },
+    { value: 'high', label: 'high' },
+    { value: 'xhigh', label: 'xhigh' },
+    { value: 'max', label: 'max' },
+  ]
+
+  const prewarmCatalogue = async (providers: Record<string, { models: Record<string, unknown> }>): Promise<void> => {
+    await prewarmModelsDevSnapshot({
+      fetchImpl: () => Promise.resolve(JSON.stringify(providers)),
+      cachePath: `/tmp/opencode/config-keys-${crypto.randomUUID()}/models.json`,
+      now: () => 1_700_000_000_000,
+    })
+  }
+
+  const seedMainModel = (model: string): void => {
+    const provider = createLlmProvider(
+      { label: 'admin-openai', providerType: 'openai', baseUrl: 'https://admin/v1', apiKey: 'sk-admin' },
+      'admin',
+    )
+    setAdminRoleBindings({ main: { providerId: provider.id, model }, small: null, embedding: null }, 'admin')
+  }
+
+  beforeEach(async () => {
+    mockLogger()
+    await setupTestDb()
+    seedCommonTestPlatformInstances()
+    process.env['INSTANCE_CONFIG_KEY'] = '5'.repeat(64)
+    clearLlmAdminCacheForTesting()
+  })
+
+  afterEach(() => {
+    resetModelsDevSnapshotForTest()
+  })
+
+  test('derives the reasoning effort options from the active model catalogue entry', async () => {
+    await prewarmCatalogue({
+      openai: {
+        models: {
+          'o4-reasoning': {
+            limit: { context: 200_000, output: 100_000 },
+            reasoning: true,
+            reasoning_options: [{ kind: 'effort', values: ['low', 'high'] }],
+          },
+        },
+      },
+    })
+    seedMainModel('o4-reasoning')
+
+    const field = effortFieldFor('ctx-effort-catalogue')
+
+    expect(field?.kind).toBe('ai-output')
+    expect(field?.required).toBe(false)
+    expect(field?.control).toBe('select')
+    expect(field?.options).toEqual([defaultOption, { value: 'low', label: 'low' }, { value: 'high', label: 'high' }])
+  })
+
+  test('falls back to the full union for a model the catalogue does not know', async () => {
+    await prewarmCatalogue({ openai: { models: { 'other-model': { limit: { context: 1000 } } } } })
+    seedMainModel('mystery-model')
+
+    expect(effortFieldFor('ctx-effort-unknown')?.options).toEqual(unionOptions)
+  })
+
+  test('falls back to the full union when no provider is configured', async () => {
+    await prewarmCatalogue({
+      openai: {
+        models: {
+          'o4-reasoning': { reasoning: true, reasoning_options: [{ kind: 'effort', values: ['low'] }] },
+        },
+      },
+    })
+
+    expect(effortFieldFor('ctx-effort-unconfigured')?.options).toEqual(unionOptions)
+  })
+
+  test('offers the provider default only for a catalogue non-reasoning model', async () => {
+    await prewarmCatalogue({
+      openai: {
+        models: { 'gpt-4o-mini': { limit: { context: 128_000 }, reasoning: false } },
+      },
+    })
+    seedMainModel('gpt-4o-mini')
+
+    expect(effortFieldFor('ctx-effort-non-reasoning')?.options).toEqual([defaultOption])
+  })
+
+  test('derives effort options per context while returning the other AI-output fields unchanged', async () => {
+    await prewarmCatalogue({
+      openai: {
+        models: {
+          'model-a': { reasoning: true, reasoning_options: [{ kind: 'effort', values: ['low', 'high'] }] },
+          'model-b': { reasoning: true, reasoning_options: [{ kind: 'effort', values: ['minimal'] }] },
+        },
+      },
+    })
+    const providerA = createLlmProvider(
+      { label: 'admin-a', providerType: 'openai', baseUrl: 'https://admin-a/v1', apiKey: 'sk-a' },
+      'admin',
+    )
+    const providerB = createLlmProvider(
+      { label: 'admin-b', providerType: 'openai', baseUrl: 'https://admin-b/v1', apiKey: 'sk-b' },
+      'admin',
+    )
+
+    setAdminRoleBindings(
+      { main: { providerId: providerA.id, model: 'model-a' }, small: null, embedding: null },
+      'admin',
+    )
+    const fieldsA = getConfigFieldsForContext('ctx-effort-a')
+    setAdminRoleBindings(
+      { main: { providerId: providerB.id, model: 'model-b' }, small: null, embedding: null },
+      'admin',
+    )
+    const fieldsB = getConfigFieldsForContext('ctx-effort-b')
+
+    const byKeyA = new Map(fieldsA.map((field) => [field.storageKey, field]))
+    const byKeyB = new Map(fieldsB.map((field) => [field.storageKey, field]))
+
+    expect(byKeyA.get('ai_reasoning_effort')?.options).toEqual([
+      defaultOption,
+      { value: 'low', label: 'low' },
+      { value: 'high', label: 'high' },
+    ])
+    expect(byKeyB.get('ai_reasoning_effort')?.options).toEqual([defaultOption, { value: 'minimal', label: 'minimal' }])
+
+    for (const key of ['ai_tool_visibility', 'ai_reasoning_visibility', 'ai_output_detail_level', 'ai_live_status']) {
+      expect(byKeyA.get(key)).toBe(byKeyB.get(key))
+    }
+    expect(byKeyA.get('ai_output_detail_level')?.options).toEqual([
+      { value: 'sanitized', label: 'Sanitized' },
+      { value: 'raw', label: 'Raw' },
+    ])
   })
 })
 

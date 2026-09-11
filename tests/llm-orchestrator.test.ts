@@ -7,7 +7,7 @@ import { mock, describe, expect, test, beforeEach, afterEach, afterAll, spyOn } 
 import assert from 'node:assert/strict'
 
 import { APICallError } from '@ai-sdk/provider'
-import type { ModelMessage } from 'ai'
+import type { LanguageModel, ModelMessage } from 'ai'
 
 import { enableByokForContext, updateByokLlmConfig } from '../src/byok-llm/store.js'
 import {
@@ -92,6 +92,7 @@ type ToolCallStartEvent = {
 type ToolCallStartHandler = (event: ToolCallStartEvent) => void
 
 type GenerateTextArgs = Partial<{
+  model: unknown
   messages: unknown[]
   tools: Record<string, unknown>
   onToolExecutionStart: ToolCallStartHandler | undefined
@@ -173,9 +174,44 @@ const buildMockModel: LlmOrchestratorDeps['buildModel'] = (config) =>
     baseURL: config.main.baseUrl,
   })(config.main.model)
 
+const emptyTurnResult = (): GenerateTextResult => ({
+  text: '',
+  toolCalls: [],
+  toolResults: [],
+  steps: [],
+  finalStep: { response: { messages: [] } },
+  usage: {},
+  finishReason: 'stop',
+  warnings: undefined,
+  request: {},
+  providerMetadata: undefined,
+})
+
+const verifiedTurnResult = (): GenerateTextResult => ({
+  text: 'Verified.',
+  toolCalls: [],
+  toolResults: [],
+  steps: [],
+  finalStep: { response: { messages: [{ role: 'assistant' as const, content: 'Verified.' }] } },
+  usage: {},
+  finishReason: 'stop',
+  warnings: undefined,
+  request: {},
+  providerMetadata: undefined,
+})
+
+const generateTextByCall =
+  (byCall: ReadonlyArray<() => GenerateTextResult>, seenModels: unknown[]) =>
+  (args: GenerateTextArgs): Promise<GenerateTextResult> => {
+    seenModels.push(args.model)
+    const index = Math.min(seenModels.length, byCall.length) - 1
+    return Promise.resolve(byCall[index]!())
+  }
+
 import { KaneoClassifiedError } from '../plugins/task-provider-kaneo/classify-error.js'
 import {
   AI_OUTPUT_DETAIL_LEVEL_KEY,
+  AI_REASONING_EFFORT_KEY,
   AI_REASONING_VISIBILITY_KEY,
   AI_TOOL_VISIBILITY_KEY,
 } from '../src/ai-output-settings.js'
@@ -475,6 +511,80 @@ describe('processMessage', () => {
       expect(buildCalls).toEqual([{ apiKey: 'sk-byok', baseURL: 'https://byok.invalid/v1', model: 'byok-main' }])
       expect(generateCalls).toBe(1)
       expect(textCalls).toContain('Hello!')
+    })
+
+    test('passes the effective reasoning effort to buildModel for the stored setting', async () => {
+      seedAdminLlmBinding()
+      const configContextId = 'cfg-effort-stored'
+      setCachedConfig(configContextId, AI_REASONING_EFFORT_KEY, 'high')
+
+      const buildModelCalls: Array<Parameters<LlmOrchestratorDeps['buildModel']>> = []
+      const deps: LlmOrchestratorDeps = {
+        generateText: (...args) => defaultDeps.generateText(...args),
+        stepCountIs: (...args) => realAi.stepCountIs(...args),
+        buildModel: (config, effort) => {
+          buildModelCalls.push([config, effort])
+          return buildMockModel(config)
+        },
+        resolve: () => null,
+        maybeAutoProvision: () => Promise.resolve(false),
+      }
+
+      const { reply, textCalls } = createMockReply()
+      await processMessage(reply, CTX_ID, 'user-1', null, 'hello', 'dm', configContextId, deps)
+
+      expect(buildModelCalls).toHaveLength(1)
+      expect(buildModelCalls[0]?.[1]).toBe('high')
+      expect(textCalls).toContain('Hello!')
+    })
+
+    test('an unset stored level reaches buildModel as no effort', async () => {
+      seedAdminLlmBinding()
+      const configContextId = 'cfg-effort-unset'
+
+      const buildModelCalls: Array<Parameters<LlmOrchestratorDeps['buildModel']>> = []
+      const deps: LlmOrchestratorDeps = {
+        generateText: (...args) => defaultDeps.generateText(...args),
+        stepCountIs: (...args) => realAi.stepCountIs(...args),
+        buildModel: (config, effort) => {
+          buildModelCalls.push([config, effort])
+          return buildMockModel(config)
+        },
+        resolve: () => null,
+        maybeAutoProvision: () => Promise.resolve(false),
+      }
+
+      const { reply, textCalls } = createMockReply()
+      await processMessage(reply, CTX_ID, 'user-1', null, 'hello', 'dm', configContextId, deps)
+
+      expect(buildModelCalls).toHaveLength(1)
+      expect(buildModelCalls[0]?.[1]).toBeNull()
+      expect(textCalls).toContain('Hello!')
+    })
+
+    test('the turn verifier reuses the generation model instance', async () => {
+      seedAdminLlmBinding()
+      const builtModels: LanguageModel[] = []
+      const seenModels: unknown[] = []
+      generateTextImpl = generateTextByCall([emptyTurnResult, verifiedTurnResult], seenModels)
+      const deps: LlmOrchestratorDeps = {
+        generateText: (...args) => defaultDeps.generateText(...args),
+        stepCountIs: (...args) => realAi.stepCountIs(...args),
+        buildModel: (config) => {
+          const model = buildMockModel(config)
+          builtModels.push(model)
+          return model
+        },
+        resolve: () => null,
+        maybeAutoProvision: () => Promise.resolve(false),
+      }
+
+      const { reply } = createMockReply()
+      await processMessage(reply, CTX_ID, 'user-1', null, 'hello', 'dm', 'cfg-effort-verify', deps)
+
+      expect(seenModels).toHaveLength(2)
+      expect(seenModels[0]).toBe(builtModels[0])
+      expect(seenModels[1]).toBe(builtModels[0])
     })
 
     test('passes resolved config context to normal conversation background trim', async () => {
