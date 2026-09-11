@@ -176,13 +176,14 @@ export default {
     // (openspec/changes/usage-failure-queries) and by tests outside knip's
     // production project scope.
     'src/usage/failures.ts': ['exports'],
-    // The effort-level derivation lands with the reasoning-effort-setting change
-    // (openspec/changes/reasoning-effort-setting): knip's production-only project
-    // scope does not see its test importers, and the production consumers (the
-    // request gate in src/ai-output-settings.ts, then the config-key option
-    // decoration) arrive with that change's tasks 2.2 and 3.2. Remove this entry
-    // when the request gate lands.
-    'src/models-dev/effort-levels.ts': ['files'],
+    // The reasoning-effort gate and the derived-set membership helper land with the
+    // reasoning-effort-setting change (openspec/changes/reasoning-effort-setting):
+    // resolveEffectiveReasoningEffort gains its request-wiring consumers with that
+    // change's tasks 4.4/4.6 and isEffortLevel its gate body with task 2.2; both are
+    // test-consumed until then, outside knip's production project scope. Remove when
+    // the request wiring lands.
+    'src/models-dev/effort-levels.ts': ['exports'],
+    'src/ai-output-settings.ts': ['exports'],
     // Proof-check module exports: the later-task consumers landed (proof-check-run,
     // proof-checks-read, poller, diagnostics); this now covers only test-only exports
     // (resetProofChecksForTest, resetProofDeliveryRecords) and test-only consumption.

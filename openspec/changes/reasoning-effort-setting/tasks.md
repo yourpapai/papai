@@ -16,7 +16,7 @@ See LICENSE in the project root for details.
 
 ## 2. Config key and request gate
 
-- [ ] 2.1 TDD red: extend `tests/ai-output-settings.test.ts` — free-string parse (`'default'`/empty/unknown → `null`, never coerced to a level) and the `resolveEffectiveReasoningEffort(configContextId, metadata)` gate (stored value in the model's current set → that value; out-of-set after a model switch → `null`). Verify: `bun test tests/ai-output-settings.test.ts` (fails)
+- [x] 2.1 TDD red: extend `tests/ai-output-settings.test.ts` — free-string parse (`'default'`/empty/unknown → `null`, never coerced to a level) and the `resolveEffectiveReasoningEffort(configContextId, metadata)` gate (stored value in the model's current set → that value; out-of-set after a model switch → `null`). Verify: `bun test tests/ai-output-settings.test.ts` (fails)
 - [ ] 2.2 Add `ai_reasoning_effort` to `AiOutputConfigKey`/`ALL_CONFIG_KEYS` (src/types/config.ts) and implement the parser plus gate in `src/ai-output-settings.ts`. Verify: `bun test tests/ai-output-settings.test.ts`
 
 ## 3. Settings surface (fields, routes, UI)

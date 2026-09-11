@@ -4,11 +4,14 @@
 // See LICENSE in the project root for details.
 
 import { getCachedConfig } from './cache.js'
+import { FALLBACK_EFFORT_LEVELS } from './models-dev/effort-levels.js'
+import type { ModelMetadata } from './models-dev/resolve.js'
 
 export const AI_TOOL_VISIBILITY_KEY = 'ai_tool_visibility'
 export const AI_REASONING_VISIBILITY_KEY = 'ai_reasoning_visibility'
 export const AI_OUTPUT_DETAIL_LEVEL_KEY = 'ai_output_detail_level'
 export const AI_LIVE_STATUS_KEY = 'ai_live_status'
+export const AI_REASONING_EFFORT_KEY = 'ai_reasoning_effort'
 
 export type AiVisibility = 'on' | 'off'
 export type AiOutputDetailLevel = 'sanitized' | 'raw'
@@ -32,6 +35,17 @@ function parseLiveStatus(value: string | null): AiVisibility {
 
 function parseDetailLevel(value: string | null): AiOutputDetailLevel {
   return value === 'raw' || value === 'sanitized' ? value : 'sanitized'
+}
+
+function parseReasoningEffort(value: string | null): string | null {
+  if (value === null || value === '' || value === 'default') return null
+  return value
+}
+
+export function resolveEffectiveReasoningEffort(configContextId: string, _metadata: ModelMetadata): string | null {
+  const parsed = parseReasoningEffort(getCachedConfig(configContextId, AI_REASONING_EFFORT_KEY))
+  if (parsed === null) return null
+  return FALLBACK_EFFORT_LEVELS.includes(parsed) ? parsed : null
 }
 
 export function getAiOutputSettings(contextId: string): AiOutputSettings {
