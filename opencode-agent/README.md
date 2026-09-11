@@ -116,17 +116,18 @@ moves the phase and the handler runs behind it in the same job, exactly as
 
 ## Talking to the agent
 
-| Command                     | Valid in                                                     | Effect                                                                                                                                    |
-| --------------------------- | ------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------- |
-| `/approve`                  | `DESIGN_SPEC`, `PLAN_REVIEW`                                 | Proceed to the next phase                                                                                                                 |
-| `/changes <what to change>` | `DESIGN_SPEC`, `PLAN_REVIEW`                                 | Rewrite the spec or plan, with your feedback in the prompt                                                                                |
-| `/ask <question>`           | anywhere                                                     | Answer, grounded in the repo, without moving the state machine                                                                            |
-| `/review`                   | a **delivered** `COMPLETE`                                   | Run the review loop over the branch and push what it finds                                                                                |
-| `/retry [note]`             | `FAILED`                                                     | Resume the exact phase that failed; the note rides the prompt                                                                             |
-| `/continue [note]`          | `INCOMPLETE`                                                 | Pick up the phase the job ran out of time for; note as above                                                                              |
-| `/cancel`                   | anything but `COMPLETE`                                      | Stop for good — a cancelled issue cannot be restarted                                                                                     |
-| `/sync`                     | any state whose agent branch exists                          | Merge the base branch into `agent/issue-<n>` and push                                                                                     |
-| `/fix`                      | a delivered `COMPLETE` or `PR_DELIVERY`, with a pull request | Run a CI-fix round on the pull request's own red checks — the same repair run the red-run door buys, reading the head's failed check runs |
+| Command                       | Valid in                                                     | Effect                                                                                                                                    |
+| ----------------------------- | ------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------- |
+| `/approve`                    | `DESIGN_SPEC`, `PLAN_REVIEW`                                 | Proceed to the next phase                                                                                                                 |
+| `/changes <what to change>`   | `DESIGN_SPEC`, `PLAN_REVIEW`                                 | Rewrite the spec or plan, with your feedback in the prompt                                                                                |
+| `/ask <question>`             | anywhere                                                     | Answer, grounded in the repo, without moving the state machine                                                                            |
+| `/review`                     | a **delivered** `COMPLETE`                                   | Run the review loop over the branch and push what it finds                                                                                |
+| `/retry [note]`               | `FAILED`                                                     | Resume the exact phase that failed; the note rides the prompt                                                                             |
+| `/continue [note]`            | `INCOMPLETE`                                                 | Pick up the phase the job ran out of time for; note as above                                                                              |
+| `/cancel`                     | anything but `COMPLETE`                                      | Stop for good — a cancelled issue cannot be restarted                                                                                     |
+| `/sync`                       | any state whose agent branch exists                          | Merge the base branch into `agent/issue-<n>` and push                                                                                     |
+| `/fix`                        | a delivered `COMPLETE` or `PR_DELIVERY`, with a pull request | Run a CI-fix round on the pull request's own red checks — the same repair run the red-run door buys, reading the head's failed check runs |
+| `/follow-up <what to change>` | a delivered `COMPLETE` or `PR_DELIVERY`, with a pull request | Apply a small, maintainer-requested change as follow-up commits on the branch — or decline with a ready-to-paste issue draft              |
 
 A `/retry` or `/continue` **note** is maintainer guidance, not a re-plan: it is
 enveloped into the resumed handler's prompt under a fixed framing (the plan and
@@ -171,6 +172,61 @@ verbatim. The reply is a plain comment on the trigger surface carrying no
 state block; a repair turn's spend is the one thing that changes, recorded by
 rewriting the running token total in place.
 
+### `/follow-up`
+
+After delivery a plain comment on the pull request triggers nothing, `/review`
+is a full review loop, and re-opening the issue thread works only for
+questions. `/follow-up <what to change>` is the middle path: a maintainer asks
+for a small change on the delivered pull request, and the agent applies it as
+follow-up commits on the same branch. It is accepted in a delivered `COMPLETE`
+or `PR_DELIVERY` that names the pull request — the same states `/fix` takes —
+and refused everywhere else as an ordinary wrong command that lists what does
+apply; a cancelled `COMPLETE` (no pull request) stays out, and an argument-less
+`/follow-up` is refused with usage, buying no turn.
+
+- **The size gate comes first, before any write.** One read-only assessment
+  turn reads the request (enveloped, under the maintainer-note framing) beside
+  the change folder's digest and the branch's diff stat, and answers a size
+  verdict whose reason is mandatory — it is restated in the reply on both
+  paths, so a subjective judgment never reads as a coin flip.
+- **Small** — one apply turn under the pinned instructions (the protected-paths
+  rule and the minimality rule, plus a forbidden-git rule: the pipeline alone
+  commits, reconciles and pushes). The pipeline then re-runs the test commands
+  the reply names plus `AGENT_CHECK_COMMAND`, judging by exit status only —
+  trusting the model's green is a failure this pipeline has paid for before.
+  Green, the commit goes through the commit-repair rounds, the branch
+  reconciles with the remote by merge (never rebase, never force — the branch
+  is shared with humans) and is pushed. The reply names the decision and
+  reason, the files, the checks that ran and the pushed sha; a protected-path
+  drop is reported with the maintainer-by-hand remedy rather than passing
+  silently.
+- **Too big** — zero commits, zero pushes, the branch exactly as the command
+  found it, and the reply declines with the reason plus a ready-to-paste issue
+  draft whose title and description reference the pull request. The run
+  reports `completed`: the gate saying "too big" is the command working, not a
+  failure.
+- **Checks red, over budget, or broken** — red checks push nothing and leave
+  the branch as found, with the failure naming what ran; the token ceiling is
+  asked before the assessment turn, so an over-budget command is a notice only
+  and buys no turn; anything else is an ordinary failed run on a branch left
+  as found.
+
+`/follow-up` is a **non-moving side operation** in the `/sync` shape: phase,
+`attempts`, `resumeFrom` and every per-PR budget are left exactly as they were
+after every outcome, the review loop is never entered (that stays `/review`),
+and the reply is the run's one plain comment carrying no state block, with the
+turns' spend rewritten in place. Because the reply surface follows the state
+the run entered on, an issue-typed `/follow-up` — accepted, see below — posts
+its reply on the pull request, where the commits and the checks it names are.
+
+**The one surface exception.** Every command typed on the issue after a pull
+request exists is refused with a pointer to it — except `/follow-up`, whose
+whole point is reaching a delivered pull request from the thread a maintainer
+may still be reading. It is accepted on the issue too, while the pull request
+is open, and the carve-out lives inside `commandSurface` itself so the surface
+rule stays one function with one answer. No other command's pointer refusal is
+touched.
+
 **Where a command is typed depends on whether a pull request exists.** Until one
 does, the issue is the only surface and every command is typed there. From the
 moment `state.prNumber` is set, the pull request takes over: it is where the diff,
@@ -179,7 +235,8 @@ where the `agent:*` labels are reconciled, and where commands are accepted. A
 command typed on the issue after that is refused with a comment naming the pull
 request — not "does not apply", which would be false twice over, since the command
 applies perfectly and would have worked one page over. `src/feedback-target.ts`
-holds both halves of that rule.
+holds both halves of that rule, and `/follow-up` is its one deliberate exception
+(see below).
 
 **The record moves with it.** `AGENT_STATE` and `AGENT_REPORT` used to stay on the
 issue whichever surface the command arrived on, for a mechanical reason rather than

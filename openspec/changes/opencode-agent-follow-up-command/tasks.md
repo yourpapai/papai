@@ -28,7 +28,7 @@
 
 ## 5. Docs
 
-- [ ] 5.1 `opencode-agent/README.md`: add the `/follow-up` row to the command table and a `### /follow-up` section (acceptance, size gate, both outcomes, the issue-surface exception) — verify with `bun run format:check` on the file
+- [x] 5.1 `opencode-agent/README.md`: add the `/follow-up` row to the command table and a `### /follow-up` section (acceptance, size gate, both outcomes, the issue-surface exception) — verify with `bun run format:check` on the file
 - [ ] 5.2 `opencode-agent/CLAUDE.md`: note the surface exception as the one carve-out in `commandSurface` and the side-operation dispatch — verify with `bun run lint`
 
 ## 6. Full verification
