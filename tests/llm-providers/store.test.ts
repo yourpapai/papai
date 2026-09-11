@@ -11,17 +11,25 @@
 
 import { beforeEach, describe, expect, test } from 'bun:test'
 
+import { eq } from 'drizzle-orm'
+
+import { getDrizzleDb } from '../../src/db/drizzle.js'
+import { llmProviders } from '../../src/db/schema.js'
+import type { ModelHints } from '../../src/llm-providers/model-hints.js'
 import {
   createLlmProvider,
   deleteLlmProvider,
   getAdminRoleBindings,
   getLlmProvider,
   listLlmProviders,
+  primeLlmAdminCache,
   setAdminRoleBindings,
+  setProviderModels,
   updateLlmProvider,
   updateProviderVerification,
 } from '../../src/llm-providers/store.js'
 import { clearLlmAdminCacheForTesting } from '../../src/llm-providers/store.testing.js'
+import type { LlmProviderAccount } from '../../src/llm-providers/types.js'
 import { mockLogger, setupTestDb } from '../utils/test-helpers.js'
 
 beforeEach(async () => {
@@ -257,5 +265,90 @@ describe('llm provider base references', () => {
     expect(relabeled?.label).toBe('a2')
     expect(relabeled?.baseProvider).toBe('openai')
     expect(relabeled?.baseModel).toBe('gpt-4o')
+  })
+})
+
+describe('llm provider model hints', () => {
+  const HINTS: ModelHints = {
+    'gateway-model': { baseProvider: 'anthropic', baseModel: 'claude-opus-4' },
+    'hf:zai-org/GLM-5.3-Flash': { baseProvider: 'zai-org', baseModel: 'GLM-5.3-Flash' },
+  }
+
+  const createProvider = (): LlmProviderAccount =>
+    createLlmProvider(
+      { label: 'gw', providerType: 'custom', baseUrl: 'https://gw.example.com/v1', apiKey: 'k' },
+      'admin-1',
+    )
+
+  const rawModelHints = (id: string): string | null =>
+    getDrizzleDb()
+      .select({ modelHints: llmProviders.modelHints })
+      .from(llmProviders)
+      .where(eq(llmProviders.id, id))
+      .get()?.modelHints ?? null
+
+  const reloadFromDb = (): void => {
+    clearLlmAdminCacheForTesting()
+    primeLlmAdminCache()
+  }
+
+  test('updateLlmProvider persists hints and they survive a restart reload', () => {
+    const created = createProvider()
+
+    const updated = updateLlmProvider(created.id, { modelHints: HINTS }, 'admin-1')
+    expect(updated?.modelHints).toStrictEqual(HINTS)
+
+    reloadFromDb()
+    expect(getLlmProvider(created.id)?.modelHints).toStrictEqual(HINTS)
+  })
+
+  test('a provider without hints reads modelHints as {} and stores null', () => {
+    const created = createProvider()
+
+    expect(getLlmProvider(created.id)?.modelHints).toStrictEqual({})
+    reloadFromDb()
+    expect(getLlmProvider(created.id)?.modelHints).toStrictEqual({})
+
+    updateLlmProvider(created.id, { modelHints: {} }, 'admin-1')
+    expect(rawModelHints(created.id)).toBeNull()
+    expect(getLlmProvider(created.id)?.modelHints).toStrictEqual({})
+  })
+
+  test('a malformed model_hints column reads as {} without throwing', () => {
+    const created = createProvider()
+    getDrizzleDb().update(llmProviders).set({ modelHints: 'not-json{"' }).where(eq(llmProviders.id, created.id)).run()
+
+    reloadFromDb()
+
+    expect(getLlmProvider(created.id)?.modelHints).toStrictEqual({})
+    expect(listLlmProviders().find((p) => p.id === created.id)?.modelHints).toStrictEqual({})
+  })
+
+  test('updateProviderVerification and setProviderModels do not clobber stored hints', () => {
+    const created = createProvider()
+    updateLlmProvider(created.id, { modelHints: HINTS }, 'admin-1')
+
+    updateProviderVerification(created.id, {
+      status: 'verified',
+      error: null,
+      at: 123,
+      models: ['m1'],
+      modelsFetchedAt: 456,
+    })
+    setProviderModels(created.id, ['m1', 'm2'], 'admin-1')
+
+    reloadFromDb()
+    const account = getLlmProvider(created.id)
+    expect(account?.modelHints).toStrictEqual(HINTS)
+    expect(account?.verification.models).toEqual(['m1', 'm2'])
+    expect(account?.verification.status).toBe('verified')
+  })
+
+  test('hints serialize as JSON in the model_hints column', () => {
+    const created = createProvider()
+
+    updateLlmProvider(created.id, { modelHints: HINTS }, 'admin-1')
+
+    expect(rawModelHints(created.id)).toBe(JSON.stringify(HINTS))
   })
 })
