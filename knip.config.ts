@@ -164,11 +164,6 @@ export default {
     // project scope.
     'src/analytics/rekey/*.ts': ['exports', 'types'],
 
-    // Model-hints seam (openspec/changes/llm-base-model-selection): the schema
-    // and tolerant parser are consumed by that change's later tasks (store
-    // toAccount, BYOK blob codec, admin/BYOK routes) and by tests outside
-    // knip's production project scope.
-    'src/llm-providers/model-hints.ts': ['exports'],
     // Context vault modules are the seam surface for the in-flight
     // context-vault-plugin change (openspec/changes/context-vault-plugin);
     // their exports are consumed by later tasks (settings routes, push route,
