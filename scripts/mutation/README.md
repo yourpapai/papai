@@ -136,7 +136,6 @@ For each source file, `pairedRun` resolves the test set in this priority:
    - `client/debug/x.ts` -> `tests/client/debug/x.test.ts`
    - `plugins/task-provider-kaneo/foo.ts` -> `tests/plugins/task-provider-kaneo/foo.test.ts`
    - `review-loop/src/foo.ts` -> `tests/review-loop/foo.test.ts`
-   - `afk-runner/src/foo.ts` -> `tests/afk-runner/foo.test.ts`
    - `opencode-agent/src/foo.ts` -> `tests/opencode-agent/foo.test.ts` — flat: the whole
      `src/` subtree strips, so `opencode-agent/src/phases/implement-steps.ts` also maps to
      `tests/opencode-agent/implement-steps.test.ts`
@@ -220,7 +219,7 @@ The master `mutation-baseline` seed job is unchanged and still runs single-proce
 
 `test:mutate:changed` selects a changed file only when `isGateableImplFile`
 (`.hooks/tdd/test-resolver.mjs`) accepts it, which means an implementation source under `src/`,
-`client/`, `plugins/`, `review-loop/src/`, `afk-runner/src/` or `opencode-agent/src/` — the last
+`client/`, `plugins/`, `review-loop/src/` or `opencode-agent/src/` — the last
 one excluding its `index.ts` barrel, like every other gated tree.
 `stryker.config.json`'s `mutate` globs do not narrow this further — the
 paired runner overwrites `mutate` with the single target file — so that predicate is the gate's

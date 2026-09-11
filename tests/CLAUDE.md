@@ -296,7 +296,7 @@ for changed files, and `bun test:mutate` for the configured full mutate scope
 by an earlier run for files whose source, tests and toolchain all hash the same,
 so a repeat run is near-instant; `--no-score-cache` re-measures everything. The
 per-file floors cover exactly the gateable product roots — `src/`, `client/`,
-`plugins/`, `review-loop/src/`, `afk-runner/src/` and `opencode-agent/src/` (that
+`plugins/`, `review-loop/src/` and `opencode-agent/src/` (that
 workspace's `index.ts` barrel excluded) — selected by `isGateableImplFile`, the same
 predicate the write-hook TDD pipeline uses; `scripts/`, `mutation-improve/` and
 everything else outside those roots keep their suites but select zero mutation
