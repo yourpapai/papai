@@ -407,6 +407,35 @@ findings: `ROADMAP.md`.
   implementation prompts enveloped under `MAINTAINER_NOTE_FRAMING`
   (`implement-prompts.ts`, pinned), framed as guidance with the plan/folder as
   truth and `/changes` as the re-plan channel — prompt-scoped, never persisted.
+- **`/follow-up` is the `/sync` shape with teeth: a size gate before any write.**
+  A maintainer's small, requested change on a delivered pull request, applied as
+  follow-up commits on `agent/issue-<n>`. The dispatch is the `/sync` one —
+  `sideOperation` in `src/side-operations.ts` (split from `triggers.ts` when the
+  third side operation arrived) returns the `followUp` flag before the signal
+  lookup, `driveMachine` opens the door beside `/sync` ahead of both budget
+  stops, and `willWork` treats it as work the marker should announce. The gate
+  is one read-only `plan`-profile `promptForJson` turn (`follow-up-prompts.ts`)
+  over the enveloped request — under `FOLLOW_UP_NOTE_FRAMING`, the
+  maintainer-note framing with the scope channel a delivered issue actually
+  takes (a new issue, not `/changes`) — beside the change folder's digest and
+  the branch's diff stat, answering a zod verdict `{size, reason}` whose reason
+  is mandatory and restated on **both** paths. Too big: zero commits, zero
+  pushes, `completed` — the gate working is not a failure — with a
+  ready-to-paste issue draft. Small: one `build`-profile apply turn under the
+  pinned instructions, then the pipeline alone: the model-named test commands
+  plus `AGENT_CHECK_COMMAND` through the `CheckRunner` seam judged by exit
+  status (red → no commit, no push, branch as found), `commitAll` under
+  commit-repair (`follow-up-commit.ts`, the `implement-commit.ts` seam),
+  `git-reconcile` merge before the push — never rebase, never force — and the
+  sha named is the head the remote accepted, read after the push. The reply is
+  `postAnswer`'s write (plain comment, no block) with the turns' spend
+  rewritten in place; phase, `attempts`, `resumeFrom` and every per-PR budget
+  are byte-identical after every outcome, the review loop is never entered, and
+  the ceilings are the handler's own — the token ceiling is asked before the
+  gate turn, which is why the door stands ahead of the cascade's stops. The
+  acceptance predicate lives in `COMMAND_APPLIES` beside the others, the offer
+  lists derive from it, and the issue-surface exception is the one carve-out in
+  `commandSurface` (see the surface rule above).
 - **The review loop is `review-loop/`, not a local reimplementation.**
   `handleReview` in `src/phases/review.ts` drives that workspace through
   `review-runner.ts`, reached from `CODE_REVIEW` on an explicit `/review` and by
@@ -532,7 +561,15 @@ findings: `ROADMAP.md`.
   resolved once, by the buffer, from the state the run _entered_ on. `commandSurface` is the other half —
   a command typed on the issue is refused with a reply naming where to type it,
   not "does not apply", which would be false twice over since the command applies
-  perfectly and would have worked one page over.
+  perfectly and would have worked one page over. The one deliberate carve-out is
+  `/follow-up` (issue #441): it is accepted on the issue too while the pull
+  request is open — its whole point is reaching a delivered pull request from
+  the thread a maintainer may still be reading — and the exception lives
+  **inside** `commandSurface` (which takes the command as a parameter), so the
+  surface rule stays one function with one answer and no call site re-states
+  it. Every other command's pointer refusal is untouched, and the reply still
+  lands on the pull request: the surface is the state the run entered on, and
+  the commits, checks and sha the reply names are there.
   The record used to be the exception, and the reason was mechanical rather than
   editorial: `findLatestState` scans one list, so a block on the pull request was
   a second source of truth that scan could never see. **So the scan moved with
