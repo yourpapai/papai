@@ -5,9 +5,14 @@
 
 import type { ModelMetadata } from './resolve.js'
 
-export const FALLBACK_EFFORT_LEVELS: readonly string[] = []
+export const FALLBACK_EFFORT_LEVELS: readonly string[] = ['none', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max']
 
-export const effortLevelsFor = (metadata: ModelMetadata): readonly string[] => metadata.effortLevels ?? []
+export const effortLevelsFor = (metadata: ModelMetadata): readonly string[] => {
+  const levels = metadata.effortLevels
+  if (levels !== undefined && levels !== null && levels.length > 0) return levels
+  if (metadata.reasoning === false) return []
+  return FALLBACK_EFFORT_LEVELS
+}
 
 export const isEffortLevel = (metadata: ModelMetadata, value: string): boolean =>
   effortLevelsFor(metadata).includes(value)
