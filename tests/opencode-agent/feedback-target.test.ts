@@ -50,15 +50,27 @@ describe('feedbackTarget', () => {
 
 describe('commandSurface', () => {
   test('the issue is where commands are typed until the pull request exists', () => {
-    expect(commandSurface(state(), 'issue')).toBe('accepted')
-    expect(commandSurface(state(), 'pull-request')).toBe('accepted')
+    expect(commandSurface(state(), 'issue', '/retry')).toBe('accepted')
+    expect(commandSurface(state(), 'pull-request', '/retry')).toBe('accepted')
   })
 
   test('the pull request takes over once it exists', () => {
     const delivered = state({ prNumber: 7, prUrl: 'https://example.invalid/pull/7' })
 
-    expect(commandSurface(delivered, 'pull-request')).toBe('accepted')
-    expect(commandSurface(delivered, 'issue')).toBe('elsewhere')
+    expect(commandSurface(delivered, 'pull-request', '/retry')).toBe('accepted')
+    expect(commandSurface(delivered, 'issue', '/retry')).toBe('elsewhere')
+  })
+
+  test('/follow-up is the one command the issue still takes once the pull request exists', () => {
+    // Issue #441's exception, at the rule itself rather than at a call site:
+    // the carve-out lives inside `commandSurface` so the surface rule stays
+    // one function with one answer, and these two lines are the whole of it —
+    // the exception must not widen to any other command.
+    const delivered = state({ prNumber: 7, prUrl: 'https://example.invalid/pull/7' })
+
+    expect(commandSurface(delivered, 'issue', '/follow-up')).toBe('accepted')
+    expect(commandSurface(delivered, 'issue', '/sync')).toBe('elsewhere')
+    expect(commandSurface(delivered, 'issue', '/review')).toBe('elsewhere')
   })
 })
 
@@ -222,7 +234,7 @@ describe('/fix typed on the issue once the pull request exists', () => {
 
     const outcome = await applyTrigger(input)
 
-    expect(commandSurface(delivered, 'issue')).toBe('elsewhere')
+    expect(commandSurface(delivered, 'issue', '/fix')).toBe('elsewhere')
     expect(outcome.halt?.status).toBe('skipped')
     expect(outcome.halt?.reason).toContain('/fix belongs on the pull request')
     // Nothing acted: the persisted state is byte-identical, no model turn ran

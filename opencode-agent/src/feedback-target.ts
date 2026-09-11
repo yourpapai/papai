@@ -3,6 +3,7 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
+import type { SlashCommand } from './commands.js'
 import type { AgentState } from './types.js'
 
 /**
@@ -13,7 +14,8 @@ import type { AgentState } from './types.js'
  * merge button, and an issue whose work is all in a pull request is a page nobody
  * has a reason to open. So the moment `prNumber` exists, the **live** channels
  * move — the status comment and the labels — and the commands that drive the
- * agent are accepted there and refused here.
+ * agent are accepted there and refused here, with the one deliberate exception
+ * (`/follow-up`, issue #441) that {@link commandSurface} documents.
  *
  * What does **not** move is the record. `AGENT_STATE` and `AGENT_REPORT` live in
  * hidden blocks on the **issue**, `findLatestState` restores by scanning that one
@@ -47,8 +49,22 @@ export type CommandOrigin = 'issue' | 'pull-request'
  * to the reader: `/retry` on a delivered issue is a perfectly good command in the
  * wrong place, and telling somebody their command "does not apply right now"
  * when it does is how a maintainer concludes the agent is broken.
+ *
+ * The command is a parameter for exactly one reason (issue #441): the one
+ * deliberate exception, `/follow-up`, whose whole point is reaching a delivered
+ * pull request from the thread a maintainer may still be reading. It is carved
+ * out **here** rather than at the call site so the surface rule stays one
+ * function with one answer — a second spelling of the rule in `triggers.ts`
+ * would be free to drift from the module whose reason to exist is being that
+ * answer — and so the exception is pinned by test beside the rule it bends.
+ * Every other command's `elsewhere` is untouched: `/follow-up` widens nothing.
  */
-export const commandSurface = (state: AgentState, origin: CommandOrigin): 'accepted' | 'elsewhere' => {
+export const commandSurface = (
+  state: AgentState,
+  origin: CommandOrigin,
+  command: SlashCommand,
+): 'accepted' | 'elsewhere' => {
   if (state.prNumber === null) return 'accepted'
+  if (origin === 'issue' && command === '/follow-up') return 'accepted'
   return origin === 'pull-request' ? 'accepted' : 'elsewhere'
 }

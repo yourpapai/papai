@@ -70,8 +70,12 @@ export const applyTrigger = (input: PhaseInput): Promise<TriggerOutcome> => {
   // Everything below here is the issue conversation, and once a pull request
   // exists the issue is no longer where this run is driven from — see
   // `feedback-target.ts`. The refusal is about the *surface*, not the command:
-  // it names the pull request and posts nothing else.
-  if (command !== null && commandSurface(state, 'issue') === 'elsewhere') return commandBelongsOnPr(input, command)
+  // it names the pull request and posts nothing else. The surface rule is one
+  // function with one answer, and it holds the one exception (`/follow-up`,
+  // issue #441) inside itself — the routing here is unchanged by it.
+  if (command !== null && commandSurface(state, 'issue', command.command) === 'elsewhere') {
+    return commandBelongsOnPr(input, command)
+  }
   if (command !== null) return applyCommand(input, command)
   if (state.phase === 'INIT_OR_CLARIFY') return applyClarifyIntent(input)
   // Design D6 — a plain comment mid-implementation is read as steering: a
