@@ -5,7 +5,7 @@ design.md has no open questions.
 
 ## 1. Shared hint shape + resolution precedence
 
-- [ ] 1.1 Write failing tests for the shared hint parser: `tests/llm-providers/model-hints.test.ts` covering valid map, missing alias, empty alias, non-object value, non-string values, and tolerant `{}` normalization. Verify: `bun test tests/llm-providers/model-hints.test.ts`
+- [x] 1.1 Write failing tests for the shared hint parser: `tests/llm-providers/model-hints.test.ts` covering valid map, missing alias, empty alias, non-object value, non-string values, and tolerant `{}` normalization. Verify: `bun test tests/llm-providers/model-hints.test.ts`
 - [ ] 1.2 Create `src/llm-providers/model-hints.ts` (`ModelHintsSchema` + `parseModelHints`, per design D2) and add `modelHints` (default `{}`) to `LlmProviderAccount` in `src/llm-providers/types.ts`. Verify: `bun test tests/llm-providers/model-hints.test.ts && bun run typecheck`
 - [ ] 1.3 Write failing resolver tests in `tests/llm-providers/resolver.test.ts`: per-model hint overrides the provider-level pair for that model id; sibling and unhinted models fall through to provider-level/inference; exact-string key matching; both admin (`resolveAdminLlmConfig`) and BYOK (`resolveLlmConfig`) paths honor hints. Verify: `bun test tests/llm-providers/resolver.test.ts`
 - [ ] 1.4 Implement the precedence in `metadataFor` (src/llm-providers/resolver.ts:28, per design D1) — `resolveModelMetadata` stays untouched. Verify: `bun test tests/llm-providers/resolver.test.ts`
