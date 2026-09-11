@@ -6,10 +6,10 @@
     "scored": 24
   },
   "client/settings/fetcher-schemas-llm-providers.ts": {
-    "score": 0.38333333333333336,
-    "killed": 23,
+    "score": 0.47619047619047616,
+    "killed": 30,
     "timeout": 0,
-    "scored": 60
+    "scored": 63
   },
   "client/settings/fetchers.ts": {
     "score": 0.6587677725118484,
@@ -1247,6 +1247,12 @@
     "timeout": 0,
     "scored": 28
   },
+  "src/db/migrations/084_llm_provider_model_hints.ts": {
+    "score": 0.85,
+    "killed": 17,
+    "timeout": 0,
+    "scored": 20
+  },
   "src/debug/llm-trace-builders.ts": {
     "score": 1,
     "killed": 48,
@@ -1273,10 +1279,10 @@
   },
   "src/debug/settings/admin/instances-routes.ts": 0.6261127596439169,
   "src/debug/settings/admin/llm-providers-routes.ts": {
-    "score": 0.6859504132231405,
-    "killed": 166,
+    "score": 0.691358024691358,
+    "killed": 168,
     "timeout": 0,
-    "scored": 242
+    "scored": 243
   },
   "src/debug/settings/byok-field-response.ts": {
     "score": 0.8085106382978723,
@@ -1465,17 +1471,29 @@
     "timeout": 0,
     "scored": 82
   },
+  "src/llm-providers/model-hints.ts": {
+    "score": 1,
+    "killed": 6,
+    "timeout": 0,
+    "scored": 6
+  },
   "src/llm-providers/resolver.ts": {
     "score": 0.8305084745762712,
     "killed": 98,
     "timeout": 0,
     "scored": 118
   },
-  "src/llm-providers/store.ts": {
-    "score": 0.6111111111111112,
-    "killed": 132,
+  "src/llm-providers/store-roles.ts": {
+    "score": 0.7254901960784313,
+    "killed": 37,
     "timeout": 0,
-    "scored": 216
+    "scored": 51
+  },
+  "src/llm-providers/store.ts": {
+    "score": 0.6182795698924731,
+    "killed": 115,
+    "timeout": 0,
+    "scored": 186
   },
   "src/long-term-memory/capture.ts": {
     "score": 0.484375,
