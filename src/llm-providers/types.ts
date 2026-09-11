@@ -10,6 +10,7 @@
 // See LICENSE in the project root for details.
 
 import type { ModelMetadata } from '../models-dev/resolve.js'
+import type { ModelHints } from './model-hints.js'
 
 export const LLM_PROVIDER_TYPES = ['openai', 'anthropic', 'google', 'openrouter', 'ollama', 'groq', 'custom'] as const
 export type LlmProviderType = (typeof LLM_PROVIDER_TYPES)[number]
@@ -34,6 +35,7 @@ export type LlmProviderAccount = {
   readonly apiKey: string
   readonly baseProvider: string | null
   readonly baseModel: string | null
+  readonly modelHints?: ModelHints
   readonly verification: Verification
 }
 

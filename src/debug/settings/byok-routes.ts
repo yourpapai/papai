@@ -23,6 +23,7 @@ import {
 import { BYOK_LLM_KEYS, type ByokLlmKey, type PartialByokLlmConfig } from '../../byok-llm/types.js'
 import { maskSensitiveValue } from '../../config.js'
 import { fetchProviderModels, type DiscoveryResult } from '../../llm-providers/discovery.js'
+import { ModelHintsSchema } from '../../llm-providers/model-hints.js'
 import {
   LLM_PROVIDER_TYPES,
   VERIFICATION_STATUSES,
@@ -70,6 +71,7 @@ const ProviderInBlobSchema = z.object({
   apiKey: z.string().min(1),
   baseProvider: baseRefSchema,
   baseModel: baseRefSchema,
+  modelHints: ModelHintsSchema.optional(),
   verification: VerificationSchema,
 })
 const RoleBindingSchema = z.object({ providerId: z.string().min(1), model: z.string().min(1) }).nullable()

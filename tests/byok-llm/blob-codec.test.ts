@@ -12,6 +12,7 @@
 import { describe, expect, test } from 'bun:test'
 
 import { decodeByokBlob, encodeByokBlob } from '../../src/byok-llm/blob-codec.js'
+import type { ModelHints } from '../../src/llm-providers/model-hints.js'
 import type { LlmProviderAccount } from '../../src/llm-providers/types.js'
 
 describe('byok blob codec', () => {
@@ -35,6 +36,7 @@ describe('byok blob codec', () => {
           apiKey: 'k',
           baseProvider: null,
           baseModel: null,
+          modelHints: {},
           verification: { status: 'unverified' as const, error: null, at: null, models: [], modelsFetchedAt: null },
         },
       ],
@@ -187,5 +189,65 @@ describe('byok blob codec base references', () => {
     expect(decodedProvider.verification).toEqual(verification)
     expect('baseProvider' in decodedProvider).toBe(false)
     expect('baseModel' in decodedProvider).toBe(false)
+  })
+})
+
+describe('byok blob codec model hints', () => {
+  const verification = { status: 'unverified' as const, error: null, at: null, models: [], modelsFetchedAt: null }
+
+  const providerShape = (id: string): LlmProviderAccount => ({
+    id,
+    label: id,
+    providerType: 'custom' as const,
+    baseUrl: `http://${id}/v1`,
+    apiKey: 'k',
+    baseProvider: 'openai',
+    baseModel: 'gpt-x',
+    verification,
+  })
+
+  test('a legacy blob lifts with no hints', () => {
+    const decoded = decodeByokBlob({ llm_apikey: 'sk-x', llm_baseurl: 'https://x/v1', main_model: 'm' })
+
+    expect(decoded.providers[0]?.modelHints).toStrictEqual({})
+  })
+
+  test('a v2 blob round-trips hints and stays v2', () => {
+    const hints: ModelHints = { 'byok-model': { baseProvider: 'google', baseModel: 'gemini-pro' } }
+    const blob = {
+      v: 2 as const,
+      providers: [{ ...providerShape('prov_hinted'), modelHints: hints }],
+      roles: { main: { providerId: 'prov_hinted', model: 'byok-model' }, small: null, embedding: null },
+    }
+
+    const decoded = decodeByokBlob(encodeByokBlob(blob))
+
+    expect(decoded.v).toBe(2)
+    expect(decoded.providers[0]?.modelHints).toStrictEqual(hints)
+  })
+
+  test('missing or malformed hints on one provider decode as {} leaving other providers intact', () => {
+    const hints: ModelHints = { m2: { baseProvider: 'google', baseModel: 'gemini-pro' } }
+    const blob: unknown = {
+      v: 2,
+      providers: [
+        { ...providerShape('prov_bad'), modelHints: 'not-a-map' },
+        { ...providerShape('prov_good'), modelHints: hints },
+        providerShape('prov_missing'),
+      ],
+      roles: { main: { providerId: 'prov_bad', model: 'x' }, small: null, embedding: null },
+    }
+
+    const decoded = decodeByokBlob(blob)
+
+    expect(decoded.v).toBe(2)
+    const bad = decoded.providers.find((p) => p.id === 'prov_bad')
+    const good = decoded.providers.find((p) => p.id === 'prov_good')
+    const missing = decoded.providers.find((p) => p.id === 'prov_missing')
+    expect(bad?.modelHints).toStrictEqual({})
+    expect(good?.modelHints).toStrictEqual(hints)
+    expect(missing?.modelHints).toStrictEqual({})
+    expect(good?.apiKey).toBe('k')
+    expect(good?.baseProvider).toBe('openai')
   })
 })

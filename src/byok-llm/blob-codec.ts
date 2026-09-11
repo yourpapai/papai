@@ -9,6 +9,7 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
+import { parseModelHints } from '../llm-providers/model-hints.js'
 import type { LlmProviderAccount, LlmRoleBindings, RoleBinding, Verification } from '../llm-providers/types.js'
 
 export type ByokProvider = LlmProviderAccount
@@ -37,6 +38,11 @@ const emptyVerification = (): Verification => ({
   modelsFetchedAt: null,
 })
 
+const withNormalizedHints = (provider: ByokProvider): ByokProvider => ({
+  ...provider,
+  modelHints: parseModelHints(provider.modelHints),
+})
+
 const fromLegacy = (legacy: LegacyBlob): ByokBlobV2 => {
   const id = 'prov_legacy'
   const provider: ByokProvider = {
@@ -47,6 +53,7 @@ const fromLegacy = (legacy: LegacyBlob): ByokBlobV2 => {
     apiKey: legacy['llm_apikey'] ?? '',
     baseProvider: null,
     baseModel: null,
+    modelHints: {},
     verification: emptyVerification(),
   }
   const smallModel = legacy['small_model']
@@ -61,7 +68,7 @@ const fromLegacy = (legacy: LegacyBlob): ByokBlobV2 => {
 }
 
 export function decodeByokBlob(raw: unknown): ByokBlobV2 {
-  if (isV2(raw)) return raw
+  if (isV2(raw)) return { ...raw, providers: raw.providers.map(withNormalizedHints) }
   if (isLegacy(raw)) return fromLegacy(raw)
   return { v: 2, providers: [], roles: { main: { providerId: '', model: '' }, small: null, embedding: null } }
 }

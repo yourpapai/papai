@@ -164,6 +164,53 @@ describe('settings admin llm-providers routes', () => {
     expect(getLlmProvider(id)?.baseModel).toBe('claude-opus-4')
   })
 
+  const HINTS = {
+    'gateway-model': { baseProvider: 'anthropic', baseModel: 'claude-opus-4' },
+    'hf:zai-org/GLM-5.3-Flash': { baseProvider: 'zai-org', baseModel: 'GLM-5.3-Flash' },
+  }
+
+  const ProviderWithHintsSchema = ProviderSchema.extend({
+    modelHints: z.record(z.string(), z.object({ baseProvider: z.string(), baseModel: z.string() })),
+  })
+
+  test('GET providers echoes modelHints as {} when none are stored', async () => {
+    const { id } = await createViaRoute()
+    const res = await call('GET', PROVIDERS_PATH, adminSession)
+    expect(res.status).toBe(200)
+    const body = z.object({ providers: z.array(ProviderWithHintsSchema) }).parse(await res.json())
+    const provider = body.providers.find((p) => p.id === id)
+    expect(provider?.modelHints).toStrictEqual({})
+  })
+
+  test('PATCH persists modelHints and echoes them on the response and on GET', async () => {
+    const { id } = await createViaRoute()
+    const res = await call('PATCH', `${PROVIDERS_PATH}/${id}`, adminSession, { modelHints: HINTS })
+    expect(res.status).toBe(200)
+    const body = z.object({ provider: ProviderWithHintsSchema }).parse(await res.json())
+    expect(body.provider.modelHints).toStrictEqual(HINTS)
+    expect(getLlmProvider(id)?.modelHints).toStrictEqual(HINTS)
+
+    const list = await call('GET', PROVIDERS_PATH, adminSession)
+    const listBody = z.object({ providers: z.array(ProviderWithHintsSchema) }).parse(await list.json())
+    expect(listBody.providers.find((p) => p.id === id)?.modelHints).toStrictEqual(HINTS)
+  })
+
+  test('PATCH with malformed modelHints returns 422 and leaves stored hints unchanged', async () => {
+    const { id } = await createViaRoute()
+    const seeded = await call('PATCH', `${PROVIDERS_PATH}/${id}`, adminSession, { modelHints: HINTS })
+    expect(seeded.status).toBe(200)
+
+    const missingAlias = await call('PATCH', `${PROVIDERS_PATH}/${id}`, adminSession, {
+      modelHints: { 'gateway-model': { baseModel: 'claude-opus-4' } },
+    })
+    expect(missingAlias.status).toBe(422)
+
+    const notAMapping = await call('PATCH', `${PROVIDERS_PATH}/${id}`, adminSession, { modelHints: 'nope' })
+    expect(notAMapping.status).toBe(422)
+
+    expect(getLlmProvider(id)?.modelHints).toStrictEqual(HINTS)
+  })
+
   test('PATCH clears base references with nulls and with empty strings', async () => {
     const { id } = await createViaRoute()
     await call('PATCH', `${PROVIDERS_PATH}/${id}`, adminSession, { baseProvider: 'openai', baseModel: 'gpt-4o' })

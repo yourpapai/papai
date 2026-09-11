@@ -25,14 +25,16 @@ const byokProviderMap = (bundle: ByokBundle): ProviderLookup => {
 
 const adminAccountFor = (providerId: string): LlmProviderAccount | null => getLlmProvider(providerId)
 
-const metadataFor = (account: LlmProviderAccount, model: string): ModelMetadata =>
-  resolveModelMetadata({
+const metadataFor = (account: LlmProviderAccount, model: string): ModelMetadata => {
+  const hint = account.modelHints?.[model]
+  return resolveModelMetadata({
     providerType: account.providerType,
     baseUrl: account.baseUrl,
-    baseProvider: account.baseProvider,
-    baseModel: account.baseModel,
+    baseProvider: hint?.baseProvider ?? account.baseProvider,
+    baseModel: hint?.baseModel ?? account.baseModel,
     model,
   })
+}
 
 const resolveAdminRole = (adminBinding: RoleBinding): ResolvedRole | null => {
   if (adminBinding !== null && adminBinding.providerId !== '') {

@@ -6,6 +6,7 @@
 import { z } from 'zod'
 
 import { fetchProviderModels, type DiscoveryResult } from '../../../llm-providers/discovery.js'
+import { ModelHintsSchema, type ModelHints } from '../../../llm-providers/model-hints.js'
 import {
   createLlmProvider,
   deleteLlmProvider,
@@ -35,6 +36,7 @@ const ProviderBodySchema = z.object({
 })
 const ProviderPatchSchema = ProviderBodySchema.partial().extend({
   models: z.array(z.string()).optional(),
+  modelHints: ModelHintsSchema.optional(),
 })
 const RoleBindingSchema = z.object({ providerId: z.string().min(1), model: z.string().min(1) }).nullable()
 const RolesBodySchema = z.object({
@@ -53,6 +55,7 @@ type PublicProviderAccount = {
   readonly apiKeyMasked: string
   readonly baseProvider: string | null
   readonly baseModel: string | null
+  readonly modelHints: ModelHints
   readonly verification: Verification
 }
 
@@ -64,6 +67,7 @@ const publicAccount = (p: LlmProviderAccount): PublicProviderAccount => ({
   apiKeyMasked: mask(p.apiKey),
   baseProvider: p.baseProvider,
   baseModel: p.baseModel,
+  modelHints: p.modelHints ?? {},
   verification: p.verification,
 })
 

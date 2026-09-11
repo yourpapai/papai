@@ -13,6 +13,7 @@ export const llmProviders = sqliteTable('llm_providers', {
   encryptedApiKey: text('encrypted_api_key').notNull(),
   baseProvider: text('base_provider'),
   baseModel: text('base_model'),
+  modelHints: text('model_hints'),
   modelsCache: text('models_cache'),
   modelsFetchedAt: integer('models_fetched_at'),
   verificationStatus: text('verification_status').notNull().default('unverified'),
