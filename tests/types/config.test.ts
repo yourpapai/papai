@@ -23,6 +23,7 @@ describe('config types', () => {
         'ai_reasoning_visibility',
         'ai_output_detail_level',
         'ai_live_status',
+        'ai_reasoning_effort',
         'language_prompted',
       ])
     })
@@ -43,6 +44,7 @@ describe('config types', () => {
         'ai_reasoning_visibility',
         'ai_output_detail_level',
         'ai_live_status',
+        'ai_reasoning_effort',
       ] as const) {
         expect(isConfigKey(key)).toBe(true)
       }

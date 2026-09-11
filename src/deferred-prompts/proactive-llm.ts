@@ -5,6 +5,7 @@
 
 import { generateText, isStepCount, type LanguageModel } from 'ai'
 
+import { resolveEffectiveReasoningEffort } from '../ai-output-settings.js'
 import { runWithProviderRequestScope } from '../analytics/provider-request-scope.js'
 import type { ProviderRequestScope } from '../analytics/provider-request-scope.js'
 import { resolveProactiveProviderRequestScope } from '../analytics/provider-scope-factory.js'
@@ -48,7 +49,12 @@ export type DeferredExecutionContext = {
 export interface ProactiveLlmDeps {
   generateText: typeof generateText
   stepCountIs: typeof isStepCount
-  buildModel: (config: { apiKey: string; baseURL: string }, modelId: string, metadata: ModelMetadata) => LanguageModel
+  buildModel: (
+    config: { apiKey: string; baseURL: string },
+    modelId: string,
+    metadata: ModelMetadata,
+    reasoningEffort?: string | null,
+  ) => LanguageModel
   /** Scope factory seam: production resolves from the active analytics runtime; tests inject fakes. */
   resolveScope?: (input: ProactiveScopeInput) => ProviderRequestScope
 }
@@ -56,8 +62,8 @@ export interface ProactiveLlmDeps {
 const defaultProactiveLlmDeps: ProactiveLlmDeps = {
   generateText: (...args) => generateText(...args),
   stepCountIs: (...args) => isStepCount(...args),
-  buildModel: (config, modelId, metadata) =>
-    buildChatModel(config.apiKey, config.baseURL, modelId, undefined, metadata),
+  buildModel: (config, modelId, metadata, reasoningEffort) =>
+    buildChatModel(config.apiKey, config.baseURL, modelId, undefined, metadata, reasoningEffort),
 }
 type DispatchExecutionArgs = ProactiveLlmDispatchArgs<Partial<ProactiveLlmDeps>, BuildProviderFn>
 export type { BuildProviderFn }
@@ -188,7 +194,12 @@ function runFullGeneration(
   deps: ProactiveLlmDeps,
 ): Promise<string> {
   const { createdByUserId } = execCtx
-  const model = deps.buildModel(config, config.mainModel, config.metadata)
+  const model = deps.buildModel(
+    config,
+    config.mainModel,
+    config.metadata,
+    resolveEffectiveReasoningEffort(configContextId, config.metadata),
+  )
   // One independent immutable proactive scope per execution, established before
   // descriptor construction. Never reuses a normal-turn or prior-owner scope.
   const scope = (deps.resolveScope ?? resolveProactiveProviderRequestScope)({
