@@ -6,6 +6,7 @@
 import { describe, expect, it } from 'bun:test'
 
 import type { IssueComment } from '../../opencode-agent/src/blocks.js'
+import { driveMachine } from '../../opencode-agent/src/cascade.js'
 import type { CheckSpec } from '../../opencode-agent/src/check-loop.js'
 import type { MachineInput } from '../../opencode-agent/src/phase-context.js'
 import { runFollowUp } from '../../opencode-agent/src/phases/follow-up.js'
@@ -362,6 +363,39 @@ describe('runFollowUp · the non-moving contract', () => {
     expect(edit?.body).toContain('"phase": "COMPLETE"')
     expect(edit?.body).toContain('"reviewAttempts": 0')
     expect(result.state?.tokensSpent).toBe(2_000)
+  })
+})
+
+describe('driveMachine · the follow-up dispatch (task 4.6)', () => {
+  it('runs the follow-up handler beside the sync one, ahead of both budget stops', async () => {
+    // At the token ceiling the cascade would stop before any handler — parking
+    // the issue in `FAILED`, a state move, which is the one thing a side
+    // operation never makes. Exactly that is why the door stands ahead of both
+    // stops: the handler owns its own ceilings, and the run answers with the
+    // follow-up notice instead.
+    const fixture = followUpFixture({ state: { tokensSpent: 5_000_000 }, tokensUsed: 0 })
+
+    const result = await driveMachine(fixture.input)
+
+    // The handler's own gate answered — not the cascade's budget stop, and not
+    // the settle path a phase-less `COMPLETE` would otherwise take.
+    expect(result.status).toBe('failed')
+    expect(result.state?.phase).toBe('COMPLETE')
+    expect(fixture.sections.at(-1)?.body).toContain('AGENT_MAX_TOKENS')
+    expect(fixture.io.prompts).toEqual([])
+  })
+
+  it('leaves the cascade untouched for a machine input that carries no follow-up flag', async () => {
+    // The flag is the dispatch's alone: without it, `COMPLETE` settles the way
+    // it always has — the closing comment, no handler, no model turn.
+    const fixture = followUpFixture({ state: { tokensSpent: 5_000_000 }, tokensUsed: 0 })
+    const { followUp: _followUp, ...unflagged } = fixture.input
+
+    const result = await driveMachine(unflagged)
+
+    expect(result.status).toBe('completed')
+    expect(result.reason).toBe('Pipeline finished')
+    expect(fixture.io.prompts).toEqual([])
   })
 })
 
