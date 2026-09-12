@@ -27,6 +27,7 @@ export const SLASH_COMMANDS = [
   '/continue',
   '/sync',
   '/fix',
+  '/follow-up',
 ] as const
 
 export type SlashCommand = (typeof SLASH_COMMANDS)[number]
@@ -128,7 +129,7 @@ export const COMMAND_SIGNALS: Partial<Record<SlashCommand, TransitionSignal>> = 
 /**
  * Commands whose availability the transition table cannot decide alone.
  *
- * There are three. `/sync` is the `/ask` shape — no signal, so the table is never
+ * There are four. `/sync` is the `/ask` shape — no signal, so the table is never
  * asked — and applies wherever the **agent branch exists**: `changeName !== null`
  * is that fact by the workspace's own doctrine (a `changeName === null` state
  * has no folder to read and no branch to switch to), with `prNumber` named
@@ -148,7 +149,13 @@ export const COMMAND_SIGNALS: Partial<Record<SlashCommand, TransitionSignal>> = 
  * needs the same split — on a cancelled issue it would name a branch nobody
  * asked for and report against a pull request that does not exist. `/fix`
  * keeps the `prNumber` predicate: its round repairs the checks of a pull
- * request, and a state naming none has nothing for it to read.
+ * request, and a state naming none has nothing for it to read. `/follow-up`
+ * needs the phase named **beside** the pull request, which is what separates it
+ * from `/fix` and `/review`: a delivered issue and a cancelled one both live in
+ * `COMPLETE`, so the pull request decides those, but the implementation, review
+ * and failure phases carry pull requests too, and none of them is delivery
+ * reached — the gate is exactly "the delivery cascade has passed and left a
+ * pull request", and every state it admits is one the size gate can act on.
  *
  * One predicate table with two readers rather than two spellings of one rule:
  * {@link acceptedCommands} shows a maintainer the list, `triggers.ts` enforces
@@ -159,6 +166,10 @@ const COMMAND_APPLIES: Partial<Record<SlashCommand, (state: AgentState) => boole
   '/sync': (state) =>
     state.prNumber !== null || (state.changeName !== null && !(state.phase === 'COMPLETE' && state.prUrl === null)),
   '/fix': (state) => state.prNumber !== null,
+  // Issue #441: delivered, with the pull request the delivery produced. No
+  // `COMMAND_SIGNALS` entry — a follow-up is the `/sync` shape with teeth, a
+  // side operation the machine is never asked about.
+  '/follow-up': (state) => (state.phase === 'COMPLETE' || state.phase === 'PR_DELIVERY') && state.prNumber !== null,
 }
 
 /** Whether `command` applies to this state, over and above what the phase takes. */
@@ -169,11 +180,13 @@ export const commandApplies = (command: SlashCommand, state: AgentState): boolea
 
 const accepts = (state: AgentState, command: SlashCommand): boolean => {
   const signal = COMMAND_SIGNALS[command]
-  // `/ask` and `/sync` are the commands with no signal, and neither needs the
-  // transition table: answering and syncing ask nothing of the state machine,
-  // so there is no phase to refuse them. `/sync` still asks the predicate above
-  // — before capture there is no branch to merge base into — while `/ask` has
-  // no row there and is accepted everywhere, exactly as before.
+  // `/ask`, `/sync` and `/follow-up` are the commands with no signal, and none
+  // needs the transition table: answering, syncing and following up ask nothing
+  // of the state machine, so there is no phase to refuse them. `/sync` and
+  // `/follow-up` still ask the predicate above — before capture there is no
+  // branch to merge base into, and before delivery there is nothing a follow-up
+  // edits — while `/ask` has no row there and is accepted everywhere, exactly
+  // as before.
   if (signal === undefined) return commandApplies(command, state)
   return canTransition(state.phase, signal) && commandApplies(command, state)
 }

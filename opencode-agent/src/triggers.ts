@@ -14,10 +14,12 @@ import { branchNameFor } from './git.js'
 import type { PhaseInput } from './phase-context.js'
 import { postAndAppend } from './run-post.js'
 import { renderCommandElsewhere } from './run-report.js'
+import { refuseIfUsageMissing, sideOperation } from './side-operations.js'
 import { canTransition } from './transitions.js'
 import { moveOrSkip, skip } from './trigger-outcome.js'
 import type { TriggerOutcome } from './trigger-outcome.js'
 import { errorMessage, WAITING_PHASES } from './types.js'
+import type { TransitionSignal } from './types.js'
 
 /**
  * Turning a trigger — a slash command, a plain comment, a red CI run — into the
@@ -68,8 +70,12 @@ export const applyTrigger = (input: PhaseInput): Promise<TriggerOutcome> => {
   // Everything below here is the issue conversation, and once a pull request
   // exists the issue is no longer where this run is driven from — see
   // `feedback-target.ts`. The refusal is about the *surface*, not the command:
-  // it names the pull request and posts nothing else.
-  if (command !== null && commandSurface(state, 'issue') === 'elsewhere') return commandBelongsOnPr(input, command)
+  // it names the pull request and posts nothing else. The surface rule is one
+  // function with one answer, and it holds the one exception (`/follow-up`,
+  // issue #441) inside itself — the routing here is unchanged by it.
+  if (command !== null && commandSurface(state, 'issue', command.command) === 'elsewhere') {
+    return commandBelongsOnPr(input, command)
+  }
   if (command !== null) return applyCommand(input, command)
   if (state.phase === 'INIT_OR_CLARIFY') return applyClarifyIntent(input)
   // Design D6 — a plain comment mid-implementation is read as steering: a
@@ -145,69 +151,32 @@ const commandBelongsOnPr = async (input: PhaseInput, command: ParsedCommand): Pr
 }
 
 /**
- * The two non-moving side operations, decided before the signal lookup.
- *
- * `/ask` is always available: answering asks nothing of the state machine, so
- * there is no phase in which it can be the wrong thing to do. The machine now
- * agrees — `ANSWERED` is a non-moving signal accepted in every phase. It did
- * not use to: it lived in three rows of the transition table while this line
- * let `/ask` through everywhere, so a question in COMPLETE, FAILED or any
- * mid-pipeline phase paid for the model turn and then crashed the runner on
- * an `InvalidTransitionError` nobody on the issue ever saw.
- *
- * `/sync` is that shape's sibling — no `COMMAND_SIGNALS` entry, so the
- * transition table is never consulted and no phase, park or resume question
- * exists to answer. `COMPLETE`, `FAILED` and `INCOMPLETE` all take it, which
- * is the point: a branch that fell behind its base is repaired from wherever
- * it was left, with or without a pull request — issue #323 is why the "with"
- * half matters, a drift park before any pull request existed whose only
- * machine remedy this gate used to refuse. The predicate is the one
- * `acceptedCommands` reads, so the gate and the offer cannot drift; before
- * capture there is no branch to merge base into, and the refusal is the
- * ordinary wrong-command one listing what does apply.
- */
-const sideOperation = (input: PhaseInput, command: ParsedCommand): TriggerOutcome | null => {
-  const { state } = input
-  if (command.command === '/ask') return { state, halt: null, answer: true }
-  if (command.command === '/sync') {
-    if (commandApplies('/sync', state)) return { state, halt: null, answer: false, sync: true }
-    return null
-  }
-  return null
-}
-
-/**
- * A command with no signal that reached the signal lookup — either an unknown
- * spell, or `/sync` before capture, the one signal-less command that can be
- * refused. Both go through the wrong-command door, which lists what does
- * apply here.
+ * A command with no signal that reached the signal lookup — an unknown spell,
+ * or one of the signal-less commands outside its predicate: `/sync` before
+ * capture, `/follow-up` before delivery. Both go through the wrong-command
+ * door, which lists what does apply here — and the two known ones earn a
+ * reason that says what they need rather than calling them unknown.
  */
 const refuseUnknown = (input: PhaseInput, command: ParsedCommand): Promise<TriggerOutcome> => {
   const reason =
     command.command === '/sync'
       ? `${command.command} does not apply to this issue`
-      : `Unknown command ${command.command}`
+      : command.command === '/follow-up'
+        ? `${command.command} applies to a delivered pull request`
+        : `Unknown command ${command.command}`
   return refuseCommand(input, command.command, reason)
 }
 
-const applyCommand = async (input: PhaseInput, command: ParsedCommand): Promise<TriggerOutcome> => {
+/**
+ * The per-command ceilings, each refused before the signal is applied —
+ * applied-and-regretted would park the issue in a handler phase no trigger
+ * re-enters, under a notice inviting the very command that just became
+ * impossible. Each is asked of the transition table first, so a command the
+ * phase would refuse anyway is answered with what does apply, never with a
+ * budget it never reached. `null` is "no ceiling applies; apply the signal".
+ */
+const refuseSpentBudget = (input: PhaseInput, signal: TransitionSignal): Promise<TriggerOutcome> | null => {
   const { state, deps } = input
-  const side = sideOperation(input, command)
-  if (side !== null) return side
-
-  const signal = COMMAND_SIGNALS[command.command]
-  if (signal === undefined) return refuseUnknown(input, command)
-
-  // The half of "does this command apply here" the transition table cannot
-  // answer, asked before either budget: `/review` on a *cancelled* issue is a
-  // wrong-command refusal, not a spent one, and `COMPLETE` is the one phase
-  // where the two are indistinguishable from the phase alone. Refused through
-  // the same door as a wrong phase, so the comment lists what does work — and
-  // `acceptedCommands` consults this very predicate to build that list.
-  if (!commandApplies(command.command, state)) {
-    return refuseCommand(input, command.command, `${command.command} does not apply to this issue`)
-  }
-
   // Before the move, not after it — see `refuseExhausted` below. Asked of the
   // transition table rather than of `state.phase` directly, so this cannot start
   // answering for a `/retry` the phase was going to turn down anyway: a retry
@@ -233,6 +202,36 @@ const applyCommand = async (input: PhaseInput, command: ParsedCommand): Promise<
   if (signal === 'CI_FAILED' && canTransition(state.phase, signal) && state.ciAttempts >= deps.config.maxCiAttempts) {
     return refuseFix(input)
   }
+
+  return null
+}
+
+const applyCommand = async (input: PhaseInput, command: ParsedCommand): Promise<TriggerOutcome> => {
+  const { state, deps } = input
+  // The `/follow-up` usage gate is asked before the dispatch: an empty
+  // argument is nothing to assess, so the usage note is the whole answer —
+  // no turn, no git. `side-operations.ts` owns both the gate and the note.
+  const usage = await refuseIfUsageMissing(input, command)
+  if (usage !== null) return usage
+
+  const side = sideOperation(input, command)
+  if (side !== null) return side
+
+  const signal = COMMAND_SIGNALS[command.command]
+  if (signal === undefined) return refuseUnknown(input, command)
+
+  // The half of "does this command apply here" the transition table cannot
+  // answer, asked before either budget: `/review` on a *cancelled* issue is a
+  // wrong-command refusal, not a spent one, and `COMPLETE` is the one phase
+  // where the two are indistinguishable from the phase alone. Refused through
+  // the same door as a wrong phase, so the comment lists what does work — and
+  // `acceptedCommands` consults this very predicate to build that list.
+  if (!commandApplies(command.command, state)) {
+    return refuseCommand(input, command.command, `${command.command} does not apply to this issue`)
+  }
+
+  const spent = await refuseSpentBudget(input, signal)
+  if (spent !== null) return spent
 
   const outcome = moveOrSkip(state, signal, deps, command.command)
   if (outcome.halt !== null) return refuseCommand(input, command.command, outcome.halt.reason)

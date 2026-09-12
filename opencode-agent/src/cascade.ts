@@ -9,6 +9,7 @@ import { handleAnswer } from './phases/answer.js'
 import { handleArchive } from './phases/archive.js'
 import { handleCiFix } from './phases/ci-fix.js'
 import { handleDeliver } from './phases/deliver.js'
+import { runFollowUp } from './phases/follow-up.js'
 import { handleImplement } from './phases/implement.js'
 import { handlePlan } from './phases/plan.js'
 import { handleReview } from './phases/review.js'
@@ -104,15 +105,18 @@ export const hasHandler = (phase: Phase): boolean => HANDLERS[phase] !== undefin
  * holds — so one gate, in the layer that owns the decision, is the whole rule.
  */
 export const driveMachine = async (input: MachineInput): Promise<RunResult> => {
-  // The `/sync` door, and it stands before both budget stops on purpose. The
-  // clean path spends nothing, so `/sync` must work **at** the token ceiling —
-  // a stop here would refuse the one operation that costs nothing. The
-  // wall-clock stop is refused for the sharper reason: it parks in
-  // `INCOMPLETE`, a state move, and moving state is the one thing `/sync`
-  // exists never to do. The handler asks both ceilings itself, at the points
-  // where they genuinely bind (a repair turn is the only thing a sync pays
-  // for), and every outcome it can take leaves the state untouched.
+  // The side-operation doors, and they stand before both budget stops on
+  // purpose. The clean paths spend nothing, so `/sync` must work **at** the
+  // token ceiling — a stop here would refuse the one operation that costs
+  // nothing — and `/follow-up` owns its ceilings the same way, its gate asked
+  // inside the handler rather than by a cascade that would otherwise refuse it
+  // a turn (issue #441). The wall-clock stop is refused for the sharper reason:
+  // it parks in `INCOMPLETE`, a state move, and moving state is the one thing
+  // a side operation exists never to do. The handlers ask both ceilings
+  // themselves, at the points where they genuinely bind, and every outcome
+  // they can take leaves the state untouched.
   if (input.sync === true) return runSync(input)
+  if (input.followUp === true) return runFollowUp(input)
 
   const { state, thread } = input
 

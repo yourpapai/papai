@@ -33,6 +33,15 @@ export interface TriggerOutcome {
    * as `answer` would be if it arrived later than it did.
    */
   sync?: boolean
+  /**
+   * Set when the trigger is the `/follow-up` side operation (issue #441): run
+   * the follow-up handler, move no phase. `/sync`'s shape with teeth — the same
+   * non-moving dispatch, but the work it does spends model turns and writes
+   * git, so the handler owns its own gates the way `runSync` owns the token
+   * ceiling. Optional for the same reason `sync` is: only the follow-up
+   * dispatch sets it, and every other outcome leaves it unset.
+   */
+  followUp?: boolean
 }
 
 /**

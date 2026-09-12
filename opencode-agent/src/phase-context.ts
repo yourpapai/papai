@@ -155,6 +155,13 @@ export interface MachineInput extends PhaseInput {
    * `phases/sync.ts` for why `/sync` owns its own ceilings.
    */
   sync?: boolean
+  /**
+   * Set when the trigger is the `/follow-up` side operation (issue #441). The
+   * cascade runs the follow-up handler beside the sync one, still ahead of
+   * both budget stops — the clean path spends nothing until its own gates say
+   * otherwise, which is why the dispatch precedes them.
+   */
+  followUp?: boolean
   /** Whether this run has already written a state block to the thread. */
   posted: boolean
   /** Tokens this issue had spent before this job started. */

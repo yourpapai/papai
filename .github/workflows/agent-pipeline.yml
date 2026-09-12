@@ -158,7 +158,8 @@ jobs:
            contains(github.event.comment.body, '/review') ||
            contains(github.event.comment.body, '/continue') ||
            contains(github.event.comment.body, '/sync') ||
-           contains(github.event.comment.body, '/fix')) &&
+           contains(github.event.comment.body, '/fix') ||
+           contains(github.event.comment.body, '/follow-up')) &&
         github.event.sender.type != 'Bot' &&
         contains(fromJSON('["OWNER", "MEMBER", "COLLABORATOR"]'), github.event.comment.author_association))
        ||

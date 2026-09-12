@@ -486,6 +486,184 @@ describe('applyTrigger · /fix past the CI-fix ceiling (D3)', () => {
   })
 })
 
+describe('applyTrigger · /follow-up dispatch (the /sync shape, issue #441)', () => {
+  /** A reply recorder, so the refusal and usage notes a run buffers are provable. */
+  const withRecordingReply = (): { sections: string[]; recording: ReturnType<typeof stubPhaseDeps> } => {
+    const recording = stubPhaseDeps({ selfLogin: AGENT_LOGIN })
+    const sections: string[] = []
+    recording.deps.reply = {
+      begin: (): void => {},
+      section: (_state, section): void => {
+        sections.push(section.body)
+      },
+      flush: (): Promise<null> => Promise.resolve(null),
+    }
+    return { sections, recording }
+  }
+
+  /** A `/follow-up` typed on the agent's pull request — the primary surface. */
+  const followUpOnPullRequest = (
+    state: AgentState,
+    argument: string,
+  ): { input: PhaseInput; recording: ReturnType<typeof stubPhaseDeps>; sections: string[] } => {
+    const { sections, recording } = withRecordingReply()
+    return {
+      recording,
+      sections,
+      input: {
+        state,
+        issue: { number: 42, title: 't', body: 'b' },
+        trigger: {
+          kind: 'pull-request',
+          eventName: 'issue_comment',
+          action: 'created',
+          senderLogin: 'maintainer',
+          senderType: 'User',
+          authorAssociation: 'OWNER',
+          prNumber: 7,
+          commentBody: argument.length === 0 ? '/follow-up' : `/follow-up ${argument}`,
+          commentId: 99,
+          defaultBranch: 'main',
+          issueNumber: 42,
+        },
+        command: { command: '/follow-up', argument },
+        thread: recording.io.thread,
+        deps: recording.deps,
+      },
+    }
+  }
+
+  /** A `/follow-up` typed on the issue — the only surface an undelivered state has. */
+  const followUpOnIssue = (
+    state: AgentState,
+    argument: string,
+  ): { input: PhaseInput; recording: ReturnType<typeof stubPhaseDeps>; sections: string[] } => {
+    const { sections, recording } = withRecordingReply()
+    return {
+      recording,
+      sections,
+      input: {
+        state,
+        issue: { number: 42, title: 't', body: 'b' },
+        trigger: commentTrigger(argument.length === 0 ? '/follow-up' : `/follow-up ${argument}`, 'OWNER'),
+        command: { command: '/follow-up', argument },
+        thread: recording.io.thread,
+        deps: recording.deps,
+      },
+    }
+  }
+
+  const delivered = (phase: 'COMPLETE' | 'PR_DELIVERY'): AgentState =>
+    baseState({ phase, prNumber: 7, prUrl: 'https://example.test/pull/7' })
+
+  it.each(['COMPLETE', 'PR_DELIVERY'])('%s with a pull request hands the machine the followUp flag', async (phase) => {
+    // D1: the dispatch is a side-operation flag beside `sync`, decided before
+    // the signal lookup — `/follow-up` has no COMMAND_SIGNALS entry, so the
+    // transition table is never consulted, no phase moves and the state the
+    // cascade is handed is the state the command arrived on. The handler
+    // itself is task 4; this layer's contract is the flag alone.
+    const state = delivered(phase)
+    const { input, recording } = followUpOnPullRequest(state, 'tighten the retry backoff')
+
+    const outcome = await applyTrigger(input)
+
+    expect(outcome.halt).toBeNull()
+    expect(outcome.answer).toBe(false)
+    expect(outcome.followUp).toBe(true)
+    expect(outcome.state).toEqual(state)
+    // The dispatch decides; it does not act — no turn, no git.
+    expect(recording.io.prompts).toHaveLength(0)
+    expect(recording.io.gitCalls).toHaveLength(0)
+  })
+
+  it('the flag is the predicate’s alone — an undelivered issue takes the delivered-PR refusal', async () => {
+    // The drift-park shape: work on the branch, no pull request, not delivery
+    // reached. `/follow-up` falls through `sideOperation` to the signal lookup,
+    // where its missing signal hands it to `refuseUnknown` — and the refusal
+    // says what the command actually needs (a delivered pull request), not
+    // "unknown command".
+    const state = baseState({ phase: 'FAILED', resumeFrom: 'REVIEW_AND_MUTATE', changeName: 'add-x' })
+    const { input, recording, sections } = followUpOnIssue(state, 'tighten the retry backoff')
+
+    const outcome = await applyTrigger(input)
+
+    expect(outcome.halt?.status).toBe('skipped')
+    expect(outcome.halt?.reason).toContain('delivered pull request')
+    // The refusal's list derives from the same predicate: `/follow-up` is not
+    // offered where it does not apply. (The heading names the refused command
+    // itself, so the offered line is the part that must not.)
+    const offeredUndelivered = sections
+      .join()
+      .split('\n')
+      .filter((line) => line.startsWith('What works here'))
+    expect(offeredUndelivered).toHaveLength(1)
+    expect(offeredUndelivered[0]).not.toContain('`/follow-up`')
+    // A refusal moves nothing.
+    expect(outcome.state).toEqual(state)
+    expect(recording.io.prompts).toHaveLength(0)
+  })
+
+  it('a delivered issue that has since failed is refused too — the pull request alone is not delivery reached', async () => {
+    // FAILED after delivery carries a pull request, and the predicate is
+    // phase-scoped: a red fix round parked here is not "delivered", and the
+    // refusal must say so rather than dispatch a handler that edits a branch
+    // the failure is still about.
+    const state = baseState({
+      phase: 'FAILED',
+      resumeFrom: 'REVIEW_AND_MUTATE',
+      prNumber: 7,
+      prUrl: 'https://example.test/pull/7',
+    })
+    const { input } = followUpOnPullRequest(state, 'tighten the retry backoff')
+
+    const outcome = await applyTrigger(input)
+
+    expect(outcome.halt?.status).toBe('skipped')
+    expect(outcome.halt?.reason).toContain('delivered pull request')
+    expect(outcome.followUp).toBeUndefined()
+  })
+
+  it('a cancelled COMPLETE that names no pull request takes the same refusal', async () => {
+    // `/cancel` parks here with the branch deleted and no pull request — the
+    // one branch-less state that still names a change. There is nothing a
+    // follow-up could edit, and the delivered-PR refusal is what says where
+    // the command would apply.
+    const state = baseState({ phase: 'COMPLETE', changeName: 'add-x' })
+    const { input, sections } = followUpOnIssue(state, 'tighten the retry backoff')
+
+    const outcome = await applyTrigger(input)
+
+    expect(outcome.halt?.status).toBe('skipped')
+    expect(outcome.halt?.reason).toContain('delivered pull request')
+    const offeredCancelled = sections
+      .join()
+      .split('\n')
+      .filter((line) => line.startsWith('What works here'))
+    expect(offeredCancelled).toHaveLength(1)
+    expect(offeredCancelled[0]).not.toContain('`/follow-up`')
+    expect(outcome.state).toEqual(state)
+  })
+
+  it('an argument-less /follow-up is refused with usage and buys no turn', async () => {
+    // The size gate is a model turn, and an empty argument is nothing to
+    // assess: the usage note is the whole answer — no turn, no git, and the
+    // persisted state byte-identical.
+    const state = delivered('COMPLETE')
+    const { input, recording, sections } = followUpOnPullRequest(state, '')
+
+    const outcome = await applyTrigger(input)
+
+    expect(outcome.halt?.status).toBe('skipped')
+    expect(outcome.halt?.reported).toBe(true)
+    // The usage note names the command and what it needs.
+    expect(sections.join()).toContain('/follow-up')
+    expect(sections.join()).toContain('argument')
+    expect(recording.io.prompts).toHaveLength(0)
+    expect(recording.io.gitCalls).toHaveLength(0)
+    expect(outcome.state).toEqual(state)
+  })
+})
+
 describe('applyTrigger · /cancel cleanup (D9)', () => {
   it('deletes the remote agent branch when /cancel succeeds', async () => {
     const recording = stubPhaseDeps({ selfLogin: AGENT_LOGIN })
