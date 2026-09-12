@@ -15,7 +15,7 @@ Research-only change: no production/test code is written or edited (see design.m
 ## 3. Expensive measurements (one pass each, cost order)
 
 - [x] 3.1 Run full-suite coverage with a ≥20 min shell timeout (wrapper demotes to serial under load; never run two full suites concurrently): `bun test:coverage`; parse the lcov report via the repo's `scripts/coverage/` modules into a per-module line/branch table over `src/`, `plugins/`, `client/`, workspace roots — verify: `bun test:coverage`
-- [ ] 3.2 Run the coverage ratchet and record its per-file verdict vs the 0.90 lines/functions floor — verify: `bun coverage:ratchet`
+- [x] 3.2 Run the coverage ratchet and record its per-file verdict vs the 0.90 lines/functions floor — verify: `bun coverage:ratchet`
 - [ ] 3.3 Run the T0 story-lane coverage gate and record its verdict vs `scripts/story/coverage-floor.json` — verify: `bun test:stories:coverage`
 - [ ] 3.4 Run the mutation planner (scope + floors only, no Stryker measurement) and extract per-module floors from `scripts/mutation/baseline.json` plus gate semantics (plan → shard → gate, ratchet rules) — verify: `bun test:mutate:plan`
 - [ ] 3.5 Assemble runtime/flakiness evidence from persisted reports only — suite/gate runtimes via `bun run test:slowest` and `reports/checks/*.log`; note JUnit basename collision and load-demotion behavior; write report section 5 — verify: `bun run test:status && bun run test:slowest`
