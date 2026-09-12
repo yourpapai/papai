@@ -10,7 +10,7 @@ Research-only change: no production/test code is written or edited (see design.m
 ## 2. Static taxonomy (sub-second data first)
 
 - [x] 2.1 Run `bun run test:audit` and capture the per-file case/assertion fragmentation table into working notes — verify: `bun run test:audit`
-- [ ] 2.2 Classify `tests/` entries into lanes (hermetic DI units, legacy `mock.module()`/delayed-import, integration `tests/db/`, T0 `tests/stories/`, T1 `tests/e2e/`, T2 `tests/smoke/`, T3 `tests/platform/`, `tests/operational/`, `tests/visual/`) from directory layout + `bunfig.toml` exclusions; flag implementation-coupled vs behavior-pinning suites; write report section 3 — verify: `grep -n "Taxonomy" reports/audit/issue-448/behavior-safety-audit.md`
+- [x] 2.2 Classify `tests/` entries into lanes (hermetic DI units, legacy `mock.module()`/delayed-import, integration `tests/db/`, T0 `tests/stories/`, T1 `tests/e2e/`, T2 `tests/smoke/`, T3 `tests/platform/`, `tests/operational/`, `tests/visual/`) from directory layout + `bunfig.toml` exclusions; flag implementation-coupled vs behavior-pinning suites; write report section 3 — verify: `grep -n "Taxonomy" reports/audit/issue-448/behavior-safety-audit.md`
 
 ## 3. Expensive measurements (one pass each, cost order)
 
