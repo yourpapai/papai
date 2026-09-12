@@ -5,6 +5,7 @@
 
 import { generateText, isStepCount, type LanguageModel } from 'ai'
 
+import { resolveEffectiveReasoningEffort } from '../ai-output-settings.js'
 import { runWithProviderRequestScope } from '../analytics/provider-request-scope.js'
 import type { ProviderRequestScope } from '../analytics/provider-request-scope.js'
 import { resolveProactiveProviderRequestScope } from '../analytics/provider-scope-factory.js'
@@ -14,15 +15,20 @@ import type { DeferredDeliveryTarget } from '../chat/types.js'
 import { hoistSystemMessages } from '../llm-message-utils.js'
 import { buildChatModel } from '../llm-model-builder.js'
 import { collectTurnMessages } from '../llm-orchestrator-messages.js'
+import { handleToolCallFinish } from '../llm-orchestrator-support.js'
+import { adaptToolExecutionEnd } from '../llm-orchestrator-tool-events.js'
 import { logger } from '../logger.js'
+import type { ModelMetadata } from '../models-dev/resolve.js'
 import { createDisclosurePrepareStep } from '../tools/disclosure/prepare-step.js'
-import { buildToolsContextRecord } from '../tools/wrap-tool-execution.js'
+import { createRepairToolCall } from '../tools/disclosure/repair-tool-call.js'
+import { getContextLanguage } from '../utils/config-language.js'
 import { getLlmConfig, type LlmConfig } from './proactive-llm-config.js'
 import { buildFullMessages, buildFullToolSet } from './proactive-llm-full.js'
 import {
   buildFullSystemPrompt,
   buildProactiveVerification,
   finalizeAndLog,
+  generateWithTrace,
   getConfigContextId,
   getStorageContextId,
   resolveFullProvider,
@@ -43,7 +49,12 @@ export type DeferredExecutionContext = {
 export interface ProactiveLlmDeps {
   generateText: typeof generateText
   stepCountIs: typeof isStepCount
-  buildModel: (config: { apiKey: string; baseURL: string }, modelId: string) => LanguageModel
+  buildModel: (
+    config: { apiKey: string; baseURL: string },
+    modelId: string,
+    metadata: ModelMetadata,
+    reasoningEffort?: string | null,
+  ) => LanguageModel
   /** Scope factory seam: production resolves from the active analytics runtime; tests inject fakes. */
   resolveScope?: (input: ProactiveScopeInput) => ProviderRequestScope
 }
@@ -51,7 +62,8 @@ export interface ProactiveLlmDeps {
 const defaultProactiveLlmDeps: ProactiveLlmDeps = {
   generateText: (...args) => generateText(...args),
   stepCountIs: (...args) => isStepCount(...args),
-  buildModel: (config, modelId) => buildChatModel(config.apiKey, config.baseURL, modelId),
+  buildModel: (config, modelId, metadata, reasoningEffort) =>
+    buildChatModel(config.apiKey, config.baseURL, modelId, undefined, metadata, reasoningEffort),
 }
 type DispatchExecutionArgs = ProactiveLlmDispatchArgs<Partial<ProactiveLlmDeps>, BuildProviderFn>
 export type { BuildProviderFn }
@@ -105,6 +117,26 @@ type ScopedGenerationArgs = Readonly<{
   scope: Parameters<typeof runWithProviderRequestScope>[0]
 }>
 
+const buildFullGenerationBaseOptions = (
+  prepared: FullGenerationInput,
+  deps: ProactiveLlmDeps,
+  model: LanguageModel,
+  turnId: string,
+): Parameters<ProactiveLlmDeps['generateText']>[0] => {
+  return {
+    model,
+    ...hoistSystemMessages(prepared.systemPrompt, prepared.messages),
+    tools: prepared.tools,
+    stopWhen: deps.stepCountIs(25),
+    timeout: 1_200_000,
+    prepareStep: createDisclosurePrepareStep(prepared.disclosure, prepared.storageContextId, turnId),
+    repairToolCall: createRepairToolCall(prepared.disclosure, prepared.storageContextId),
+    onToolExecutionEnd: (event) => {
+      handleToolCallFinish(prepared.storageContextId, undefined, { ...adaptToolExecutionEnd(event), turnId })
+    },
+  }
+}
+
 const runScopedGeneration = async (args: ScopedGenerationArgs): Promise<string> => {
   const { execCtx, config, configContextId, deps, model, scope } = args
   const { createdByUserId } = execCtx
@@ -125,17 +157,8 @@ const runScopedGeneration = async (args: ScopedGenerationArgs): Promise<string> 
   // Keyed toolsContext record: every name in the final ToolSet maps to the
   // same immutable scope (see llm-orchestrator-invoke.ts for the Object.assign
   // intersection rationale).
-  const baseOptions: Parameters<ProactiveLlmDeps['generateText']>[0] = {
-    model,
-    ...hoistSystemMessages(prepared.systemPrompt, prepared.messages),
-    tools,
-    stopWhen: deps.stepCountIs(25),
-    timeout: 1_200_000,
-    prepareStep: createDisclosurePrepareStep(prepared.disclosure, prepared.storageContextId, turnId),
-  }
-  const result = await deps.generateText(
-    Object.assign({}, baseOptions, { toolsContext: buildToolsContextRecord(tools, scope) }),
-  )
+  const baseOptions = buildFullGenerationBaseOptions(prepared, deps, model, turnId)
+  const result = await generateWithTrace(execCtx, config, prepared, deps, scope, turnId, baseOptions)
   const previousHistory = getCachedHistory(prepared.storageContextId)
   const assistantMessages = collectTurnMessages(result)
   persistProactiveResults(
@@ -150,7 +173,12 @@ const runScopedGeneration = async (args: ScopedGenerationArgs): Promise<string> 
   return finalizeAndLog(
     result,
     createdByUserId,
-    buildProactiveVerification(deps, model, tools, [...prepared.messages, ...assistantMessages], scope),
+    {
+      ...buildProactiveVerification(deps, model, tools, [...prepared.messages, ...assistantMessages], scope),
+      turnId,
+      traceScope: prepared.storageContextId,
+    },
+    getContextLanguage(configContextId),
   )
 }
 
@@ -166,7 +194,12 @@ function runFullGeneration(
   deps: ProactiveLlmDeps,
 ): Promise<string> {
   const { createdByUserId } = execCtx
-  const model = deps.buildModel(config, config.mainModel)
+  const model = deps.buildModel(
+    config,
+    config.mainModel,
+    config.metadata,
+    resolveEffectiveReasoningEffort(configContextId, config.metadata),
+  )
   // One independent immutable proactive scope per execution, established before
   // descriptor construction. Never reuses a normal-turn or prior-owner scope.
   const scope = (deps.resolveScope ?? resolveProactiveProviderRequestScope)({

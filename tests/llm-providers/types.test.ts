@@ -25,6 +25,14 @@ describe('llm-providers types', () => {
       baseUrl: 'https://example.com/v1',
       model: 'gpt-4o-mini',
       source: 'global' as const,
+      metadata: {
+        providerId: null,
+        modelId: null,
+        contextWindow: null,
+        maxOutputTokens: null,
+        source: 'none' as const,
+        via: null,
+      },
     }
     const config: LlmConfigResult = {
       ok: true,

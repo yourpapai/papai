@@ -10,9 +10,9 @@ import type { IssueLedger, LedgerIssueRecord } from './issue-ledger.js'
 import { matchIssues } from './issue-matcher.js'
 import { ReviewerIssuesSchema } from './issue-schema.js'
 import type { IssueMatch, ReviewerIssue } from './issue-schema.js'
-import { tallyPhaseMs, tallyUsage, type RoundCollector } from './loop-trace.js'
 import type { ProgressReporter } from './progress-log.js'
 import { buildReviewPrompt } from './prompt-templates.js'
+import { tallyPhaseMs, tallyUsage, type RoundCollector } from './round-collector.js'
 import type { RunState } from './run-state.js'
 import type { TraceLogger } from './trace-log.js'
 
@@ -102,6 +102,9 @@ export async function runReviewStep(
   const reviewResult = await runAgent({
     spawn: deps.spawn,
     model: deps.config.reviewer.model,
+    effort: deps.config.reviewer.effort,
+    backend: deps.config.backend,
+    claude: deps.config.claude,
     cwd: deps.runState.worktreePath,
     prompt: buildReviewPrompt(
       deps.runState.planPath,
@@ -141,7 +144,10 @@ export async function runMatchAndRecord(
     logPath: deps.runState.logPath,
     cwd: deps.runState.worktreePath,
     model: deps.config.matcher.model,
+    effort: deps.config.matcher.effort,
     extraArgs: deps.config.matcher.extraArgs,
+    backend: deps.config.backend,
+    claude: deps.config.claude,
     reporter: deps.log,
     timeoutMs: deps.config.matcher.timeoutMs ?? deps.config.agentTimeoutMs,
   })

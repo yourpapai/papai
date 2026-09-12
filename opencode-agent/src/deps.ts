@@ -9,6 +9,7 @@ import path from 'node:path'
 import type { AgentHandle } from './agent-handle.js'
 import type { CheckRunner } from './check-loop.js'
 import { createCiGroups } from './ci-groups.js'
+import { resolveCommitIdentity } from './commit-identity.js'
 import { resolveBaseBranch } from './config-discovery.js'
 import type { Env, PipelineConfig } from './config.js'
 import { createGit } from './git.js'
@@ -62,8 +63,27 @@ interface ReviewRunnerInput {
   transcript: TranscriptSink | undefined
 }
 
+/**
+ * The environment handed to the review loop, branched on the job's backend.
+ *
+ * The opencode route carries the OpenCode config content, byte-identical to
+ * the pre-backend shape. The claude route carries exactly the job's selected
+ * Anthropic credential under its one spelling — no `OPENCODE_CONFIG_CONTENT`,
+ * no gateway settings — because the loop's own guard derives the invocation
+ * profile from that spelling and refuses a set `LLM_API_KEY` (design D9).
+ */
+export const reviewLoopEnv = (
+  config: Pick<PipelineConfig, 'backend' | 'claudeCredential' | 'openai'>,
+): Record<string, string> =>
+  config.backend === 'claude' && config.claudeCredential !== null
+    ? { [config.claudeCredential.name]: config.claudeCredential.value }
+    : opencodeConfigEnv(config.openai)
+
 const makeReviewRunner =
-  ({ run, config, log, now, transcript }: ReviewRunnerInput): RunReview =>
+  (
+    { run, config, log, now, transcript }: ReviewRunnerInput,
+    commitAuthor: { name: string; email: string },
+  ): RunReview =>
   (plan, onFixMerged) => {
     // Two bounds, not one. The loop is given `softMs` and stops itself at it,
     // between two issues, with everything in hand committed and published; the
@@ -77,16 +97,17 @@ const makeReviewRunner =
         repoRoot: config.repoRoot,
         command: config.reviewCommand,
         openai: config.openai,
+        backend: config.backend,
         checkCommand: config.checkCommand,
         maxRounds: config.reviewMaxRounds,
         poolSize: config.reviewPoolSize,
         agentTimeoutMs: config.agentTimeoutMs,
         softStopMs: budget.softMs,
-        commitAuthor: { name: config.commitAuthorName, email: config.commitAuthorEmail },
+        commitAuthor,
       },
       plan,
       run,
-      env: opencodeConfigEnv(config.openai),
+      env: reviewLoopEnv(config),
       log,
       timeoutMs: budget.hardMs,
       transcript,
@@ -164,50 +185,56 @@ export interface DepsInput {
   transcript?: TranscriptSink
 }
 
-export const assembleDeps = ({
-  config,
-  secrets,
-  event,
-  env,
-  run,
-  log,
-  agent,
-  github,
-  reply,
-  selfLogin,
-  now,
-  transcript,
-}: DepsInput): PhaseDeps => {
-  const git = createGit({
-    run,
-    cwd: config.repoRoot,
-    authorName: config.commitAuthorName,
-    authorEmail: config.commitAuthorEmail,
-    limits: config.diffLimits,
-    secrets,
-    log,
-    credential: { remote: config.gitRemoteBase, token: config.githubToken },
-  })
-
+const buildGit = async (
+  input: DepsInput,
+): Promise<{
+  identity: { author: { name: string; email: string }; committer: { name: string; email: string } }
+  git: import('./git.js').Git
+}> => {
+  const identity = await resolveCommitIdentity(input.event, input.config, input.github, input.log)
   return {
-    github,
-    reply,
+    identity,
+    git: createGit({
+      run: input.run,
+      cwd: input.config.repoRoot,
+      authorName: identity.author.name,
+      authorEmail: identity.author.email,
+      committerName: identity.committer.name,
+      committerEmail: identity.committer.email,
+      limits: input.config.diffLimits,
+      secrets: input.secrets,
+      log: input.log,
+      credential: { remote: input.config.gitRemoteBase, token: input.config.githubToken },
+    }),
+  }
+}
+
+export const assembleDeps = async (input: DepsInput): Promise<PhaseDeps> => {
+  const { git, identity } = await buildGit(input)
+  return {
+    github: input.github,
+    reply: input.reply,
     git,
-    runCheck: makeCheckRunner(run, config),
-    runReview: makeReviewRunner({ run, config, log, now, transcript }),
-    openspec: createOpenSpecDriver({ runner: run, cwd: config.repoRoot }),
-    agent: agent.get,
-    tokensUsed: agent.tokensUsed,
-    skills: makeSkillLoader(config, log),
+    runCheck: makeCheckRunner(input.run, input.config),
+    runReview: makeReviewRunner(
+      { run: input.run, config: input.config, log: input.log, now: input.now, transcript: input.transcript },
+      identity.author,
+    ),
+    openspec: createOpenSpecDriver({ runner: input.run, cwd: input.config.repoRoot }),
+    agent: input.agent.get,
+    tokensUsed: input.agent.tokensUsed,
+    spend: input.agent.spend,
+    skills: makeSkillLoader(input.config, input.log),
     writeFile: (filePath, content) => writeArtifactFile(filePath, content),
     readFile: (filePath) => readFileNode(filePath, 'utf8'),
     baseBranch: memoize(() =>
-      resolveBaseBranch(env, { fromEvent: event.defaultBranch, fromGit: () => git.defaultBranch() }),
+      resolveBaseBranch(input.env, { fromEvent: input.event.defaultBranch, fromGit: () => git.defaultBranch() }),
     ),
-    selfLogin,
-    now,
+    selfLogin: input.selfLogin,
+    now: input.now,
+    transcript: input.transcript,
     groups: createCiGroups(),
-    config,
-    log,
+    config: input.config,
+    log: input.log,
   }
 }

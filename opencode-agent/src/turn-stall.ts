@@ -34,10 +34,27 @@ export interface TurnStall {
    * will not.
    */
   failure: { name: string; statusCode: number | null } | null
+  /**
+   * When the turn last made progress, in ms on the tracker's clock.
+   *
+   * Progress is a finished model step or a **newly started** tool call — a
+   * tool starting is as much proof the model answered as a step finishing —
+   * stamped at those instants and at creation. This is the half the record
+   * gained when the 2026-08-21 incident showed the evidence alone could only
+   * be judged at a turn's *end*: a gateway that answers HTTP 200 and streams
+   * nothing keeps a turn outstanding for the whole-turn deadline, and the
+   * clock is what lets a watcher ask the question while the turn is still
+   * running.
+   *
+   * Stamped by the tracker in `progress.ts`, never by the pure fold below: a
+   * fold has no clock, and on a step it keeps the old stamp for the tracker to
+   * move.
+   */
+  lastProgressAt: number
 }
 
 /** A turn with nothing wrong yet: what every turn starts from, and returns to. */
-export const noStall = (): TurnStall => ({ retries: 0, failure: null })
+export const noStall = (lastProgressAt: number): TurnStall => ({ retries: 0, failure: null, lastProgressAt })
 
 /**
  * One activity folded into the record, as a fresh value.
@@ -53,9 +70,15 @@ export const noStall = (): TurnStall => ({ retries: 0, failure: null })
  * is dropped as a duplicate is still a retry that happened, and folding behind
  * the gate would report a provider that failed twenty-five times in a row as
  * having failed once.
+ *
+ * On a **step** it clears the evidence and keeps the old `lastProgressAt`: the
+ * fold has no clock, and the tracker re-stamps the instant right after this
+ * returns. Every other kind leaves the stamp untouched — only a finished step
+ * or a newly started tool call is progress, and neither of those reaches this
+ * fold as evidence.
  */
 export const foldStall = (stall: TurnStall, activity: Activity): TurnStall => {
-  if (activity.kind === 'step') return noStall()
+  if (activity.kind === 'step') return noStall(stall.lastProgressAt)
 
   if (activity.kind === 'failure') {
     const statusCode = activity.meta['statusCode']

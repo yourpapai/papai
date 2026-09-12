@@ -1,0 +1,217 @@
+// SPDX-License-Identifier: BUSL-1.1
+// Copyright (c) 2026 Dmitriy Lazarev
+// Use of this software is governed by the Business Source License 1.1.
+// See LICENSE in the project root for details.
+
+import { spawn } from 'node:child_process'
+import type { ChildProcess } from 'node:child_process'
+
+import { PROFILE_CREDENTIAL } from './claude-argv.js'
+import type { ClaudeInvocationProfile } from './claude-argv.js'
+import type { ClaudeCredential } from './config-values.js'
+
+/**
+ * How the `claude` CLI is **started and addressed** — the `opencode-connect.ts`
+ * seam carried to the second backend: a spawned detached process leading its
+ * own group, the child environment, a job-scoped config dir, and the group-kill
+ * both the stop and the teardown ride. What the CLI *says* is
+ * `claude-contract.ts`; the session the pipeline holds is `claude-adapter.ts`.
+ */
+
+/** The binary the workflow's gated install step puts on PATH. */
+export const CLAUDE_BINARY = 'claude'
+
+/** The environment names the child must never carry, whatever scrubbing missed. Exported for the `AGENT_CLAUDE_ENV` pin in `claude-env-knob.test.ts`: a name added here must join the knob's refused set there. */
+export const STRIPPED_NAMES = [
+  'LLM_BASE_URL',
+  'AGENT_MCP_SERVERS',
+  'ANTHROPIC_API_KEY',
+  'CLAUDE_CODE_OAUTH_TOKEN',
+  'AGENT_CLAUDE_ENV',
+] as const
+
+/** The CLI child as this layer sees it: a pid, a stdin, two streams, an exit. */
+export interface ClaudeChildProcess {
+  readonly pid: number
+  readonly stdin: { write(chunk: string): void; end(): void }
+  readonly stdout: AsyncIterable<Uint8Array>
+  readonly stderr: AsyncIterable<Uint8Array>
+  /** Resolves with the exit code (or `null` for an unkillable signal death). */
+  readonly exited: Promise<number | null>
+}
+
+/** One CLI invocation to start. */
+export interface ClaudeSpawnRequest {
+  argv: readonly string[]
+  /** Delivered on stdin — a single Linux argument is capped at 128 KiB. */
+  stdinPrompt: string
+  /**
+   * The chosen Anthropic credential, when this spawn holds one. Only the
+   * spelling the profile re-adds rides the child env (design D3): the API
+   * key on bare, the OAuth token on native — never both, and a mismatched
+   * spelling injects nothing. The route materializes no credential file,
+   * ever.
+   */
+  credential?: ClaudeCredential | null
+  /**
+   * The invocation profile this spawn runs — it rides the request, not the
+   * env scrub, so the spawn layer never re-derives what config already
+   * decided. Absent is `bare`, the pre-split default.
+   */
+  profile?: ClaudeInvocationProfile
+  /**
+   * The operator's `AGENT_CLAUDE_ENV` entries, folded in after the strip and
+   * before the credential re-add (design D3) — absent is the unset knob,
+   * byte-identical to the pre-change build.
+   */
+  customEnv?: Record<string, string>
+  /** The checkout the CLI works in. */
+  workspace: string
+  /**
+   * The job-scoped config dir — one per adapter, not per spawn, because the
+   * `--resume` session files of one job's turns live side by side in it.
+   */
+  configDir: string
+  /** The post-scrub `process.env` of this process. */
+  env: Record<string, string | undefined>
+}
+
+export interface ClaudeSpawnOptions {
+  /** Injection seam for tests; defaults to the real detached `node:child_process` spawn. */
+  spawn?: SpawnClaude
+}
+
+/** The spawn this layer performs — recorded by tests, real in production. */
+export type SpawnClaude = (
+  binary: string,
+  argv: readonly string[],
+  options: { detached: true; shell: false; env: Record<string, string>; cwd: string; stdio: 'pipe' },
+) => ClaudeChildProcess
+
+export interface ClaudeChild {
+  readonly process: ClaudeChildProcess
+  readonly configDir: string
+  /** The environment the child runs with. Assertable in tests; never logged. */
+  readonly env: Record<string, string>
+}
+
+/**
+ * The job-scoped CLI config dir, under the OS tmp root and never the checkout
+ * workspace — where a job's `--resume` session files live and die, so no
+ * `~/.claude` state crosses jobs and `git add --all` in the implement phase
+ * can never stage it. Created by `createClaudeConfigDir` in
+ * `claude-config-dir.ts`, the module owning the route's durable scratch.
+ */
+
+/**
+ * Builds the child environment: the post-scrub environment plus exactly the
+ * injected values, name-stripped of everything this route must not carry.
+ *
+ * The scrub matched by *value* and already removed the credentials; the
+ * name-strip exists for the carriers value-matching cannot see — `LLM_BASE_URL`
+ * (a non-secret URL), `AGENT_MCP_SERVERS` and `AGENT_CLAUDE_ENV` (JSON documents
+ * with credentials embedded *inside* them) — and for the two Anthropic
+ * spellings, so the one
+ * the profile claims can be re-added alone (design D3): the API key on bare,
+ * the OAuth token on native. The operator's custom entries fold in between
+ * the strip and the re-add; the route's own writes come after the fold, which
+ * is the precedence contract by construction.
+ */
+const childEnv = (request: ClaudeSpawnRequest): Record<string, string> => {
+  const env: Record<string, string> = {}
+  for (const [name, value] of Object.entries(request.env)) {
+    if (value !== undefined) env[name] = value
+  }
+  for (const name of STRIPPED_NAMES) Reflect.deleteProperty(env, name)
+
+  for (const [name, value] of Object.entries(request.customEnv ?? {})) env[name] = value
+
+  const credential = request.credential
+  if (
+    credential !== null &&
+    credential !== undefined &&
+    credential.name === PROFILE_CREDENTIAL[request.profile ?? 'bare']
+  ) {
+    env[credential.name] = credential.value
+  }
+  env['DISABLE_AUTOUPDATER'] = '1'
+  env['CLAUDE_CONFIG_DIR'] = request.configDir
+  return env
+}
+
+/** An async iterable that yields nothing — the stand-in for a missing stream. */
+const emptyChunks = (): AsyncIterable<Uint8Array> => {
+  const iterator: AsyncIterator<Uint8Array> = {
+    next: (): Promise<IteratorResult<Uint8Array>> => Promise.resolve({ done: true, value: undefined }),
+  }
+  return { [Symbol.asyncIterator]: (): AsyncIterator<Uint8Array> => iterator }
+}
+
+/** Adapts `node:child_process`'s handle onto the narrow interface this layer names. */
+export const liveSpawn: SpawnClaude = (binary, argv, options): ClaudeChildProcess => {
+  const child: ChildProcess = spawn(binary, [...argv], {
+    detached: options.detached,
+    shell: options.shell,
+    env: options.env,
+    cwd: options.cwd,
+    stdio: ['pipe', 'pipe', 'pipe'],
+  })
+  return {
+    pid: child.pid ?? -1,
+    stdin: {
+      write: (chunk: string): void => {
+        child.stdin?.write(chunk)
+      },
+      end: (): void => {
+        child.stdin?.end()
+      },
+    },
+    stdout: child.stdout ?? emptyChunks(),
+    stderr: child.stderr ?? emptyChunks(),
+    exited: new Promise((resolve) => {
+      child.once('exit', (code: number | null) => {
+        resolve(code)
+      })
+    }),
+  }
+}
+
+/**
+ * Spawns one `claude` turn: detached, so the CLI leads its own process group
+ * and a group kill reaches the `Bash` tool's children; `shell: false` and an
+ * argv vector, per this workspace's untrusted-input rule; the prompt on stdin;
+ * `CLAUDE_CONFIG_DIR` at the job-scoped config dir the request names.
+ */
+export const spawnClaude = (request: ClaudeSpawnRequest, options: ClaudeSpawnOptions = {}): ClaudeChild => {
+  const env = childEnv(request)
+  const spawner = options.spawn ?? liveSpawn
+  const child = spawner(CLAUDE_BINARY, request.argv, {
+    detached: true,
+    shell: false,
+    env,
+    cwd: request.workspace,
+    stdio: 'pipe',
+  })
+
+  child.stdin.write(request.stdinPrompt)
+  child.stdin.end()
+
+  return { process: child, configDir: request.configDir, env }
+}
+
+/** Reads one output stream to a string. */
+const readStream = async (stream: AsyncIterable<Uint8Array>): Promise<string> => {
+  const decoder = new TextDecoder()
+  let text = ''
+  for await (const chunk of stream) text += decoder.decode(chunk, { stream: true })
+  return text
+}
+
+/**
+ * Collects a child's streams and exit status concurrently — the read half of
+ * the spawn this layer owns.
+ */
+export const collectChild = (
+  child: ClaudeChildProcess,
+): Promise<[stdout: string, stderr: string, exitCode: number | null]> =>
+  Promise.all([readStream(child.stdout), readStream(child.stderr), child.exited])

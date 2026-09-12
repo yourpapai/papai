@@ -5,7 +5,7 @@
 
 import { generateText, isStepCount, type ModelMessage } from 'ai'
 
-import { getAiOutputSettings } from './ai-output-settings.js'
+import { getAiOutputSettings, resolveEffectiveReasoningEffort } from './ai-output-settings.js'
 import { createAiProgressReporter, type AiProgressReporter } from './ai-progress-reporter.js'
 import { NO_ANALYTICS_SCOPE } from './analytics/provider-request-scope.js'
 import { resolveNormalTurnProviderScope } from './analytics/provider-scope-factory.js'
@@ -14,12 +14,16 @@ import type { ReplyFn } from './chat/types.js'
 import { appendHistory } from './history.js'
 import { maybeAutoLinkIdentity } from './identity/resolver.js'
 import { recordAssistantTurn } from './llm-history.js'
-import { getOpenAICompatibleProvider } from './llm-model-builder.js'
+import { buildChatModel } from './llm-model-builder.js'
 import { resolveConfigId } from './llm-orchestrator-config.js'
 import { buildHistory } from './llm-orchestrator-history.js'
 import { replayLeftoverSteerAsFreshTurn } from './llm-orchestrator-leftover-replay.js'
 import { shouldBackstopGroupMembership } from './llm-orchestrator-membership.js'
-import { resolveProcessMessageInputs, type ProcessMessageRest } from './llm-orchestrator-process-args.js'
+import {
+  resolveProcessMessageInputs,
+  type ProcessMessageRest,
+  type ResolvedProcessMessageInputs,
+} from './llm-orchestrator-process-args.js'
 import { handleLlmTurnError, invokeWithLiveStatus, logProcessMessage } from './llm-orchestrator-support.js'
 import { buildLlmInvocationOpts, prepareLlmInvocation, type InvocationSource } from './llm-orchestrator-tools.js'
 import type { LlmOrchestratorDeps } from './llm-orchestrator-types.js'
@@ -34,6 +38,7 @@ import { lastTurnRegistry } from './run-control/last-turn-registry.js'
 import { runRegistry } from './run-control/registry.js'
 import { buildStopSummary } from './run-control/summary.js'
 import { RunAbortedError, type InjectedMessage, type RunControl } from './run-control/types.js'
+import { getContextLanguage } from './utils/config-language.js'
 
 const log = logger.child({ scope: 'llm-orchestrator' })
 
@@ -43,7 +48,15 @@ export const resolveAiOutputSettingsContextId = (contextId: string): string =>
 export const defaultDeps: LlmOrchestratorDeps = {
   generateText: (...args) => generateText(...args),
   stepCountIs: (...args) => isStepCount(...args),
-  buildModel: (config) => getOpenAICompatibleProvider(config.main.apiKey, config.main.baseUrl)(config.main.model),
+  buildModel: (config, reasoningEffort) =>
+    buildChatModel(
+      config.main.apiKey,
+      config.main.baseUrl,
+      config.main.model,
+      undefined,
+      config.main.metadata,
+      reasoningEffort,
+    ),
   resolve: (contextId: string) => defaultTaskProviderResolver.resolve(contextId),
   maybeAutoProvision: (reply, contextId, chatUserId, username, scope) =>
     maybeAutoProvisionProvider(reply, contextId, chatUserId, username, scope),
@@ -64,7 +77,11 @@ const maybeEnsureGroupMembership = (configId: string, chatUserId: string, userna
 export { resetBotMisconfiguredNotifiedForTesting } from './llm-orchestrator-unconfigured.js'
 
 const createProgressReporterForContext = (reply: ReplyFn, contextId: string): AiProgressReporter =>
-  createAiProgressReporter(reply, getAiOutputSettings(resolveAiOutputSettingsContextId(contextId)))
+  createAiProgressReporter(
+    reply,
+    getAiOutputSettings(resolveAiOutputSettingsContextId(contextId)),
+    getContextLanguage(resolveAiOutputSettingsContextId(contextId)),
+  )
 
 type CallLlmArgs = InvocationSource & {
   deps: LlmOrchestratorDeps
@@ -104,7 +121,7 @@ const prepareTurnProvider = async (args: CallLlmArgs): Promise<TaskProvider | nu
 const callLlm = async (args: CallLlmArgs): Promise<CallLlmResult> => {
   const { reply, contextId, chatUserId, contextType, deps, configId, resolvedLlm, turnId } = args
   const mainModel = resolvedLlm.main.model
-  const model = deps.buildModel(resolvedLlm)
+  const model = deps.buildModel(resolvedLlm, resolveEffectiveReasoningEffort(configId, resolvedLlm.main.metadata))
   const provider = await prepareTurnProvider(args)
   // One immutable actor scope per turn, resolved from the authorized-turn
   // registry (falls back to the explicit NO_ANALYTICS_SCOPE sentinel).
@@ -156,6 +173,7 @@ type RunTurnArgs = {
 const runTurn = async (args: RunTurnArgs): Promise<InjectedMessage[]> => {
   const { invocationSource, turn, deps, configId, resolvedLlm, resolvedTurnId, originatingMessageIds, startedAt } = args
   const { reply, contextId, contextType, actorRole } = invocationSource
+  const locale = getContextLanguage(getConfigContextIdFromStorageContextId(contextId))
   const run = runRegistry.begin(contextId, {
     turnId: resolvedTurnId,
     reply,
@@ -179,10 +197,10 @@ const runTurn = async (args: RunTurnArgs): Promise<InjectedMessage[]> => {
       actorRole,
     }
     recordAssistantTurn(meta, turn, result)
-    if (run.stopRequested) await reply.formatted(buildStopSummary(run.completedEffects, { forced: false }))
+    if (run.stopRequested) await reply.formatted(buildStopSummary(run.completedEffects, { forced: false, locale }))
   } catch (error) {
     if (error instanceof RunAbortedError) {
-      await reply.formatted(buildStopSummary(error.effects, { forced: true }))
+      await reply.formatted(buildStopSummary(error.effects, { forced: true, locale }))
     } else {
       await handleLlmTurnError({
         ...invocationSource,
@@ -215,6 +233,29 @@ const recordFinishedTurn = (
   })
 }
 
+function buildInvocationSource(
+  reply: ReplyFn,
+  contextId: string,
+  chatUserId: string,
+  username: string | null,
+  userText: string,
+  contextType: 'dm' | 'group',
+  inputs: Pick<ResolvedProcessMessageInputs, 'actorRole' | 'isBotAdmin' | 'platformInstanceId'>,
+): Omit<InvocationSource, 'history'> {
+  const { actorRole, isBotAdmin, platformInstanceId } = inputs
+  return {
+    reply,
+    contextId,
+    chatUserId,
+    username,
+    userText,
+    contextType,
+    actorRole,
+    isBotAdmin,
+    platformInstanceId,
+  }
+}
+
 export const processMessage = async (
   reply: ReplyFn,
   contextId: string,
@@ -224,8 +265,8 @@ export const processMessage = async (
   contextType: 'dm' | 'group',
   ...rest: ProcessMessageRest
 ): Promise<void> => {
-  const { configContextId, deps, newAttachmentIds, resolvedTurnId, originatingMessageIds, actorRole, segments } =
-    resolveProcessMessageInputs(rest, defaultDeps)
+  const inputs = resolveProcessMessageInputs(rest, defaultDeps)
+  const { configContextId, deps, newAttachmentIds, resolvedTurnId, originatingMessageIds, segments } = inputs
   logProcessMessage(contextId, configContextId, chatUserId, userText, newAttachmentIds, resolvedTurnId)
   const configId = resolveConfigId(contextId, configContextId)
   const turnScope = resolveNormalTurnProviderScope(resolvedTurnId)
@@ -240,15 +281,7 @@ export const processMessage = async (
     segments,
     contextType,
   )
-  const invocationSource = {
-    reply,
-    contextId,
-    chatUserId,
-    username,
-    userText,
-    contextType,
-    actorRole,
-  }
+  const invocationSource = buildInvocationSource(reply, contextId, chatUserId, username, userText, contextType, inputs)
   appendHistory(contextId, [turn.historyMessage])
   const leftover = await runTurn({
     invocationSource,

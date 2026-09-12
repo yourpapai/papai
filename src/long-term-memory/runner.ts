@@ -55,7 +55,7 @@ export type ExtractMemoryPatchRunInput = Readonly<{
 }>
 
 const buildModel = (config: ResolvedConfig): LanguageModel =>
-  buildChatModel(config.small.apiKey, config.small.baseUrl, config.small.model)
+  buildChatModel(config.small.apiKey, config.small.baseUrl, config.small.model, undefined, config.small.metadata)
 
 const defaultDeps: RunMemoryExtractionDeps = {
   extractMemoryPatch: (input) => {

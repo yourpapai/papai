@@ -126,4 +126,20 @@ describe('debug-server stats routes', () => {
     expect(pick(body, 'llmUsage')).toBeDefined()
     expect(pick(body, 'toolCalls')).toBeDefined()
   })
+
+  test('non-GET /stats/global returns 405', async () => {
+    for (const method of ['POST', 'PUT', 'PATCH', 'DELETE'] as const) {
+      const res = await fetch(`http://localhost:${TEST_PORT}/stats/global`, { method, headers: authHeaders() })
+      expect(`${method} /stats/global: ${res.status}`).toBe(`${method} /stats/global: 405`)
+      await res.body?.cancel()
+    }
+  })
+
+  test('non-GET /stats/subject/<id> returns 405', async () => {
+    for (const method of ['POST', 'PUT', 'PATCH', 'DELETE'] as const) {
+      const res = await fetch(`http://localhost:${TEST_PORT}/stats/subject/u1`, { method, headers: authHeaders() })
+      expect(`${method} /stats/subject/u1: ${res.status}`).toBe(`${method} /stats/subject/u1: 405`)
+      await res.body?.cancel()
+    }
+  })
 })

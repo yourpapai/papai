@@ -58,7 +58,7 @@ jobs:
             type=raw,value=latest
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4.2.0
+        uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e # v4.3.0
 
       - name: Build and push
         id: push
@@ -167,8 +167,11 @@ jobs:
             [ -n "${ANALYTICS_KILL_SWITCH}" ] && printf 'ANALYTICS_KILL_SWITCH=%s\n' "${ANALYTICS_KILL_SWITCH}"
             [ -n "${ANALYTICS_HMAC_KEYRING}" ] && printf 'ANALYTICS_HMAC_KEYRING=%s\n' "${ANALYTICS_HMAC_KEYRING}"
             [ -n "${ANALYTICS_GOVERNANCE_HMAC_KEYRING}" ] && printf 'ANALYTICS_GOVERNANCE_HMAC_KEYRING=%s\n' "${ANALYTICS_GOVERNANCE_HMAC_KEYRING}"
-            # Fixed container path (papai-data volume): enables the hourly snapshot job
+            # Fixed container paths (papai-data volume): enables the hourly snapshot job
             printf 'ANALYTICS_SNAPSHOT_PATH=/data/analytics-snapshot.db\n'
+            # Snapshot directory for BI coordination (rekey CLI, snapshot remount); see
+            # docs/operations/analytics-runbook.md — Rekey. Keep in sync with ANALYTICS_SNAPSHOT_PATH's dir.
+            printf 'ANALYTICS_SNAPSHOT_DIR=/data/snapshots\n'
           } > .env
           chmod 600 .env
 

@@ -4,7 +4,7 @@
 // See LICENSE in the project root for details.
 
 import { describe, expect, test } from 'bun:test'
-import { readFileSync, readdirSync } from 'node:fs'
+import { existsSync, readFileSync, readdirSync } from 'node:fs'
 import path from 'node:path'
 
 const REPO_ROOT = path.resolve(import.meta.dir, '../..')
@@ -24,16 +24,14 @@ describe('codeindex portability wiring', () => {
     expect(extractEvidence).not.toContain("from 'codeindex/src/")
   })
 
-  test('routes config and the active plugin through the wrapper without absolute codeindex paths', () => {
+  test('routes config through the wrapper and ships no client-side reindex component', () => {
     const mcpConfig = readRepoFile('.mcp.json')
-    const reindexPlugin = readRepoFile('.opencode/plugins/codeindex-reindex.ts')
 
     expect(mcpConfig).toContain('"scripts/codeindex-cli.ts"')
-    expect(reindexPlugin).toContain("['run', 'scripts/codeindex-cli.ts', 'reindex']")
+    expect(existsSync(path.join(REPO_ROOT, '.opencode/plugins/codeindex-reindex.ts'))).toBe(false)
 
     const staleAbsolutePath = '/Users/ki/Projects/papai/codeindex/src/cli.ts'
     expect(mcpConfig).not.toContain(staleAbsolutePath)
-    expect(reindexPlugin).not.toContain(staleAbsolutePath)
     expect(readRepoFile('docs/guides/codeindex-verification.md')).not.toContain(staleAbsolutePath)
   })
 

@@ -86,6 +86,45 @@ scenario('SCN-task-statuses: confirms shared status mutations', async ({ given, 
   then.replyTo(alice).equals('Status “In Review” created.')
   expect((await world.tasks.listStatuses('project-1')).map((column) => column.name)).toEqual(['In Review'])
 
+  given.llm([callCapability('tasks.statuses.list', { projectId: 'project-1' }), answer('One status: In Review.')])
+  await when.message(alice, dm, 'What statuses exist?')
+  then.replyTo(alice).equals('One status: In Review.')
+
+  given.llm([
+    callCapability('tasks.statuses.create', { projectId: 'project-1', name: 'Done', confirm: true }),
+    answer('Status “Done” created.'),
+  ])
+  await when.message(alice, dm, 'Add a Done status')
+  then.replyTo(alice).equals('Status “Done” created.')
+
+  given.llm([
+    callCapability('tasks.statuses.update', {
+      projectId: 'project-1',
+      statusId: 'status-1',
+      name: 'In QA',
+      confirm: true,
+    }),
+    answer('Renamed “In Review” to “In QA”.'),
+  ])
+  await when.message(alice, dm, 'Rename In Review to In QA')
+  then.replyTo(alice).equals('Renamed “In Review” to “In QA”.')
+  expect((await world.tasks.listStatuses('project-1')).map((column) => column.name)).toEqual(['In QA', 'Done'])
+
+  given.llm([
+    callCapability('tasks.statuses.reorder', {
+      projectId: 'project-1',
+      statuses: [
+        { id: 'status-2', position: 0 },
+        { id: 'status-1', position: 1 },
+      ],
+      confirm: true,
+    }),
+    answer('Reordered: Done is now first.'),
+  ])
+  await when.message(alice, dm, 'Move Done to the top')
+  then.replyTo(alice).equals('Reordered: Done is now first.')
+  expect((await world.tasks.listStatuses('project-1')).map((column) => column.id)).toEqual(['status-2', 'status-1'])
+
   given.llm([
     callCapability('tasks.statuses.delete', {
       projectId: 'project-1',
@@ -95,8 +134,8 @@ scenario('SCN-task-statuses: confirms shared status mutations', async ({ given, 
     }),
     answer('Status deleted.'),
   ])
-  await when.message(alice, dm, 'Delete the status')
-  expect(await world.tasks.listStatuses('project-1')).toHaveLength(0)
+  await when.message(alice, dm, 'Delete the In QA status')
+  expect((await world.tasks.listStatuses('project-1')).map((column) => column.name)).toEqual(['Done'])
 })
 
 scenario('SCN-task-projects: manages the project catalogue', async ({ given, when, then, world }) => {

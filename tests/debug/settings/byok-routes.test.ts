@@ -98,6 +98,8 @@ const makeProvider = (overrides: Partial<LlmProviderAccount> = {}): LlmProviderA
   providerType: 'custom',
   baseUrl: 'https://byok.invalid/v1',
   apiKey: 'sk-test-1234',
+  baseProvider: null,
+  baseModel: null,
   verification: unverified(),
   ...overrides,
 })
@@ -774,6 +776,54 @@ describe('settings BYOK routes', () => {
       url,
     )
     expect(res.status).toBe(422)
+  })
+
+  test('PATCH action:upsert-provider stores declared base references', async () => {
+    enableByokForContext(personalConfigContextId, 'admin')
+    const url = new URL('https://x/settings/api/byok')
+    const res = await handleByokRoutes(
+      new Request(url, {
+        method: 'PATCH',
+        headers: {
+          ...authHeaders(session, true),
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          action: 'upsert-provider',
+          provider: { ...makeProvider(), baseProvider: 'openai', baseModel: 'gpt-4o' },
+        }),
+      }),
+      url,
+    )
+    expect(res.status).toBe(200)
+    const bundle = getByokBundle(personalConfigContextId)
+    const stored = bundle.blob?.providers[0]
+    expect(stored?.baseProvider).toBe('openai')
+    expect(stored?.baseModel).toBe('gpt-4o')
+  })
+
+  test('PATCH action:upsert-provider treats empty base references as null', async () => {
+    enableByokForContext(personalConfigContextId, 'admin')
+    const url = new URL('https://x/settings/api/byok')
+    const res = await handleByokRoutes(
+      new Request(url, {
+        method: 'PATCH',
+        headers: {
+          ...authHeaders(session, true),
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          action: 'upsert-provider',
+          provider: { ...makeProvider(), baseProvider: '', baseModel: '' },
+        }),
+      }),
+      url,
+    )
+    expect(res.status).toBe(200)
+    const bundle = getByokBundle(personalConfigContextId)
+    const stored = bundle.blob?.providers[0]
+    expect(stored?.baseProvider).toBeNull()
+    expect(stored?.baseModel).toBeNull()
   })
 
   test('PATCH action:set-roles with invalid roles body returns 422', async () => {

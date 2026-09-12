@@ -18,6 +18,7 @@ import { createLogger, createPipelineLogger } from '../../opencode-agent/src/log
 import type { Logger } from '../../opencode-agent/src/logger.js'
 import type { OpenCodeAgentOptions } from '../../opencode-agent/src/opencode-adapter.js'
 import type { TriggerEvent } from '../../opencode-agent/src/trigger-events.js'
+import { emptyCatalogue } from './test-helpers.js'
 
 /**
  * The transcript's wiring through the CLI: created only when the run has a
@@ -85,6 +86,7 @@ describe('runCli transcript lifecycle', () => {
     const { log, lines } = recording('info', config)
 
     await runCli({
+      modelCatalogue: emptyCatalogue,
       argv: ['--event-path', eventPath, '--event-name', 'issue_comment', '--repo-root', repoRoot],
       env: { ...ENV },
       logger: log,
@@ -101,6 +103,7 @@ describe('runCli transcript lifecycle', () => {
     const live = { ...ENV, AGENT_LOG_KEY: KEY_B64 }
 
     await runCli({
+      modelCatalogue: emptyCatalogue,
       argv: ['--event-path', eventPath, '--event-name', 'issue_comment', '--repo-root', repoRoot],
       env: live,
       logger: createLogger({ level: 'error', sink: () => {} }),
@@ -124,6 +127,7 @@ describe('runCli transcript lifecycle', () => {
       const config = loadConfig({ ...ENV, ...extra }, repoRoot)
       const { log, lines } = recording('info', config)
       await runCli({
+        modelCatalogue: emptyCatalogue,
         argv: ['--event-path', eventPath, '--event-name', 'issue_comment', '--repo-root', repoRoot],
         env: { ...ENV, ...extra },
         logger: log,
@@ -168,13 +172,25 @@ describe('contain transcript wiring', () => {
     // the sink has to reach `OpenCodeAgentOptions` or no event ever lands.
     const seen: OpenCodeAgentOptions[] = []
     const rows: TranscriptRow[] = []
-    const run = contain({
+    const run = await contain({
       config: loadConfig(ENV, workDir),
       event: EVENT,
       log: createLogger({ level: 'error', sink: () => {} }),
       run: () => Promise.resolve({ command: '', exitCode: 0, stdout: '', stderr: '' }),
       options: { argv: [], env: {} },
-      github: createOctokitApi({ token: 'tok', owner: 'acme', repo: 'widgets', secrets: [] }),
+      github: createOctokitApi({
+        token: 'tok',
+        owner: 'acme',
+        repo: 'widgets',
+        secrets: [],
+        fetch: (): Promise<Response> =>
+          Promise.resolve(
+            new Response(JSON.stringify({ login: 'maintainer', id: 42 }), {
+              status: 200,
+              headers: { 'content-type': 'application/json' },
+            }),
+          ),
+      }),
       transcript: { write: (row) => void rows.push(row) },
       createAgent: (agentOptions) => {
         seen.push(agentOptions)
@@ -182,6 +198,7 @@ describe('contain transcript wiring', () => {
           sessionId: 's',
           prompt: () => Promise.resolve({ text: '', sessionId: 's' }),
           tokensUsed: () => Promise.resolve(0),
+          spend: () => Promise.resolve({ usd: null, source: 'none' as const, windows: [] }),
           abort: () => Promise.resolve(true),
           close: () => Promise.resolve(),
         })
@@ -189,7 +206,9 @@ describe('contain transcript wiring', () => {
     })
 
     await run.agent.get()
-    await run.proxy.close()
+    // The opencode route always has one; the claude route's null is gated the
+    // same way in index.ts's teardown.
+    await run.proxy?.close()
 
     expect(seen).toHaveLength(1)
     expect(seen[0]?.transcript).toBeDefined()

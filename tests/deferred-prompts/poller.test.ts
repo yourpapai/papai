@@ -12,7 +12,7 @@ import { setCachedConfig } from '../../src/cache.js'
 import { toScopedContextId, toScopedThreadContextId } from '../../src/chat/scoped-context.js'
 import type { ChatProvider, DeferredDeliveryTarget } from '../../src/chat/types.js'
 import { setConfig } from '../../src/config.testing.js'
-import { createAlertPrompt, getAlertPrompt } from '../../src/deferred-prompts/alerts.js'
+import { createAlertPrompt, getAlertPrompt, updateAlertMatchState } from '../../src/deferred-prompts/alerts.js'
 import { pollAlertsOnce, pollScheduledOnce, stopPollers } from '../../src/deferred-prompts/poller.js'
 import * as proactiveDeliveryModule from '../../src/deferred-prompts/proactive-delivery.js'
 import * as proactiveLlmModule from '../../src/deferred-prompts/proactive-llm.js'
@@ -32,6 +32,14 @@ import {
   seedTestTaskInstance,
   setupTestDb,
 } from '../utils/test-helpers.js'
+
+const createPastBaselineAlert = (
+  ...args: Parameters<typeof createAlertPrompt>
+): ReturnType<typeof createAlertPrompt> => {
+  const alert = createAlertPrompt(...args)
+  updateAlertMatchState(alert.id, alert.createdByUserId, '2020-01-01T00:00:00.000Z', [])
+  return alert
+}
 
 function setupUserConfig(userId: string): void {
   seedCommonTestPlatformInstances()
@@ -55,6 +63,7 @@ type GenerateTextResult = {
   text: string
   toolCalls: unknown[]
   toolResults: unknown[]
+  steps: unknown[]
   finalStep: { response: { messages: ModelMessage[] } }
 }
 
@@ -83,6 +92,7 @@ describe('pollScheduledOnce', () => {
         text: 'Task completed.',
         toolCalls: [],
         toolResults: [],
+        steps: [],
         finalStep: { response: { messages: [] } },
       })
     void mock.module('ai', () => ({
@@ -180,6 +190,7 @@ describe('pollScheduledOnce', () => {
         text: 'Should not run.',
         toolCalls: [],
         toolResults: [],
+        steps: [],
         finalStep: { response: { messages: [] } },
       })
     }
@@ -206,6 +217,7 @@ describe('pollScheduledOnce', () => {
         text: 'Should not run.',
         toolCalls: [],
         toolResults: [],
+        steps: [],
         finalStep: { response: { messages: [] } },
       })
     }
@@ -231,6 +243,7 @@ describe('pollScheduledOnce', () => {
         text: 'Should not run.',
         toolCalls: [],
         toolResults: [],
+        steps: [],
         finalStep: { response: { messages: [] } },
       })
     }
@@ -304,6 +317,7 @@ describe('pollScheduledOnce', () => {
         text: 'All tasks handled.',
         toolCalls: [],
         toolResults: [],
+        steps: [],
         finalStep: { response: { messages: [] } },
       })
     }
@@ -352,6 +366,7 @@ describe('pollScheduledOnce', () => {
         text: 'Done.',
         toolCalls: [],
         toolResults: [],
+        steps: [],
         finalStep: { response: { messages: [] } },
       })
     }
@@ -424,6 +439,7 @@ describe('pollScheduledOnce — error handling', () => {
         text: 'Task completed.',
         toolCalls: [],
         toolResults: [],
+        steps: [],
         finalStep: { response: { messages: [] } },
       })
     void mock.module('ai', () => ({
@@ -631,7 +647,7 @@ describe('pollAlertsOnce — error notice history recording', () => {
   })
 
   test('records the error notice in history once delivery is confirmed', async () => {
-    createAlertPrompt(USER_ID, 'Notify on done', { field: 'task.status', op: 'eq', value: 'done' })
+    createPastBaselineAlert(USER_ID, 'Notify on done', { field: 'task.status', op: 'eq', value: 'done' })
     const provider = createMockProvider({
       listProjects: mock(() => Promise.resolve([{ id: 'proj-1', name: 'Test', url: 'http://test/proj/1' }])),
       listTasks: mock(() =>
@@ -660,7 +676,7 @@ describe('pollAlertsOnce — error notice history recording', () => {
   })
 
   test('does not record history when delivery of the error notice fails', async () => {
-    createAlertPrompt(USER_ID, 'Notify on done', { field: 'task.status', op: 'eq', value: 'done' })
+    createPastBaselineAlert(USER_ID, 'Notify on done', { field: 'task.status', op: 'eq', value: 'done' })
     const provider = createMockProvider({
       listProjects: mock(() => Promise.resolve([{ id: 'proj-1', name: 'Test', url: 'http://test/proj/1' }])),
       listTasks: mock(() =>
@@ -698,6 +714,7 @@ describe('pollAlertsOnce', () => {
         text: 'Alert triggered.',
         toolCalls: [],
         toolResults: [],
+        steps: [],
         finalStep: { response: { messages: [] } },
       })
     void mock.module('ai', () => ({
@@ -739,7 +756,7 @@ describe('pollAlertsOnce', () => {
   })
 
   test('triggers alert when task matches condition', async () => {
-    createAlertPrompt(USER_ID, 'Notify on done', { field: 'task.status', op: 'eq', value: 'done' })
+    createPastBaselineAlert(USER_ID, 'Notify on done', { field: 'task.status', op: 'eq', value: 'done' })
 
     const provider = createMockProvider({
       listProjects: mock(() => Promise.resolve([{ id: 'proj-1', name: 'Test', url: 'http://test/proj/1' }])),
@@ -757,7 +774,7 @@ describe('pollAlertsOnce', () => {
 
   test('platformInstanceId routes through context settings', async () => {
     setContextSettings({ contextId: USER_ID, taskInstanceId: 'kaneo-default', platformInstanceId: 'telegram-default' })
-    createAlertPrompt(USER_ID, 'Notify on done', { field: 'task.status', op: 'eq', value: 'done' })
+    createPastBaselineAlert(USER_ID, 'Notify on done', { field: 'task.status', op: 'eq', value: 'done' })
 
     const provider = createMockProvider({
       listProjects: mock(() => Promise.resolve([{ id: 'proj-1', name: 'Test', url: 'http://test/proj/1' }])),
@@ -786,7 +803,7 @@ describe('pollAlertsOnce', () => {
       taskInstanceId: 'kaneo-default',
       platformInstanceId: 'telegram-default',
     })
-    createAlertPrompt(
+    createPastBaselineAlert(
       scopedUserId,
       'Notify on done',
       { field: 'task.status', op: 'eq', value: 'done' },
@@ -829,6 +846,7 @@ describe('pollAlertsOnce', () => {
         text: 'Should not run.',
         toolCalls: [],
         toolResults: [],
+        steps: [],
         finalStep: { response: { messages: [] } },
       })
     }
@@ -864,6 +882,7 @@ describe('pollAlertsOnce', () => {
         text: 'Should not run.',
         toolCalls: [],
         toolResults: [],
+        steps: [],
         finalStep: { response: { messages: [] } },
       })
     }
@@ -899,6 +918,7 @@ describe('pollAlertsOnce', () => {
         text: 'Should not run.',
         toolCalls: [],
         toolResults: [],
+        steps: [],
         finalStep: { response: { messages: [] } },
       })
     }
@@ -931,7 +951,7 @@ describe('pollAlertsOnce', () => {
     const unroutedUser = 'missing-transition-route-user'
     setConfig(unroutedUser, 'timezone', 'UTC')
     updateSnapshots(unroutedUser, [{ id: 'task-1', title: 'Task', status: 'todo', url: 'http://test/1' }])
-    const created = createAlertPrompt(unroutedUser, 'Notify on done transition', {
+    const created = createPastBaselineAlert(unroutedUser, 'Notify on done transition', {
       field: 'task.status',
       op: 'changed_to',
       value: 'done',
@@ -948,7 +968,7 @@ describe('pollAlertsOnce', () => {
 
     expect(sentMessages).toHaveLength(0)
     expect(getSnapshotsForUser(unroutedUser).get('task-1:status')).toBe('todo')
-    expect(getAlertPrompt(created.id, unroutedUser)!.lastTriggeredAt).toBeNull()
+    expect(getAlertPrompt(created.id, unroutedUser)!.lastTriggeredAt).toBe('2020-01-01T00:00:00.000Z')
 
     setContextSettings({ contextId: unroutedUser, taskInstanceId: 'kaneo-default', platformInstanceId: 'mock-default' })
     await pollAlertsOnce(chat, () => provider)
@@ -958,7 +978,7 @@ describe('pollAlertsOnce', () => {
   })
 
   test('enriches tasks via getTask when condition references assignee', async () => {
-    createAlertPrompt(USER_ID, 'Notify on alice assignment', {
+    createPastBaselineAlert(USER_ID, 'Notify on alice assignment', {
       field: 'task.assignee',
       op: 'eq',
       value: 'alice',
@@ -990,8 +1010,8 @@ describe('pollAlertsOnce', () => {
     const otherUser = 'poller-user-2'
     setConfig(otherUser, 'timezone', 'UTC')
     setContextSettings({ contextId: otherUser, taskInstanceId: 'kaneo-default', platformInstanceId: 'mock-default' })
-    createAlertPrompt(USER_ID, 'Notify on done', { field: 'task.status', op: 'eq', value: 'done' })
-    createAlertPrompt(otherUser, 'Notify on done', { field: 'task.status', op: 'eq', value: 'done' })
+    createPastBaselineAlert(USER_ID, 'Notify on done', { field: 'task.status', op: 'eq', value: 'done' })
+    createPastBaselineAlert(otherUser, 'Notify on done', { field: 'task.status', op: 'eq', value: 'done' })
 
     const provider = createMockProvider({
       listProjects: mock(() => Promise.resolve([{ id: 'proj-1', name: 'Test', url: 'http://test/proj/1' }])),
@@ -1036,7 +1056,7 @@ describe('pollAlertsOnce', () => {
   })
 
   test('operational NO_ANALYTICS_SCOPE still runs the alert cycle', async () => {
-    createAlertPrompt(USER_ID, 'Notify on done', { field: 'task.status', op: 'eq', value: 'done' })
+    createPastBaselineAlert(USER_ID, 'Notify on done', { field: 'task.status', op: 'eq', value: 'done' })
 
     const listProjects = mock(() => Promise.resolve([{ id: 'proj-1', name: 'Test', url: 'http://test/proj/1' }]))
     const provider = createMockProvider({
@@ -1129,7 +1149,7 @@ describe('pollScheduledOnce Race Condition', () => {
     })
 
     // Resolve LLM
-    resolveLlm({ text: 'Done.', toolCalls: [], toolResults: [], finalStep: { response: { messages: [] } } })
+    resolveLlm({ text: 'Done.', toolCalls: [], toolResults: [], steps: [], finalStep: { response: { messages: [] } } })
 
     await Promise.all([poll1, poll2])
 
@@ -1150,6 +1170,7 @@ describe('delivery target routing', () => {
         text: 'Done.',
         toolCalls: [],
         toolResults: [],
+        steps: [],
         finalStep: { response: { messages: [] } },
       })
     void mock.module('ai', () => ({
@@ -1195,7 +1216,7 @@ describe('delivery target routing', () => {
   test('alert created in group fires to stored group target, not DM', async () => {
     const groupContextId = 'chan-1:root-1'
     const resolvedContextIds: string[] = []
-    createAlertPrompt(
+    createPastBaselineAlert(
       USER_ID,
       'Notify this channel',
       { field: 'task.status', op: 'eq', value: 'done' },
@@ -1241,7 +1262,7 @@ describe('delivery target routing', () => {
     const secondGroupContextId = 'chan-2:root-2'
     const resolvedContextIds: string[] = []
 
-    createAlertPrompt(
+    createPastBaselineAlert(
       USER_ID,
       'Notify first channel',
       { field: 'task.project', op: 'eq', value: 'project-1' },
@@ -1262,7 +1283,7 @@ describe('delivery target routing', () => {
       taskInstanceId: 'kaneo-default',
       platformInstanceId: 'mattermost-default',
     })
-    createAlertPrompt(
+    createPastBaselineAlert(
       USER_ID,
       'Notify second channel',
       { field: 'task.project', op: 'eq', value: 'project-2' },
@@ -1393,7 +1414,7 @@ describe('delivery target routing', () => {
     setupUserConfig(otherUserId)
     updateSnapshots(groupContextId, [{ id: 'shared-task', title: 'Shared Task', status: 'todo', url: 'http://test/1' }])
 
-    const firstAlert = createAlertPrompt(
+    const firstAlert = createPastBaselineAlert(
       USER_ID,
       'Notify first creator',
       { field: 'task.status', op: 'changed_to', value: 'done' },
@@ -1409,7 +1430,7 @@ describe('delivery target routing', () => {
         createdByUsername: null,
       },
     )
-    const secondAlert = createAlertPrompt(
+    const secondAlert = createPastBaselineAlert(
       otherUserId,
       'Notify second creator',
       { field: 'task.status', op: 'changed_to', value: 'done' },
@@ -1463,6 +1484,7 @@ describe('delivery target routing', () => {
         text: 'Done.',
         toolCalls: [],
         toolResults: [],
+        steps: [],
         finalStep: { response: { messages: [] } },
       })
     }
@@ -1497,6 +1519,7 @@ describe('delivery target routing', () => {
         text: 'Done.',
         toolCalls: [],
         toolResults: [],
+        steps: [],
         finalStep: { response: { messages: [] } },
       })
     }
@@ -1541,6 +1564,7 @@ describe('delivery target routing', () => {
         text: 'Done.',
         toolCalls: [],
         toolResults: [],
+        steps: [],
         finalStep: { response: { messages: [] } },
       })
     }
@@ -1611,7 +1635,7 @@ describe('pollAlertsOnce — edge-triggered batched firing', () => {
     })
 
   test('fires once for a persistent match and stays silent while the match persists', async () => {
-    createAlertPrompt(USER_ID, 'Notify on done', { field: 'task.status', op: 'eq', value: 'done' }, 0)
+    createPastBaselineAlert(USER_ID, 'Notify on done', { field: 'task.status', op: 'eq', value: 'done' }, 0)
     const provider = doneTaskProvider([{ id: 'task-1', title: 'Task A', status: 'done' }])
 
     await pollAlertsOnce(chat, () => provider)
@@ -1624,7 +1648,7 @@ describe('pollAlertsOnce — edge-triggered batched firing', () => {
   })
 
   test('re-fires when a new task enters the match, summary lists only new tasks', async () => {
-    createAlertPrompt(USER_ID, 'Notify on done', { field: 'task.status', op: 'eq', value: 'done' }, 0)
+    createPastBaselineAlert(USER_ID, 'Notify on done', { field: 'task.status', op: 'eq', value: 'done' }, 0)
     const taskA = { id: 'task-a', title: 'Task A', status: 'done' }
     const taskB = { id: 'task-b', title: 'Task B', status: 'done' }
 
@@ -1639,7 +1663,7 @@ describe('pollAlertsOnce — edge-triggered batched firing', () => {
   })
 
   test('re-fires when a task leaves and re-enters the match', async () => {
-    createAlertPrompt(USER_ID, 'Notify on done', { field: 'task.status', op: 'eq', value: 'done' }, 0)
+    createPastBaselineAlert(USER_ID, 'Notify on done', { field: 'task.status', op: 'eq', value: 'done' }, 0)
     const done = [{ id: 'task-1', title: 'Task A', status: 'done' }]
     const todo = [{ id: 'task-1', title: 'Task A', status: 'todo' }]
 
@@ -1654,8 +1678,8 @@ describe('pollAlertsOnce — edge-triggered batched firing', () => {
   })
 
   test('batches multiple firing alerts in one context into a single LLM call and message', async () => {
-    const first = createAlertPrompt(USER_ID, 'Alert one', { field: 'task.status', op: 'eq', value: 'done' })
-    const second = createAlertPrompt(USER_ID, 'Alert two', { field: 'task.priority', op: 'eq', value: 'high' })
+    const first = createPastBaselineAlert(USER_ID, 'Alert one', { field: 'task.status', op: 'eq', value: 'done' })
+    const second = createPastBaselineAlert(USER_ID, 'Alert two', { field: 'task.priority', op: 'eq', value: 'high' })
     const provider = createMockProvider({
       listProjects: mock(() => Promise.resolve([{ id: 'proj-1', name: 'Test', url: 'http://test/proj/1' }])),
       listTasks: mock(() =>
@@ -1675,7 +1699,12 @@ describe('pollAlertsOnce — edge-triggered batched firing', () => {
   })
 
   test('does not update match state when delivery fails; next poll retries the same diff', async () => {
-    const created = createAlertPrompt(USER_ID, 'Notify on done', { field: 'task.status', op: 'eq', value: 'done' }, 0)
+    const created = createPastBaselineAlert(
+      USER_ID,
+      'Notify on done',
+      { field: 'task.status', op: 'eq', value: 'done' },
+      0,
+    )
     const failOnceThenRecord = mock(
       (platformInstanceId: string, _target: DeferredDeliveryTarget, text: string): Promise<void> => {
         sentMessages.push({ platformInstanceId, target: _target, text })
@@ -1688,7 +1717,7 @@ describe('pollAlertsOnce — edge-triggered batched firing', () => {
 
     await pollAlertsOnce(chat, () => provider)
     expect(sentMessages).toHaveLength(0)
-    expect(getAlertPrompt(created.id, USER_ID)!.lastTriggeredAt).toBeNull()
+    expect(getAlertPrompt(created.id, USER_ID)!.lastTriggeredAt).toBe('2020-01-01T00:00:00.000Z')
     expect(getAlertPrompt(created.id, USER_ID)!.matchedTaskIds).toEqual([])
 
     await pollAlertsOnce(chat, () => provider)
@@ -1724,7 +1753,7 @@ describe('pollAlertsOnce — change gate and fetch sharing', () => {
   })
 
   test('quiet cycle performs no LLM work', async () => {
-    createAlertPrompt(USER_ID, 'Notify on done', { field: 'task.status', op: 'eq', value: 'done' }, 0)
+    createPastBaselineAlert(USER_ID, 'Notify on done', { field: 'task.status', op: 'eq', value: 'done' }, 0)
     const provider = createMockProvider({
       listProjects: mock(() => Promise.resolve([{ id: 'proj-1', name: 'Test', url: 'http://test/proj/1' }])),
       listTasks: mock(() => Promise.resolve([{ id: 'task-1', title: 'Task A', status: 'done', url: 'http://test/1' }])),
@@ -1768,7 +1797,7 @@ describe('pollAlertsOnce — change gate and fetch sharing', () => {
       createdByUserId: USER_ID,
       createdByUsername: null,
     })
-    createAlertPrompt(
+    createPastBaselineAlert(
       USER_ID,
       'Notify thread 42',
       { field: 'task.status', op: 'eq', value: 'done' },
@@ -1776,7 +1805,7 @@ describe('pollAlertsOnce — change gate and fetch sharing', () => {
       undefined,
       delivery('42', thread42),
     )
-    createAlertPrompt(
+    createPastBaselineAlert(
       USER_ID,
       'Notify thread 43',
       { field: 'task.status', op: 'eq', value: 'done' },
@@ -1800,7 +1829,7 @@ describe('pollAlertsOnce — change gate and fetch sharing', () => {
   })
 
   test('label-only change wakes a rich-field context, then goes quiet again', async () => {
-    createAlertPrompt(USER_ID, 'Notify on bug label', { field: 'task.labels', op: 'contains', value: 'bug' }, 0)
+    createPastBaselineAlert(USER_ID, 'Notify on bug label', { field: 'task.labels', op: 'contains', value: 'bug' }, 0)
     let labels: Array<{ id: string; name: string }> = []
     const provider = createMockProvider({
       listProjects: mock(() => Promise.resolve([{ id: 'proj-1', name: 'Test', url: 'http://test/proj/1' }])),
@@ -1845,5 +1874,46 @@ describe('pollAlertsOnce — change gate and fetch sharing', () => {
     expect(getAlertPrompt(created.id, USER_ID)!.matchedTaskIds).toEqual([])
     expect(getAlertPrompt(created.id, USER_ID)!.lastTriggeredAt).toBeNull()
     expect(getSnapshotsForUser(USER_ID).size).toBe(0)
+  })
+
+  test('a not-planned close reports the folded status at fire time, never completed', async () => {
+    createPastBaselineAlert(
+      USER_ID,
+      'Notify on not-planned close',
+      { field: 'task.status', op: 'eq', value: 'closed (not_planned)' },
+      0,
+    )
+    const provider = createMockProvider({
+      listProjects: mock(() => Promise.resolve([{ id: 'proj-1', name: 'Test', url: 'http://test/proj/1' }])),
+      listTasks: mock(() =>
+        Promise.resolve([{ id: 'task-1', title: 'Task A', status: 'closed (not_planned)', url: 'http://test/1' }]),
+      ),
+    })
+
+    await pollAlertsOnce(chat, () => provider)
+
+    expect(sentMessages).toHaveLength(1)
+    expect(dispatchCalls).toHaveLength(1)
+    const summary = String(dispatchCalls[0]![5])
+    expect(summary).toContain('closed (not_planned)')
+    expect(summary).not.toContain('completed')
+  })
+
+  test('a changed_to closed filter alert does not fire for GitHub closes on the open-only whole-list path', async () => {
+    createPastBaselineAlert(USER_ID, 'Notify on close', { field: 'task.status', op: 'changed_to', value: 'closed' }, 0)
+    const openProvider = createMockProvider({
+      listProjects: mock(() => Promise.resolve([{ id: 'proj-1', name: 'Test', url: 'http://test/proj/1' }])),
+      listTasks: mock(() => Promise.resolve([{ id: 'task-1', title: 'Task A', status: 'open', url: 'http://test/1' }])),
+    })
+
+    await pollAlertsOnce(chat, () => openProvider)
+    expect(sentMessages).toHaveLength(0)
+
+    const emptyProvider = createMockProvider({
+      listProjects: mock(() => Promise.resolve([{ id: 'proj-1', name: 'Test', url: 'http://test/proj/1' }])),
+      listTasks: mock(() => Promise.resolve([])),
+    })
+    await pollAlertsOnce(chat, () => emptyProvider)
+    expect(sentMessages).toHaveLength(0)
   })
 })

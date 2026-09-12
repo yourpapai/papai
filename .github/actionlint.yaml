@@ -11,9 +11,9 @@
 # noticed only because somebody opened the Actions tab.
 #
 # Suppressions are path-scoped on purpose. A global `-ignore` would hide the
-# same class of error everywhere it is genuinely wrong, and both entries below
-# are cases where actionlint is stricter than GitHub actually is — each was
-# checked against a real run before being written down, and each says which one.
+# same class of error everywhere it is genuinely wrong, and the entry below is
+# a case where actionlint is stricter than GitHub actually is — checked against
+# a real run before being written down, and it says which one.
 
 paths:
   .github/workflows/ci.yml:
@@ -26,16 +26,12 @@ paths:
       # seed)", ran to success (CI run 31602130473).
       - 'unexpected key "queue" for "concurrency" section'
 
-  .github/workflows/agent-pipeline.yml:
-    ignore:
-      # `timeout-minutes: ${{ vars.AGENT_JOB_TIMEOUT_MINUTES || 90 }}`. actionlint
-      # wants a number and `vars` is typed string; GitHub coerces. Proven by run
-      # 31328255566 on 278d0db, which carries this exact line and whose "Run
-      # agent pipeline" job started and completed normally.
-      #
-      # The expression stays in this spelling rather than a `fromJSON(…)` one
-      # because the *same* text is forwarded to the pipeline as the
-      # `AGENT_JOB_TIMEOUT_MINUTES` env value, which is what makes the ceiling
-      # one value instead of two kept in step by hand. `workflow.test.ts` pins
-      # that the two are identical.
-      - 'must be number but found type string'
+  # agent-pipeline.yml had a second entry, `must be number but found type string`
+  # on `timeout-minutes: ${{ vars.AGENT_JOB_TIMEOUT_MINUTES || 90 }}`, justified
+  # by a run that had the variable **unset** — the numeric-fallback path GitHub
+  # really does accept. It was removed 2026-08-26: with the variable set to
+  # `350`, runs 32964525166 / 32955595991 / 32987078259 failed at job planning
+  # with "Unexpected value '350'" and no `agent` job at all. actionlint was
+  # right about the type, the workflow now wraps the value in `fromJSON(...)`,
+  # and the suppression is gone so a regression back to the string spelling is
+  # caught here rather than by a silently dead agent.

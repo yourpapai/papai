@@ -23,6 +23,7 @@ import {
   groupReleaseHandlers,
   guestModeHandlers,
 } from './settings-handlers-group.js'
+import { llmModelMetadataHandlers } from './settings-handlers-metadata.js'
 import {
   analyticsLegitimateInterestHandlers,
   analyticsPreferencesHandlers,
@@ -61,6 +62,10 @@ export const scenarios = {
   'settings-byok-disabled': [...byokHandlers.disabled],
   'settings-byok-error': [...byokHandlers.error],
   'settings-byok-loading': [...byokHandlers.loading],
+  'settings-llm-model-metadata-models-dev': [...llmModelMetadataHandlers.modelsDev],
+  'settings-llm-model-metadata-prefix-table': [...llmModelMetadataHandlers.prefixTable],
+  'settings-llm-model-metadata-no-limits': [...llmModelMetadataHandlers.noLimits],
+  'settings-llm-model-metadata-catalogue-unavailable': [...llmModelMetadataHandlers.catalogueUnavailable],
   'settings-kaneo-populated': [...kaneoHandlers.populated],
   'settings-kaneo-not-provisioned': [...kaneoHandlers.notProvisioned],
   'settings-kaneo-error': [...kaneoHandlers.error],

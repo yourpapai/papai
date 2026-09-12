@@ -34,12 +34,24 @@ export const VerificationSchema = z.object({
 })
 export type Verification = z.infer<typeof VerificationSchema>
 
+export const ModelHintsSchema = z.record(
+  z.string(),
+  z.object({
+    baseProvider: z.string().min(1),
+    baseModel: z.string().min(1),
+  }),
+)
+export type ModelHints = z.infer<typeof ModelHintsSchema>
+
 export const PublicProviderAccountSchema = z.object({
   id: z.string(),
   label: z.string(),
   providerType: LlmProviderTypesSchema,
   baseUrl: z.string(),
   apiKeyMasked: z.string(),
+  baseProvider: z.string().nullable().default(null),
+  baseModel: z.string().nullable().default(null),
+  modelHints: ModelHintsSchema.default({}),
   verification: VerificationSchema,
 })
 export type PublicProviderAccount = z.infer<typeof PublicProviderAccountSchema>
@@ -64,6 +76,9 @@ export const ProviderInputSchema = z.object({
   providerType: LlmProviderTypesSchema,
   baseUrl: z.string().min(1),
   apiKey: z.string().min(1),
+  baseProvider: z.string().nullable().optional(),
+  baseModel: z.string().nullable().optional(),
+  modelHints: ModelHintsSchema.optional(),
 })
 export type ProviderInput = z.infer<typeof ProviderInputSchema>
 export type ProviderPatch = Partial<ProviderInput> & { models?: string[] }
@@ -77,3 +92,22 @@ export const PROVIDER_TYPE_OPTIONS: ReadonlyArray<{ value: LlmProviderType; labe
   { value: 'groq', label: 'Groq' },
   { value: 'custom', label: 'Custom' },
 ]
+
+export const LlmModelMetadataResponseSchema = z.object({
+  providerId: z.string().nullable(),
+  modelId: z.string().nullable(),
+  contextWindow: z.number().nullable(),
+  maxOutputTokens: z.number().nullable(),
+  source: z.enum(['models-dev', 'prefix-table', 'none']),
+  via: z.enum(['override', 'inferred']).nullable(),
+  snapshotFetchedAt: z.number().nullable(),
+})
+export type LlmModelMetadata = z.infer<typeof LlmModelMetadataResponseSchema>
+
+export type LlmModelMetadataQuery = {
+  readonly providerType?: string
+  readonly baseUrl?: string
+  readonly baseProvider?: string
+  readonly baseModel?: string
+  readonly model?: string
+}

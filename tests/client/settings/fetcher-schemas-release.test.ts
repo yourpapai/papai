@@ -39,27 +39,31 @@ describe('ReleaseNotesResponseSchema', () => {
   test('parses a full release notes payload', () => {
     const parsed = ReleaseNotesResponseSchema.parse({
       version: '1.2.3',
-      body: 'Some notes',
+      bodies: { en: 'Some notes', ru: 'Некоторые заметки' },
       broadcastAt: '2026-06-01T00:00:00Z',
       counts: { dm: 10, group: 3 },
     })
     expect(parsed.version).toBe('1.2.3')
+    expect(parsed.bodies.en).toBe('Some notes')
     expect(parsed.counts.dm).toBe(10)
   })
 
-  test('accepts null body and broadcastAt', () => {
+  test('accepts null bodies and broadcastAt', () => {
     const parsed = ReleaseNotesResponseSchema.parse({
       version: '1.0.0',
-      body: null,
+      bodies: { en: null, ru: null },
       broadcastAt: null,
       counts: { dm: 0, group: 0 },
     })
-    expect(parsed.body).toBeNull()
+    expect(parsed.bodies.en).toBeNull()
+    expect(parsed.bodies.ru).toBeNull()
     expect(parsed.broadcastAt).toBeNull()
   })
 
   test('throws when counts is missing', () => {
-    expect(() => ReleaseNotesResponseSchema.parse({ version: '1.0.0', body: null, broadcastAt: null })).toThrow()
+    expect(() =>
+      ReleaseNotesResponseSchema.parse({ version: '1.0.0', bodies: { en: null, ru: null }, broadcastAt: null }),
+    ).toThrow()
   })
 })
 

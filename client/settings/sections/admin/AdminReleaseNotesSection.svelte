@@ -14,11 +14,15 @@
     fetchReleaseNotes,
     regenerateReleaseNotes,
     saveReleaseNotes,
+    type ReleaseLocale,
   } from '../../admin-fetchers.js'
   import type { ReleaseBroadcastResult, ReleaseNotesResponse } from '../../fetcher-schemas-release.js'
 
+  const LOCALES: readonly ReleaseLocale[] = ['en', 'ru']
+
   let data = $state<ReleaseNotesResponse | null>(null)
-  let body = $state('')
+  let activeLocale = $state<ReleaseLocale>('en')
+  let bodiesByLocale = $state<Record<ReleaseLocale, string>>({ en: '', ru: '' })
   let error: string | null = $state(null)
   let busy = $state(false)
   let confirming = $state(false)
@@ -30,12 +34,19 @@
     return err instanceof Error ? err.message : String(err)
   }
 
+  function syncFromData(next: ReleaseNotesResponse): void {
+    data = next
+    bodiesByLocale = { en: next.bodies.en ?? '', ru: next.bodies.ru ?? '' }
+    if (bodiesByLocale[activeLocale] === '' && next.rawBody !== null && next.rawBody !== undefined) {
+      bodiesByLocale = { ...bodiesByLocale, [activeLocale]: next.rawBody }
+    }
+  }
+
   async function load(): Promise<void> {
     error = null
     busy = true
     try {
-      data = await fetchReleaseNotes()
-      body = data.body ?? ''
+      syncFromData(await fetchReleaseNotes())
     } catch (err) {
       error = messageFrom(err)
     } finally {
@@ -43,12 +54,13 @@
     }
   }
 
-  async function regenerate(): Promise<void> {
+  async function regenerate(locale: ReleaseLocale): Promise<void> {
     error = null
     busy = true
     try {
-      data = await regenerateReleaseNotes()
-      body = data.body ?? ''
+      const next = await regenerateReleaseNotes(locale)
+      data = next
+      bodiesByLocale = { ...bodiesByLocale, [locale]: next.bodies[locale] ?? '' }
     } catch (err) {
       error = messageFrom(err)
     } finally {
@@ -56,12 +68,14 @@
     }
   }
 
-  async function save(): Promise<void> {
-    if (body.trim() === '') return
+  async function save(locale: ReleaseLocale): Promise<void> {
+    if (bodiesByLocale[locale].trim() === '') return
     error = null
     busy = true
     try {
-      data = await saveReleaseNotes(body)
+      const next = await saveReleaseNotes(bodiesByLocale[locale], locale)
+      data = next
+      bodiesByLocale = { ...bodiesByLocale, [locale]: next.bodies[locale] ?? '' }
     } catch (err) {
       error = messageFrom(err)
     } finally {
@@ -77,8 +91,13 @@
     let ok = false
     let result: ReleaseBroadcastResult | null = null
     try {
-      if (body !== (data?.body ?? '') && body !== '') {
-        data = await saveReleaseNotes(body)
+      // Persist any dirty locale before broadcasting, newest edit first.
+      for (const locale of LOCALES) {
+        const saved = data?.bodies[locale] ?? null
+        const draft = bodiesByLocale[locale]
+        if (draft.trim() !== '' && draft !== (saved ?? '')) {
+          data = await saveReleaseNotes(draft, locale)
+        }
       }
       result = await broadcastReleaseNotes()
       ok = true
@@ -112,21 +131,55 @@
       {#if data.broadcastAt !== null} · already broadcast{/if}
     </p>
 
-    <Field label="Announcement">
-      <Input value={body} onInput={(v) => (body = v)} testid="release-notes-body" multiline rows={8} />
-    </Field>
+    <div class="settings-actions" data-testid="release-notes-locale-switcher" role="tablist">
+      {#each LOCALES as locale (locale)}
+        <Btn
+          variant={activeLocale === locale ? 'primary' : 'outline'}
+          size="sm"
+          testid="release-notes-locale-{locale}"
+          onClick={() => (activeLocale = locale)}>
+          {#snippet children()}{locale === 'en' ? 'English' : 'Русский'}{/snippet}
+        </Btn>
+      {/each}
+    </div>
+
+    {#each LOCALES as locale (locale)}
+      {#if activeLocale === locale}
+        <Field label="Announcement ({locale})">
+          <Input
+            value={bodiesByLocale[locale]}
+            onInput={(v) => (bodiesByLocale = { ...bodiesByLocale, [locale]: v })}
+            testid="release-notes-body-{locale}"
+            multiline
+            rows={8} />
+        </Field>
+
+        <div class="settings-actions">
+          <Btn
+            variant="outline"
+            size="sm"
+            disabled={busy}
+            testid="release-notes-regenerate-{locale}"
+            onClick={() => void regenerate(locale)}>
+            {#snippet children()}Regenerate{/snippet}
+          </Btn>
+          <Btn
+            variant="outline"
+            size="sm"
+            disabled={busy || bodiesByLocale[locale].trim() === ''}
+            testid="release-notes-save-{locale}"
+            onClick={() => void save(locale)}>
+            {#snippet children()}Save{/snippet}
+          </Btn>
+        </div>
+      {/if}
+    {/each}
 
     <div class="settings-actions">
-      <Btn variant="outline" size="sm" disabled={busy} testid="release-notes-regenerate" onClick={() => void regenerate()}>
-        {#snippet children()}Regenerate{/snippet}
-      </Btn>
-      <Btn variant="outline" size="sm" disabled={busy || body.trim() === ''} testid="release-notes-save" onClick={() => void save()}>
-        {#snippet children()}Save{/snippet}
-      </Btn>
       <Btn
         variant="primary"
         size="sm"
-        disabled={busy || body.trim() === ''}
+        disabled={busy || (bodiesByLocale.en.trim() === '' && bodiesByLocale.ru.trim() === '')}
         testid="release-notes-broadcast"
         onClick={() => {
           broadcastError = null

@@ -141,6 +141,7 @@ describe('core tool capabilities', () => {
       ['deferred.update', 'update_reminder'],
       ['deferred.cancel', 'cancel_reminder'],
       ['web.fetch', 'web_fetch'],
+      ['chat.participants.resolve', 'resolve_chat_participant'],
     ])
   })
 
@@ -166,6 +167,20 @@ describe('core tool capabilities', () => {
     const nextTurnTools = applyToolPreferences(offered('create_task', 'get_task'), 'ctx-denied-core', undefined)
 
     expect(Object.hasOwn(nextTurnTools, catalog.resolve('tasks.create'))).toBe(false)
+  })
+
+  test('maps and conditionally registers the chat.participants.resolve capability', () => {
+    expect(CORE_TOOL_CAPABILITIES['chat.participants.resolve']).toBe('resolve_chat_participant')
+
+    const catalog = createToolCapabilityCatalog()
+    registerOfferedCoreToolCapabilities(offered('resolve_chat_participant'), catalog)
+    expect(catalog.resolve('chat.participants.resolve')).toBe('resolve_chat_participant')
+
+    const absent = createToolCapabilityCatalog()
+    registerOfferedCoreToolCapabilities(offered('get_task'), absent)
+    expect(() => absent.resolve('chat.participants.resolve')).toThrow(
+      "Unknown tool capability id 'chat.participants.resolve'",
+    )
   })
 
   test('maps and conditionally registers the web.fetch capability', () => {

@@ -5,12 +5,13 @@
 
 import type { ModelMessage, ToolSet } from 'ai'
 
+import { getDictionary, type Locale } from '../i18n/index.js'
 import { logger } from '../logger.js'
 import { isToolFailureResult } from '../tool-failure.js'
 
 const log = logger.child({ scope: 'completion:verified' })
 
-const READ_ONLY_PREFIXES = ['get_', 'list_', 'search_'] as const
+const READ_ONLY_PREFIXES = ['get_', 'list_', 'search_', 'read_'] as const
 
 /** Filter an assembled toolset to a read-only subset by name prefix. Returns undefined when none match. */
 export const selectReadOnlyTools = (tools: ToolSet): ToolSet | undefined => {
@@ -35,8 +36,23 @@ export const detectToolFailure = (messages: readonly ModelMessage[]): boolean =>
   return false
 }
 
-export type CompletionVerdict = 'confirmed' | 'truncated' | 'partial' | 'failed' | 'unconfirmed'
-export type VerifiedCompletion = { text: string; verdict: CompletionVerdict }
+/** True when the turn executed at least one tool: any tool message carries a tool-result part. */
+export const turnHasToolActivity = (messages: readonly ModelMessage[]): boolean => {
+  for (const message of messages) {
+    if (message.role !== 'tool') continue
+    if (message.content.some((part) => part.type === 'tool-result')) return true
+  }
+  return false
+}
+
+export type CompletionVerdict = 'confirmed' | 'truncated' | 'partial' | 'unconfirmed' | 'no-op'
+/** How the verification pass itself went: produced text, returned blank, or threw. */
+export type VerifierOutcome = 'ok' | 'empty' | 'error'
+export type VerifiedCompletion = {
+  text: string
+  verdict: CompletionVerdict
+  verifierOutcome: VerifierOutcome
+}
 export type VerifierPrompt = { system: string; messages: ModelMessage[] }
 
 export type VerifierDeps = {
@@ -50,64 +66,72 @@ export type CompletionTurn = {
   history: readonly ModelMessage[]
   finishReason?: string
   hadToolFailure: boolean
+  /** True when the turn executed at least one tool; the call sites fill it from the messages they collect. */
+  hadToolActivity: boolean
+  /** The turn's own final model text; undefined when the model produced none. */
+  finalText?: string
+  /** Locale of the turn's config context; the verifier prompt and fallback localize to it. */
+  locale?: Locale
 }
 
 export const VERIFIER_MAX_STEPS = 4
-const NEUTRAL_FALLBACK = 'I ran the requested actions but could not confirm the result — please double-check.'
 
 const buildVerifierPrompt = (turn: CompletionTurn): VerifierPrompt => {
+  const texts = getDictionary(turn.locale ?? 'en').completion
   const truncated = turn.finishReason === 'tool-calls'
-  const system = [
-    'You are finalizing an assistant turn in a task-management chat bot.',
-    'The conversation so far — including the tools the assistant just called and their results — is provided.',
-    "Determine whether the user's most recent request was actually carried out, then write ONE short reply to the user.",
-    'Rules:',
-    '- Reply in the same language the user used.',
-    '- Be truthful. Never claim something succeeded unless the tool results (or a read-back) confirm it.',
-    '- You MAY call read-only tools to re-check current state before answering. Never attempt to change anything.',
-    '- If a tool failed, tell the user plainly what did not work.',
-    truncated
-      ? '- This turn did a lot of work but ran out of room before fully finishing. Summarize what was completed (naming the affected item(s)) and briefly what remains. Do not apologize or dwell on limits; you may offer that the user can say "continue" if they want you to pick up where you left off.'
-      : '- Summarize what was done, naming the affected item(s).',
-    'Output only the user-facing reply text, nothing else.',
-  ].join('\n')
-  const messages: ModelMessage[] = [
-    ...turn.history,
-    { role: 'user', content: '[FINALIZE] Write the reply now, following your instructions.' },
-  ]
+  const system = texts.verifierSystem.replace(
+    '{rule}',
+    truncated ? texts.verifierTruncatedRule : texts.verifierSummarizeRule,
+  )
+  const messages: ModelMessage[] = [...turn.history, { role: 'user', content: texts.finalizeMessage }]
   return { system, messages }
 }
 
-const deriveVerdict = (turn: CompletionTurn): CompletionVerdict => {
+/**
+ * Derive the verdict from observable turn shape (design D2 order):
+ * truncated (pending tool call) → partial (tool failure) → no-op (empty final
+ * text with no executed tool) → confirmed.
+ */
+export const deriveVerdict = (turn: CompletionTurn): CompletionVerdict => {
   if (turn.finishReason === 'tool-calls') return 'truncated'
   if (turn.hadToolFailure) return 'partial'
+  if (!turn.hadToolActivity && (turn.finalText === undefined || turn.finalText === '')) return 'no-op'
   return 'confirmed'
 }
 
 /**
  * On a risky turn, run a verification LLM call and return a truthful user-facing message.
- * Never returns a bare "Done."; degrades to a neutral honest message if verification fails.
+ * Never returns a bare "Done."; when verification degrades (verifier empty or throwing) it
+ * delivers the model's own final text when there is one, keeping the derived verdict, and
+ * falls back to the honest last-resort message — actions-ran vs nothing-executed, selected
+ * by the turn's tool activity — only when the model produced no text.
  */
 export const buildVerifiedCompletion = async (
   turn: CompletionTurn,
   deps: VerifierDeps,
 ): Promise<VerifiedCompletion> => {
   const verdict = deriveVerdict(turn)
+  const texts = getDictionary(turn.locale ?? 'en').completion
+  const lastResortFallback = turn.hadToolActivity ? texts.neutralFallback : texts.noopFallback
   log.debug({ verdict, readBack: deps.readOnlyToolset !== undefined }, 'Building verified completion')
   const prompt = buildVerifierPrompt(turn)
+  const degradedCompletion = (outcome: VerifierOutcome, event: string, err?: string): VerifiedCompletion => {
+    const finalText = turn.finalText
+    if (finalText !== undefined && finalText.trim() !== '') {
+      log.warn({ verdict, delivered: 'model-final-text', verifierOutcome: outcome, err }, event)
+      return { text: finalText, verdict, verifierOutcome: outcome }
+    }
+    log.warn({ verdict, delivered: 'last-resort-fallback', verifierOutcome: outcome, err }, event)
+    return { text: lastResortFallback, verdict: 'unconfirmed', verifierOutcome: outcome }
+  }
   try {
     const res = await deps.invokeVerifier(prompt)
-    if (res.text === undefined || res.text === '') {
-      log.warn({ verdict }, 'Verifier returned empty text; using neutral fallback')
-      return { text: NEUTRAL_FALLBACK, verdict: 'unconfirmed' }
+    if (res.text === undefined || res.text.trim() === '') {
+      return degradedCompletion('empty', 'Verifier returned empty text')
     }
     log.info({ verdict }, 'Verified completion built')
-    return { text: res.text, verdict }
+    return { text: res.text, verdict, verifierOutcome: 'ok' }
   } catch (error) {
-    log.warn(
-      { err: error instanceof Error ? error.message : String(error) },
-      'Verifier call failed; using neutral fallback',
-    )
-    return { text: NEUTRAL_FALLBACK, verdict: 'unconfirmed' }
+    return degradedCompletion('error', 'Verifier call failed', error instanceof Error ? error.message : String(error))
   }
 }

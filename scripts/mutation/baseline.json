@@ -1,53 +1,973 @@
 {
-  "client/admin/global-stats.svelte.ts": 0.7441860465116279,
-  "client/debug/panel-count.ts": 1,
-  "client/debug/scope-label.ts": 0.85,
-  "client/settings/fetcher-schemas.ts": 0.6349206349206349,
-  "client/settings/fetchers.ts": 0.6534653465346535,
-  "client/settings/index.ts": 0.6052631578947368,
-  "client/settings/lib/plugin-eligibility.ts": 0.9411764705882353,
-  "client/settings/lib/task-instance-label.ts": 1,
-  "client/settings/lib/task-instance-selection.ts": 0.8571428571428571,
-  "client/settings/nav.svelte.ts": 0.7236180904522613,
-  "client/settings/sections/admin/admin-users-presenters.ts": 1,
-  "client/settings/sections/admin/instance-create.ts": 1,
-  "client/settings/sections/analytics-preferences-copy.ts": 0.9836065573770492,
-  "client/settings/session.svelte.ts": 0.7142857142857143,
-  "client/shared/fetcher-helpers.ts": 1,
-  "client/shared/helpers.ts": 0.9447852760736196,
-  "client/shared/scrollspy.ts": 0.8571428571428571,
-  "client/shared/ui/field-context.ts": 0.9,
-  "client/shared/ui/field-touched.ts": 0.9090909090909091,
-  "client/shared/ui/status-tone.ts": 0.625,
-  "client/stories/decorators/withFixtures.ts": 0.797979797979798,
-  "client/stories/fixtures/debug.ts": 0.19298245614035087,
-  "client/stories/fixtures/index.ts": 0.487012987012987,
-  "client/stories/msw/handlers.ts": 0.06666666666666667,
-  "client/stories/msw/namespace.ts": 1,
-  "client/stories/msw/scenarios-admin.ts": 1,
-  "client/stories/msw/scenarios.ts": 1,
-  "client/stories/msw/settings-handlers-admin-2.ts": 0.12554112554112554,
-  "client/stories/msw/settings-handlers-coding.ts": 0.344,
-  "client/stories/msw/settings-handlers-group.ts": 0.07643312101910828,
-  "client/stories/msw/settings-handlers-personal-2.ts": 0.2843601895734597,
-  "client/stories/msw/settings-handlers-personal.ts": 0.07547169811320754,
-  "client/stories/msw/settings-handlers-plugins.ts": 0.05,
-  "client/stories/msw/settings-handlers-task-provider.ts": 0.0851063829787234,
-  "client/stories/msw/settings-handlers.ts": 0.048327137546468404,
-  "client/stories/stubs/time.ts": 1,
-  "client/transcript/autoscroll.ts": 1,
-  "client/transcript/banner.ts": 1,
-  "client/transcript/describe-event.ts": 0.972972972972973,
-  "client/transcript/empty-state.ts": 1,
-  "client/transcript/format-ts.ts": 1,
-  "plugins/acp/session-tools.ts": 0.79375,
+  "client/settings/byok-provider-fetchers.ts": {
+    "score": 0.75,
+    "killed": 18,
+    "timeout": 0,
+    "scored": 24
+  },
+  "client/settings/fetcher-schemas-llm-providers.ts": {
+    "score": 0.47619047619047616,
+    "killed": 30,
+    "timeout": 0,
+    "scored": 63
+  },
+  "client/settings/fetchers.ts": {
+    "score": 0.6587677725118484,
+    "killed": 139,
+    "timeout": 0,
+    "scored": 211
+  },
+  "client/settings/llm-model-metadata-fetchers.ts": {
+    "score": 1,
+    "killed": 20,
+    "timeout": 0,
+    "scored": 20
+  },
+  "client/stories/msw/scenarios.ts": {
+    "score": 1,
+    "killed": 96,
+    "timeout": 0,
+    "scored": 96
+  },
+  "client/stories/msw/settings-handlers-metadata.ts": {
+    "score": 0.34615384615384615,
+    "killed": 9,
+    "timeout": 0,
+    "scored": 26
+  },
+  "opencode-agent/src/activity-detail.ts": {
+    "score": 0.9358974358974359,
+    "killed": 73,
+    "timeout": 0,
+    "scored": 78
+  },
+  "opencode-agent/src/activity.ts": {
+    "score": 0.8383838383838383,
+    "killed": 83,
+    "timeout": 0,
+    "scored": 99
+  },
+  "opencode-agent/src/agent-handle.ts": {
+    "score": 1,
+    "killed": 20,
+    "timeout": 0,
+    "scored": 20
+  },
+  "opencode-agent/src/agent-session.ts": {
+    "score": 1,
+    "killed": 6,
+    "timeout": 0,
+    "scored": 6
+  },
+  "opencode-agent/src/agent-state.ts": {
+    "score": 1,
+    "killed": 13,
+    "timeout": 0,
+    "scored": 13
+  },
+  "opencode-agent/src/artifacts.ts": {
+    "score": 0.7666666666666667,
+    "killed": 23,
+    "timeout": 0,
+    "scored": 30
+  },
+  "opencode-agent/src/ask-json.ts": {
+    "score": 0.6666666666666666,
+    "killed": 12,
+    "timeout": 0,
+    "scored": 18
+  },
+  "opencode-agent/src/blocks.ts": {
+    "score": 0.7912087912087912,
+    "killed": 71,
+    "timeout": 1,
+    "scored": 91
+  },
+  "opencode-agent/src/budget-notices.ts": {
+    "score": 0.4050632911392405,
+    "killed": 32,
+    "timeout": 0,
+    "scored": 79
+  },
+  "opencode-agent/src/cascade.ts": {
+    "score": 0.8923076923076924,
+    "killed": 58,
+    "timeout": 0,
+    "scored": 65
+  },
+  "opencode-agent/src/check-loop.ts": {
+    "score": 0.9682539682539683,
+    "killed": 57,
+    "timeout": 4,
+    "scored": 63
+  },
+  "opencode-agent/src/ci-diagnosis.ts": {
+    "score": 0.5517241379310345,
+    "killed": 32,
+    "timeout": 0,
+    "scored": 58
+  },
+  "opencode-agent/src/ci-groups.ts": {
+    "score": 1,
+    "killed": 8,
+    "timeout": 0,
+    "scored": 8
+  },
+  "opencode-agent/src/ci-trigger.ts": {
+    "score": 0.7538461538461538,
+    "killed": 49,
+    "timeout": 0,
+    "scored": 65
+  },
+  "opencode-agent/src/claude-adapter.ts": {
+    "score": 0.7480916030534351,
+    "killed": 98,
+    "timeout": 0,
+    "scored": 131
+  },
+  "opencode-agent/src/claude-argv.ts": {
+    "score": 0.9,
+    "killed": 90,
+    "timeout": 0,
+    "scored": 100
+  },
+  "opencode-agent/src/claude-config-dir.ts": {
+    "score": 0.8571428571428571,
+    "killed": 6,
+    "timeout": 0,
+    "scored": 7
+  },
+  "opencode-agent/src/claude-connect.ts": {
+    "score": 0.5285714285714286,
+    "killed": 37,
+    "timeout": 0,
+    "scored": 70
+  },
+  "opencode-agent/src/claude-contract.ts": {
+    "score": 0.8513513513513513,
+    "killed": 126,
+    "timeout": 0,
+    "scored": 148
+  },
+  "opencode-agent/src/claude-env-knob.ts": {
+    "score": 0.8541666666666666,
+    "killed": 41,
+    "timeout": 0,
+    "scored": 48
+  },
+  "opencode-agent/src/claude-kill.ts": {
+    "score": 0.6896551724137931,
+    "killed": 20,
+    "timeout": 0,
+    "scored": 29
+  },
+  "opencode-agent/src/claude-progress.ts": {
+    "score": 0.6153846153846154,
+    "killed": 40,
+    "timeout": 0,
+    "scored": 65
+  },
+  "opencode-agent/src/claude-spend.ts": {
+    "score": 0.9523809523809523,
+    "killed": 40,
+    "timeout": 0,
+    "scored": 42
+  },
+  "opencode-agent/src/claude-turn-classify.ts": {
+    "score": 0.7380952380952381,
+    "killed": 31,
+    "timeout": 0,
+    "scored": 42
+  },
+  "opencode-agent/src/claude-usage.ts": {
+    "score": 0.9130434782608695,
+    "killed": 42,
+    "timeout": 0,
+    "scored": 46
+  },
+  "opencode-agent/src/cli-args.ts": {
+    "score": 0.8028169014084507,
+    "killed": 55,
+    "timeout": 2,
+    "scored": 71
+  },
+  "opencode-agent/src/command-refusals.ts": {
+    "score": 0.5294117647058824,
+    "killed": 18,
+    "timeout": 0,
+    "scored": 34
+  },
+  "opencode-agent/src/commands.ts": {
+    "score": 0.9523809523809523,
+    "killed": 100,
+    "timeout": 0,
+    "scored": 105
+  },
+  "opencode-agent/src/comment-intent.ts": {
+    "score": 0.7610619469026548,
+    "killed": 86,
+    "timeout": 0,
+    "scored": 113
+  },
+  "opencode-agent/src/commit-identity.ts": {
+    "score": 0.7564102564102564,
+    "killed": 59,
+    "timeout": 0,
+    "scored": 78
+  },
+  "opencode-agent/src/commit-repair.ts": {
+    "score": 0.6666666666666666,
+    "killed": 17,
+    "timeout": 3,
+    "scored": 30
+  },
+  "opencode-agent/src/config-backend-values.ts": {
+    "score": 0.8846153846153846,
+    "killed": 46,
+    "timeout": 0,
+    "scored": 52
+  },
+  "opencode-agent/src/config-clock-values.ts": {
+    "score": 1,
+    "killed": 6,
+    "timeout": 0,
+    "scored": 6
+  },
+  "opencode-agent/src/config-discovery.ts": {
+    "score": 0.8571428571428571,
+    "killed": 60,
+    "timeout": 0,
+    "scored": 70
+  },
+  "opencode-agent/src/config-model-values.ts": {
+    "score": 0.9636363636363636,
+    "killed": 53,
+    "timeout": 0,
+    "scored": 55
+  },
+  "opencode-agent/src/config-values.ts": {
+    "score": 0.905982905982906,
+    "killed": 106,
+    "timeout": 0,
+    "scored": 117
+  },
+  "opencode-agent/src/config.ts": {
+    "score": 0.9,
+    "killed": 99,
+    "timeout": 0,
+    "scored": 110
+  },
+  "opencode-agent/src/contain.ts": {
+    "score": 0.8269230769230769,
+    "killed": 43,
+    "timeout": 0,
+    "scored": 52
+  },
+  "opencode-agent/src/deadline.ts": {
+    "score": 1,
+    "killed": 12,
+    "timeout": 0,
+    "scored": 12
+  },
+  "opencode-agent/src/debug-transcript.ts": {
+    "score": 0.8,
+    "killed": 40,
+    "timeout": 0,
+    "scored": 50
+  },
+  "opencode-agent/src/deps.ts": {
+    "score": 0.3333333333333333,
+    "killed": 15,
+    "timeout": 0,
+    "scored": 45
+  },
+  "opencode-agent/src/diff-guard.ts": {
+    "score": 0.8,
+    "killed": 112,
+    "timeout": 0,
+    "scored": 140
+  },
+  "opencode-agent/src/errors.ts": {
+    "score": 0.5353535353535354,
+    "killed": 53,
+    "timeout": 0,
+    "scored": 99
+  },
+  "opencode-agent/src/event-follower.ts": {
+    "score": 1,
+    "killed": 14,
+    "timeout": 0,
+    "scored": 14
+  },
+  "opencode-agent/src/feedback-target.ts": {
+    "score": 1,
+    "killed": 13,
+    "timeout": 0,
+    "scored": 13
+  },
+  "opencode-agent/src/feedback.ts": {
+    "score": 0.7446808510638298,
+    "killed": 35,
+    "timeout": 0,
+    "scored": 47
+  },
+  "opencode-agent/src/git-commit.ts": {
+    "score": 0.8888888888888888,
+    "killed": 136,
+    "timeout": 0,
+    "scored": 153
+  },
+  "opencode-agent/src/git-drift.ts": {
+    "score": 0.8701298701298701,
+    "killed": 67,
+    "timeout": 0,
+    "scored": 77
+  },
+  "opencode-agent/src/git-merge.ts": {
+    "score": 0.8372093023255814,
+    "killed": 36,
+    "timeout": 0,
+    "scored": 43
+  },
+  "opencode-agent/src/git-reconcile.ts": {
+    "score": 0.9555555555555556,
+    "killed": 43,
+    "timeout": 0,
+    "scored": 45
+  },
+  "opencode-agent/src/git-revert.ts": {
+    "score": 0,
+    "killed": 0,
+    "timeout": 0,
+    "scored": 35
+  },
+  "opencode-agent/src/git-types.ts": {
+    "score": 0.5,
+    "killed": 2,
+    "timeout": 0,
+    "scored": 4
+  },
+  "opencode-agent/src/git.ts": {
+    "score": 0.7283950617283951,
+    "killed": 118,
+    "timeout": 0,
+    "scored": 162
+  },
+  "opencode-agent/src/github-actions.ts": {
+    "score": 0.8666666666666667,
+    "killed": 39,
+    "timeout": 0,
+    "scored": 45
+  },
+  "opencode-agent/src/github-labels.ts": {
+    "score": 0.7428571428571429,
+    "killed": 26,
+    "timeout": 0,
+    "scored": 35
+  },
+  "opencode-agent/src/github-pulls.ts": {
+    "score": 0.9743589743589743,
+    "killed": 38,
+    "timeout": 0,
+    "scored": 39
+  },
+  "opencode-agent/src/github-reactions.ts": {
+    "score": 0.9545454545454546,
+    "killed": 21,
+    "timeout": 0,
+    "scored": 22
+  },
+  "opencode-agent/src/github.ts": {
+    "score": 0.6,
+    "killed": 21,
+    "timeout": 0,
+    "scored": 35
+  },
+  "opencode-agent/src/glob-output.ts": {
+    "score": 0.78125,
+    "killed": 50,
+    "timeout": 0,
+    "scored": 64
+  },
+  "opencode-agent/src/guardrails.ts": {
+    "score": 0.912621359223301,
+    "killed": 94,
+    "timeout": 0,
+    "scored": 103
+  },
+  "opencode-agent/src/heartbeat.ts": {
+    "score": 1,
+    "killed": 18,
+    "timeout": 0,
+    "scored": 18
+  },
+  "opencode-agent/src/identity.ts": {
+    "score": 0.8,
+    "killed": 28,
+    "timeout": 0,
+    "scored": 35
+  },
+  "opencode-agent/src/implement-prompts.ts": {
+    "score": 0.5824175824175825,
+    "killed": 53,
+    "timeout": 0,
+    "scored": 91
+  },
+  "opencode-agent/src/intent.ts": {
+    "score": 0.6666666666666666,
+    "killed": 8,
+    "timeout": 0,
+    "scored": 12
+  },
+  "opencode-agent/src/labels.ts": {
+    "score": 0.8939393939393939,
+    "killed": 59,
+    "timeout": 0,
+    "scored": 66
+  },
+  "opencode-agent/src/logger.ts": {
+    "score": 0.675,
+    "killed": 27,
+    "timeout": 0,
+    "scored": 40
+  },
+  "opencode-agent/src/markdown.ts": {
+    "score": 1,
+    "killed": 9,
+    "timeout": 0,
+    "scored": 9
+  },
+  "opencode-agent/src/mcp-servers.ts": {
+    "score": 0.8518518518518519,
+    "killed": 69,
+    "timeout": 0,
+    "scored": 81
+  },
+  "opencode-agent/src/model-json.ts": {
+    "score": 0.7627118644067796,
+    "killed": 45,
+    "timeout": 0,
+    "scored": 59
+  },
+  "opencode-agent/src/model-metadata.ts": {
+    "score": 0.8615384615384616,
+    "killed": 56,
+    "timeout": 0,
+    "scored": 65
+  },
+  "opencode-agent/src/obra-skills.ts": {
+    "score": 0.7741935483870968,
+    "killed": 96,
+    "timeout": 0,
+    "scored": 124
+  },
+  "opencode-agent/src/openai-config.ts": {
+    "score": 0.9298245614035088,
+    "killed": 53,
+    "timeout": 0,
+    "scored": 57
+  },
+  "opencode-agent/src/opencode-adapter.ts": {
+    "score": 0.575,
+    "killed": 46,
+    "timeout": 0,
+    "scored": 80
+  },
+  "opencode-agent/src/opencode-connect.ts": {
+    "score": 0.4426229508196721,
+    "killed": 54,
+    "timeout": 0,
+    "scored": 122
+  },
+  "opencode-agent/src/openspec-driver.ts": {
+    "score": 0.819672131147541,
+    "killed": 100,
+    "timeout": 0,
+    "scored": 122
+  },
+  "opencode-agent/src/orchestrator.ts": {
+    "score": 0.8426966292134831,
+    "killed": 75,
+    "timeout": 0,
+    "scored": 89
+  },
+  "opencode-agent/src/outcomes.ts": {
+    "score": 1,
+    "killed": 15,
+    "timeout": 0,
+    "scored": 15
+  },
+  "opencode-agent/src/permissions.ts": {
+    "score": 0.9444444444444444,
+    "killed": 17,
+    "timeout": 0,
+    "scored": 18
+  },
+  "opencode-agent/src/phase-failure.ts": {
+    "score": 0.625,
+    "killed": 10,
+    "timeout": 0,
+    "scored": 16
+  },
+  "opencode-agent/src/phase-names.ts": {
+    "score": 0.8333333333333334,
+    "killed": 10,
+    "timeout": 0,
+    "scored": 12
+  },
+  "opencode-agent/src/phases/answer.ts": {
+    "score": 0.43859649122807015,
+    "killed": 25,
+    "timeout": 0,
+    "scored": 57
+  },
+  "opencode-agent/src/phases/archive.ts": {
+    "score": 0,
+    "killed": 0,
+    "timeout": 0,
+    "scored": 23
+  },
+  "opencode-agent/src/phases/ci-commit.ts": {
+    "score": 0.8666666666666667,
+    "killed": 13,
+    "timeout": 0,
+    "scored": 15
+  },
+  "opencode-agent/src/phases/ci-fix.ts": {
+    "score": 0.6771653543307087,
+    "killed": 86,
+    "timeout": 0,
+    "scored": 127
+  },
+  "opencode-agent/src/phases/ci-report.ts": {
+    "score": 0.5944444444444444,
+    "killed": 107,
+    "timeout": 0,
+    "scored": 180
+  },
+  "opencode-agent/src/phases/deliver.ts": {
+    "score": 0.6938775510204082,
+    "killed": 68,
+    "timeout": 0,
+    "scored": 98
+  },
+  "opencode-agent/src/phases/envelope.ts": {
+    "score": 1,
+    "killed": 1,
+    "timeout": 0,
+    "scored": 1
+  },
+  "opencode-agent/src/phases/implement-commit.ts": {
+    "score": 0.8235294117647058,
+    "killed": 28,
+    "timeout": 0,
+    "scored": 34
+  },
+  "opencode-agent/src/phases/implement-steps.ts": {
+    "score": 0.8831168831168831,
+    "killed": 67,
+    "timeout": 1,
+    "scored": 77
+  },
+  "opencode-agent/src/phases/implement.ts": {
+    "score": 0.703125,
+    "killed": 45,
+    "timeout": 0,
+    "scored": 64
+  },
+  "opencode-agent/src/phases/plan-draft.ts": {
+    "score": 0.6422764227642277,
+    "killed": 79,
+    "timeout": 0,
+    "scored": 123
+  },
+  "opencode-agent/src/phases/plan.ts": {
+    "score": 0.5943396226415094,
+    "killed": 63,
+    "timeout": 0,
+    "scored": 106
+  },
+  "opencode-agent/src/phases/review-blocked-patch.ts": {
+    "score": 0.4827586206896552,
+    "killed": 14,
+    "timeout": 0,
+    "scored": 29
+  },
+  "opencode-agent/src/phases/review-push.ts": {
+    "score": 0.711864406779661,
+    "killed": 42,
+    "timeout": 0,
+    "scored": 59
+  },
+  "opencode-agent/src/phases/review.ts": {
+    "score": 0.5094339622641509,
+    "killed": 54,
+    "timeout": 0,
+    "scored": 106
+  },
+  "opencode-agent/src/phases/sync.ts": {
+    "score": 0.65,
+    "killed": 76,
+    "timeout": 2,
+    "scored": 120
+  },
+  "opencode-agent/src/phases/triage-comments.ts": {
+    "score": 0.484375,
+    "killed": 31,
+    "timeout": 0,
+    "scored": 64
+  },
+  "opencode-agent/src/phases/triage.ts": {
+    "score": 0.816,
+    "killed": 102,
+    "timeout": 0,
+    "scored": 125
+  },
+  "opencode-agent/src/plan-steps.ts": {
+    "score": 0.5606060606060606,
+    "killed": 36,
+    "timeout": 1,
+    "scored": 66
+  },
+  "opencode-agent/src/pr-merged-event.ts": {
+    "score": 0.47368421052631576,
+    "killed": 18,
+    "timeout": 0,
+    "scored": 38
+  },
+  "opencode-agent/src/pr-trigger.ts": {
+    "score": 0.6046511627906976,
+    "killed": 26,
+    "timeout": 0,
+    "scored": 43
+  },
+  "opencode-agent/src/presentation.ts": {
+    "score": 0.9572649572649573,
+    "killed": 112,
+    "timeout": 0,
+    "scored": 117
+  },
+  "opencode-agent/src/pricing.ts": {
+    "score": 0.6762589928057554,
+    "killed": 94,
+    "timeout": 0,
+    "scored": 139
+  },
+  "opencode-agent/src/progress-lines.ts": {
+    "score": 1,
+    "killed": 31,
+    "timeout": 0,
+    "scored": 31
+  },
+  "opencode-agent/src/progress.ts": {
+    "score": 0.9158878504672897,
+    "killed": 98,
+    "timeout": 0,
+    "scored": 107
+  },
+  "opencode-agent/src/prompt-budget.ts": {
+    "score": 0.8877551020408163,
+    "killed": 79,
+    "timeout": 8,
+    "scored": 98
+  },
+  "opencode-agent/src/prompts.ts": {
+    "score": 0.41935483870967744,
+    "killed": 65,
+    "timeout": 0,
+    "scored": 155
+  },
+  "opencode-agent/src/protected-paths.ts": {
+    "score": 0.7058823529411765,
+    "killed": 12,
+    "timeout": 0,
+    "scored": 17
+  },
+  "opencode-agent/src/provider-proxy.ts": {
+    "score": 0.8545454545454545,
+    "killed": 91,
+    "timeout": 3,
+    "scored": 110
+  },
+  "opencode-agent/src/pull-request-body.ts": {
+    "score": 0.5454545454545454,
+    "killed": 6,
+    "timeout": 0,
+    "scored": 11
+  },
+  "opencode-agent/src/rate-limit-windows.ts": {
+    "score": 0.84,
+    "killed": 21,
+    "timeout": 0,
+    "scored": 25
+  },
+  "opencode-agent/src/red-run.ts": {
+    "score": 0.9459459459459459,
+    "killed": 35,
+    "timeout": 0,
+    "scored": 37
+  },
+  "opencode-agent/src/reply-buffer.ts": {
+    "score": 0.7073170731707317,
+    "killed": 29,
+    "timeout": 0,
+    "scored": 41
+  },
+  "opencode-agent/src/reply-comment.ts": {
+    "score": 0.6629213483146067,
+    "killed": 59,
+    "timeout": 0,
+    "scored": 89
+  },
+  "opencode-agent/src/repository.ts": {
+    "score": 0.9761904761904762,
+    "killed": 41,
+    "timeout": 0,
+    "scored": 42
+  },
+  "opencode-agent/src/review-outcome.ts": {
+    "score": 0.6986301369863014,
+    "killed": 51,
+    "timeout": 0,
+    "scored": 73
+  },
+  "opencode-agent/src/review-runner.ts": {
+    "score": 0.5652173913043478,
+    "killed": 39,
+    "timeout": 0,
+    "scored": 69
+  },
+  "opencode-agent/src/review-transcript.ts": {
+    "score": 0.6792452830188679,
+    "killed": 36,
+    "timeout": 0,
+    "scored": 53
+  },
+  "opencode-agent/src/run-cost-lines.ts": {
+    "score": 0.717948717948718,
+    "killed": 56,
+    "timeout": 0,
+    "scored": 78
+  },
+  "opencode-agent/src/run-detail.ts": {
+    "score": 0.9038461538461539,
+    "killed": 94,
+    "timeout": 0,
+    "scored": 104
+  },
+  "opencode-agent/src/run-post.ts": {
+    "score": 0.68,
+    "killed": 17,
+    "timeout": 0,
+    "scored": 25
+  },
+  "opencode-agent/src/run-report.ts": {
+    "score": 0.5444444444444444,
+    "killed": 49,
+    "timeout": 0,
+    "scored": 90
+  },
+  "opencode-agent/src/run-spend.ts": {
+    "score": 0.65,
+    "killed": 39,
+    "timeout": 0,
+    "scored": 60
+  },
+  "opencode-agent/src/salvage.ts": {
+    "score": 0.7317073170731707,
+    "killed": 30,
+    "timeout": 0,
+    "scored": 41
+  },
+  "opencode-agent/src/sdk-contract.ts": {
+    "score": 0.8623188405797102,
+    "killed": 119,
+    "timeout": 0,
+    "scored": 138
+  },
+  "opencode-agent/src/sdk-usage.ts": {
+    "score": 0.9615384615384616,
+    "killed": 50,
+    "timeout": 0,
+    "scored": 52
+  },
+  "opencode-agent/src/secrets.ts": {
+    "score": 0.8533333333333334,
+    "killed": 64,
+    "timeout": 0,
+    "scored": 75
+  },
+  "opencode-agent/src/sequence.ts": {
+    "score": 1,
+    "killed": 12,
+    "timeout": 0,
+    "scored": 12
+  },
+  "opencode-agent/src/shell.ts": {
+    "score": 0.6746987951807228,
+    "killed": 56,
+    "timeout": 0,
+    "scored": 83
+  },
+  "opencode-agent/src/state-manager.ts": {
+    "score": 0.90625,
+    "killed": 29,
+    "timeout": 0,
+    "scored": 32
+  },
+  "opencode-agent/src/state-persist.ts": {
+    "score": 0.47368421052631576,
+    "killed": 9,
+    "timeout": 0,
+    "scored": 19
+  },
+  "opencode-agent/src/step-output.ts": {
+    "score": 0.6428571428571429,
+    "killed": 18,
+    "timeout": 0,
+    "scored": 28
+  },
+  "opencode-agent/src/stray-paths.ts": {
+    "score": 0.896551724137931,
+    "killed": 26,
+    "timeout": 0,
+    "scored": 29
+  },
+  "opencode-agent/src/sync-notices.ts": {
+    "score": 0.29069767441860467,
+    "killed": 25,
+    "timeout": 0,
+    "scored": 86
+  },
+  "opencode-agent/src/time-budget.ts": {
+    "score": 0.9038461538461539,
+    "killed": 47,
+    "timeout": 0,
+    "scored": 52
+  },
+  "opencode-agent/src/time-notices.ts": {
+    "score": 0.6548672566371682,
+    "killed": 74,
+    "timeout": 0,
+    "scored": 113
+  },
+  "opencode-agent/src/token-budget.ts": {
+    "score": 0.9166666666666666,
+    "killed": 33,
+    "timeout": 0,
+    "scored": 36
+  },
+  "opencode-agent/src/transition-table.ts": {
+    "score": 0.9655172413793104,
+    "killed": 28,
+    "timeout": 0,
+    "scored": 29
+  },
+  "opencode-agent/src/transitions.ts": {
+    "score": 0.9857142857142858,
+    "killed": 138,
+    "timeout": 0,
+    "scored": 140
+  },
+  "opencode-agent/src/trigger-events.ts": {
+    "score": 0.8529411764705882,
+    "killed": 116,
+    "timeout": 0,
+    "scored": 136
+  },
+  "opencode-agent/src/trigger-outcome.ts": {
+    "score": 0.7142857142857143,
+    "killed": 10,
+    "timeout": 0,
+    "scored": 14
+  },
+  "opencode-agent/src/triggers.ts": {
+    "score": 0.8187919463087249,
+    "killed": 122,
+    "timeout": 0,
+    "scored": 149
+  },
+  "opencode-agent/src/turn-answer.ts": {
+    "score": 0.625,
+    "killed": 10,
+    "timeout": 0,
+    "scored": 16
+  },
+  "opencode-agent/src/turn-errors.ts": {
+    "score": 0.8383838383838383,
+    "killed": 82,
+    "timeout": 1,
+    "scored": 99
+  },
+  "opencode-agent/src/turn-run.ts": {
+    "score": 0.8846153846153846,
+    "killed": 45,
+    "timeout": 1,
+    "scored": 52
+  },
+  "opencode-agent/src/turn-stall.ts": {
+    "score": 0.9523809523809523,
+    "killed": 40,
+    "timeout": 0,
+    "scored": 42
+  },
+  "opencode-agent/src/turn-stop.ts": {
+    "score": 0.5818181818181818,
+    "killed": 32,
+    "timeout": 0,
+    "scored": 55
+  },
+  "opencode-agent/src/types.ts": {
+    "score": 0.5,
+    "killed": 2,
+    "timeout": 0,
+    "scored": 4
+  },
+  "plugins/task-provider-github/classify-error.ts": 0.744,
+  "plugins/task-provider-github/constants.ts": 1,
+  "plugins/task-provider-github/due-date.ts": 1,
+  "plugins/task-provider-github/entry-runtime.ts": 0.42857142857142855,
+  "plugins/task-provider-github/graphql-client.ts": 0.7362637362637363,
+  "plugins/task-provider-github/identity-resolver.ts": 0.6521739130434783,
+  "plugins/task-provider-github/mappers.ts": 0.9787234042553191,
+  "plugins/task-provider-github/operations/activities.ts": {
+    "score": 0.8604651162790697,
+    "killed": 111,
+    "timeout": 0,
+    "scored": 129
+  },
+  "plugins/task-provider-github/operations/comments.ts": 0.5441176470588235,
+  "plugins/task-provider-github/operations/count.ts": 0.6333333333333333,
+  "plugins/task-provider-github/operations/labels.ts": 0.5232558139534884,
+  "plugins/task-provider-github/operations/projects.ts": 0.47058823529411764,
+  "plugins/task-provider-github/operations/tasks.ts": 0.6865079365079365,
+  "plugins/task-provider-github/prompt-addendum.ts": 0.6428571428571429,
+  "plugins/task-provider-github/provider.ts": 0.8367346938775511,
+  "plugins/task-provider-github/schemas/comment.ts": 1,
+  "plugins/task-provider-github/schemas/event.ts": 1,
+  "plugins/task-provider-github/schemas/issue.ts": 0.8461538461538461,
+  "plugins/task-provider-github/schemas/label.ts": 1,
+  "plugins/task-provider-github/schemas/repo.ts": 1,
+  "plugins/task-provider-github/schemas/user.ts": 1,
+  "plugins/task-provider-github/url-builder.ts": 1,
+  "plugins/task-provider-github/validate-config.ts": 0.9821428571428571,
   "plugins/task-provider-kaneo/add-comment.ts": 0,
-  "plugins/task-provider-kaneo/add-task-label.ts": 0,
+  "plugins/task-provider-kaneo/add-task-label.ts": 0.09090909090909091,
   "plugins/task-provider-kaneo/add-task-relation.ts": 0,
   "plugins/task-provider-kaneo/api-error.ts": 0,
-  "plugins/task-provider-kaneo/auto-provision.ts": 0.6,
   "plugins/task-provider-kaneo/classify-error.ts": 0.9103448275862069,
-  "plugins/task-provider-kaneo/column-resource.ts": 0.12941176470588237,
+  "plugins/task-provider-kaneo/client.ts": {
+    "score": 0.6639344262295082,
+    "killed": 81,
+    "timeout": 0,
+    "scored": 122
+  },
+  "plugins/task-provider-kaneo/column-resource.ts": {
+    "score": 0.16091954022988506,
+    "killed": 14,
+    "timeout": 0,
+    "scored": 87
+  },
   "plugins/task-provider-kaneo/comment-resource.ts": 0.4807692307692308,
   "plugins/task-provider-kaneo/create-column.ts": 0.1111111111111111,
   "plugins/task-provider-kaneo/create-label.ts": 0,
@@ -56,7 +976,7 @@
   "plugins/task-provider-kaneo/delete-column.ts": 0.18181818181818182,
   "plugins/task-provider-kaneo/delete-project.ts": 0,
   "plugins/task-provider-kaneo/delete-task.ts": 0,
-  "plugins/task-provider-kaneo/entry-runtime.ts": 0,
+  "plugins/task-provider-kaneo/entry-runtime.ts": 0.5892857142857143,
   "plugins/task-provider-kaneo/get-comments.ts": 0,
   "plugins/task-provider-kaneo/get-task.ts": 0,
   "plugins/task-provider-kaneo/identity-resolver.ts": 0.6111111111111112,
@@ -67,7 +987,7 @@
   "plugins/task-provider-kaneo/list-projects.ts": 0.18181818181818182,
   "plugins/task-provider-kaneo/list-task-labels.ts": 0.18181818181818182,
   "plugins/task-provider-kaneo/list-tasks-query.ts": 1,
-  "plugins/task-provider-kaneo/list-tasks.ts": 0,
+  "plugins/task-provider-kaneo/list-tasks.ts": 0.2727272727272727,
   "plugins/task-provider-kaneo/mappers.ts": 0.7619047619047619,
   "plugins/task-provider-kaneo/operations/comments.ts": 0.2222222222222222,
   "plugins/task-provider-kaneo/operations/labels.ts": 0.6,
@@ -77,10 +997,11 @@
   "plugins/task-provider-kaneo/operations/statuses.ts": 0.9090909090909091,
   "plugins/task-provider-kaneo/operations/tasks.ts": 0.13333333333333333,
   "plugins/task-provider-kaneo/operations/users.ts": 0.28205128205128205,
-  "plugins/task-provider-kaneo/project-resource.ts": 0.5487804878048781,
+  "plugins/task-provider-kaneo/project-resource.ts": 0.5609756097560976,
   "plugins/task-provider-kaneo/provider.ts": 0.28125,
   "plugins/task-provider-kaneo/provision-messages.ts": 0.8,
-  "plugins/task-provider-kaneo/provision.ts": 0.6090909090909091,
+  "plugins/task-provider-kaneo/provision-requests.ts": 0.5785714285714286,
+  "plugins/task-provider-kaneo/provision.ts": 0.6140350877192983,
   "plugins/task-provider-kaneo/remove-comment.ts": 0,
   "plugins/task-provider-kaneo/remove-label.ts": 0,
   "plugins/task-provider-kaneo/remove-task-label.ts": 0,
@@ -92,12 +1013,17 @@
   "plugins/task-provider-kaneo/schemas/create-task.ts": 0.3333333333333333,
   "plugins/task-provider-kaneo/schemas/get-project.ts": 1,
   "plugins/task-provider-kaneo/schemas/get-task.ts": 0.3333333333333333,
-  "plugins/task-provider-kaneo/schemas/global-search.ts": 0.23529411764705882,
+  "plugins/task-provider-kaneo/schemas/global-search.ts": 0.38235294117647056,
   "plugins/task-provider-kaneo/schemas/list-tasks.ts": 0.4666666666666667,
   "plugins/task-provider-kaneo/schemas/update-project.ts": 1,
   "plugins/task-provider-kaneo/search-tasks.ts": 0.8163265306122449,
   "plugins/task-provider-kaneo/task-relations.ts": 0.47058823529411764,
-  "plugins/task-provider-kaneo/task-resource.ts": 0.4387755102040816,
+  "plugins/task-provider-kaneo/task-resource.ts": {
+    "score": 0.4517766497461929,
+    "killed": 89,
+    "timeout": 0,
+    "scored": 197
+  },
   "plugins/task-provider-kaneo/task-status.ts": 0.875,
   "plugins/task-provider-kaneo/task-update-helpers.ts": 0.4246575342465753,
   "plugins/task-provider-kaneo/update-column.ts": 0.09523809523809523,
@@ -106,18 +1032,18 @@
   "plugins/task-provider-kaneo/update-project.ts": 0.41379310344827586,
   "plugins/task-provider-kaneo/update-task-relation.ts": 0,
   "plugins/task-provider-kaneo/update-task.ts": 0,
-  "plugins/task-provider-kaneo/url-builder.ts": 0,
+  "plugins/task-provider-kaneo/url-builder.ts": 0.5,
   "plugins/task-provider-kaneo/validate-config.ts": 0.96875,
   "plugins/task-provider-kaneo/validation-error.ts": 0,
-  "plugins/task-provider-youtrack/bundle-cache.ts": 0.6067415730337079,
-  "plugins/task-provider-youtrack/bundle-values.ts": 0.4838709677419355,
-  "plugins/task-provider-youtrack/classify-error.ts": 0.9490909090909091,
-  "plugins/task-provider-youtrack/collaboration-provider.ts": 0,
+  "plugins/task-provider-youtrack/bundle-cache.ts": 0.5934065934065934,
+  "plugins/task-provider-youtrack/bundle-values.ts": 0.5483870967741935,
+  "plugins/task-provider-youtrack/classify-error.ts": 0.95,
+  "plugins/task-provider-youtrack/collaboration-provider.ts": 1,
   "plugins/task-provider-youtrack/create-field-helpers.ts": 1,
-  "plugins/task-provider-youtrack/custom-field-values.ts": 0,
+  "plugins/task-provider-youtrack/custom-field-values.ts": 0.9473684210526315,
   "plugins/task-provider-youtrack/dedicated-fields.ts": 0.912621359223301,
   "plugins/task-provider-youtrack/due-date.ts": 0.925531914893617,
-  "plugins/task-provider-youtrack/entry-runtime.ts": 0,
+  "plugins/task-provider-youtrack/entry-runtime.ts": 0.46875,
   "plugins/task-provider-youtrack/field-engine.ts": 0.9688715953307393,
   "plugins/task-provider-youtrack/field-name-error.ts": 0.8,
   "plugins/task-provider-youtrack/helpers.ts": 0.9782608695652174,
@@ -129,9 +1055,9 @@
   "plugins/task-provider-youtrack/operations/agiles.ts": 0.7816901408450704,
   "plugins/task-provider-youtrack/operations/attachments.ts": 0.36363636363636365,
   "plugins/task-provider-youtrack/operations/collaboration.ts": 0.46060606060606063,
-  "plugins/task-provider-youtrack/operations/commands.ts": 0.6388888888888888,
+  "plugins/task-provider-youtrack/operations/commands.ts": 0.6486486486486487,
   "plugins/task-provider-youtrack/operations/comments.ts": 0.5609756097560976,
-  "plugins/task-provider-youtrack/operations/count.ts": 0.6666666666666666,
+  "plugins/task-provider-youtrack/operations/count.ts": 0.6730769230769231,
   "plugins/task-provider-youtrack/operations/project-fields.ts": 0.42857142857142855,
   "plugins/task-provider-youtrack/operations/projects.ts": 0.5932203389830508,
   "plugins/task-provider-youtrack/operations/saved-queries.ts": 0.5952380952380952,
@@ -144,9 +1070,9 @@
   "plugins/task-provider-youtrack/phase-five-mappers.ts": 0,
   "plugins/task-provider-youtrack/phase-five-provider.ts": 0,
   "plugins/task-provider-youtrack/prompt-addendum.ts": 0.7222222222222222,
-  "plugins/task-provider-youtrack/provider.ts": 0.46,
+  "plugins/task-provider-youtrack/provider.ts": 0.58,
   "plugins/task-provider-youtrack/query-builder.ts": 1,
-  "plugins/task-provider-youtrack/relations.ts": 0.6037735849056604,
+  "plugins/task-provider-youtrack/relations.ts": 0.6352201257861635,
   "plugins/task-provider-youtrack/schemas/activity.ts": 1,
   "plugins/task-provider-youtrack/schemas/agile.ts": 1,
   "plugins/task-provider-youtrack/schemas/attachment.ts": 1,
@@ -164,178 +1090,517 @@
   "plugins/task-provider-youtrack/schemas/user.ts": 1,
   "plugins/task-provider-youtrack/schemas/visibility.ts": 1,
   "plugins/task-provider-youtrack/schemas/work-item.ts": 1,
-  "plugins/task-provider-youtrack/task-helpers.ts": 0.3090909090909091,
-  "plugins/task-provider-youtrack/validate-config.ts": 0,
-  "review-loop/src/agent-runner.ts": 0.7142857142857143,
-  "review-loop/src/build-checker.ts": 0.6666666666666666,
-  "review-loop/src/cli-args.ts": 0.7846153846153846,
-  "review-loop/src/cli.ts": 0.8117647058823529,
-  "review-loop/src/commit-attempt.ts": 0.7108433734939759,
-  "review-loop/src/config.ts": 0.9583333333333334,
-  "review-loop/src/cost.ts": 0.9090909090909091,
-  "review-loop/src/diff-stats.ts": 1,
-  "review-loop/src/git-identity.ts": 1,
-  "review-loop/src/issue-format.ts": 0.9354838709677419,
-  "review-loop/src/issue-ledger.ts": 0.7807017543859649,
-  "review-loop/src/issue-processor-attempts.ts": 0.6993006993006993,
-  "review-loop/src/issue-processor.ts": 0.8085106382978723,
-  "review-loop/src/issue-schema.ts": 0.9411764705882353,
-  "review-loop/src/line-handler.ts": 0.7428571428571429,
-  "review-loop/src/live-format.ts": 0.9872611464968153,
-  "review-loop/src/live-renderer.ts": 0.7275541795665634,
-  "review-loop/src/loop-controller.ts": 0.6869565217391305,
-  "review-loop/src/loop-trace.ts": 0.8639455782312925,
-  "review-loop/src/progress-log.ts": 1,
-  "review-loop/src/prompt-templates.ts": 0.5238095238095238,
-  "review-loop/src/publish-fix.ts": 0.55,
-  "review-loop/src/review-round.ts": 0.7571428571428571,
-  "review-loop/src/run-artifacts.ts": 0.7142857142857143,
-  "review-loop/src/run-stats.ts": 0.95,
-  "review-loop/src/spawn.ts": 0.6173913043478261,
-  "review-loop/src/stop-controller.ts": 0.875,
-  "review-loop/src/summary-burndown.ts": 0.96,
-  "review-loop/src/summary-lines.ts": 0.95,
-  "review-loop/src/summary-metrics.ts": 1,
-  "review-loop/src/summary.ts": 1,
-  "review-loop/src/trace-log.ts": 0.8615384615384616,
-  "review-loop/src/worker-pool.ts": 0.7452830188679245,
-  "review-loop/src/worktree.ts": 0.8494623655913979,
-  "sdd-runner/src/agent-layer.ts": 0.8421052631578947,
-  "sdd-runner/src/agent-reporter.ts": 0.6521739130434783,
-  "sdd-runner/src/cli.ts": 0.9711934156378601,
-  "sdd-runner/src/config.ts": 0.676056338028169,
-  "sdd-runner/src/continue.ts": 0.7307692307692307,
-  "sdd-runner/src/decompose.ts": 0.5473684210526316,
-  "sdd-runner/src/draft.ts": 0.5913978494623656,
-  "sdd-runner/src/drift.ts": 0.5714285714285714,
-  "sdd-runner/src/event-bus.ts": 0.7857142857142857,
-  "sdd-runner/src/events.ts": 0.8322981366459627,
-  "sdd-runner/src/extend-round.ts": 0.8652849740932642,
-  "sdd-runner/src/gate-answers.ts": 0.8165137614678899,
-  "sdd-runner/src/gate-digest-extract.ts": 0.8137254901960784,
-  "sdd-runner/src/gate-digest.ts": 0.7094594594594594,
-  "sdd-runner/src/gate-model.ts": 0.696,
-  "sdd-runner/src/gate-render.ts": 0.7005988023952096,
-  "sdd-runner/src/gate-session.ts": 0.729483282674772,
-  "sdd-runner/src/gate.ts": 0.8145161290322581,
-  "sdd-runner/src/index.ts": 0.3560606060606061,
-  "sdd-runner/src/intake.ts": 0.7402597402597403,
-  "sdd-runner/src/live-renderer.ts": 0.4956140350877193,
-  "sdd-runner/src/materialize.ts": 0.5137614678899083,
-  "sdd-runner/src/openspec-driver.ts": 0.7297297297297297,
-  "sdd-runner/src/orchestrator.ts": 0.8076923076923077,
-  "sdd-runner/src/post-review-tail.ts": 0.9523809523809523,
-  "sdd-runner/src/pricing.ts": 0.628099173553719,
-  "sdd-runner/src/prompter.ts": 0.9583333333333334,
-  "sdd-runner/src/renderer.ts": 0.6310679611650486,
-  "sdd-runner/src/replay.ts": 0.8315789473684211,
-  "sdd-runner/src/report.ts": 0.48214285714285715,
-  "sdd-runner/src/review-loop.ts": 0.7052631578947368,
-  "sdd-runner/src/review-model.ts": 0.622093023255814,
-  "sdd-runner/src/run-state.ts": 0.90625,
-  "sdd-runner/src/stage-machine.ts": 0.9583333333333334,
-  "sdd-runner/src/usage-aggregate.ts": 1,
-  "sdd-runner/src/veto-updater.ts": 0.5769230769230769,
-  "src/analytics/intent/classifier.ts": 0.9672727272727273,
-  "src/analytics/jobs/backfill.ts": 0.7741935483870968,
-  "src/announcements/humanize.ts": 0.9117647058823529,
-  "src/attachments/staged-download.ts": 1,
-  "src/bot-attachments.ts": 0.5950413223140496,
-  "src/bot-message-caching.ts": 0.9166666666666666,
-  "src/byok-llm/blob-codec.ts": 1,
-  "src/chat/command-auth.ts": 0,
-  "src/chat/discord/dispatch-helpers.ts": 0.5,
-  "src/chat/discord/index.ts": 0.6445783132530121,
-  "src/chat/discord/metadata.ts": 0.8666666666666667,
-  "src/chat/discord/reply-helpers.ts": 0.6,
-  "src/chat/interaction-router.ts": 0.7628865979381443,
-  "src/chat/mattermost/action-callbacks.ts": 0.6534653465346535,
-  "src/chat/mattermost/file-helpers.ts": 0.3860759493670886,
-  "src/chat/mattermost/index.ts": 0.5128205128205128,
-  "src/chat/mattermost/metadata.ts": 0.6666666666666666,
-  "src/chat/mattermost/post-builder.ts": 0.640625,
-  "src/chat/mattermost/reply-helpers.ts": 0.6369047619047619,
-  "src/chat/router-helpers.ts": 0.762589928057554,
-  "src/chat/router.ts": 0.740506329113924,
-  "src/chat/telegram/index.ts": 0.5549738219895288,
-  "src/chat/telegram/message-extraction.ts": 0.5057471264367817,
-  "src/chat/telegram/metadata.ts": 0.8235294117647058,
-  "src/chat/telegram/reply-fn-builder.ts": 0.5,
-  "src/chat/telegram/reply-helpers.ts": 0.591304347826087,
-  "src/coding-credentials/resolve-mcp-servers.ts": 0.7028985507246377,
-  "src/commands/context-collector.ts": 0.6620689655172414,
-  "src/config-keys.ts": 0.5786163522012578,
-  "src/config.ts": 0.5862068965517241,
-  "src/conversation.ts": 0.6194029850746269,
-  "src/debug/mcp-routes.ts": 1,
-  "src/debug/schemas.ts": 0.34210526315789475,
-  "src/debug/settings/admin/tool-defaults-routes.ts": 0.736,
-  "src/debug/settings/coding-credentials-fields-meta.ts": 0.6101694915254238,
-  "src/debug/settings/coding-credentials-routes.ts": 0.7889182058047494,
-  "src/debug/settings/context-task-instance-routes.ts": 0.5867768595041323,
-  "src/debug/settings/group-routes.ts": 0.6952908587257618,
-  "src/debug/settings/mcp-routes.ts": 0.7011494252873564,
-  "src/debug/settings/plugins-routes.ts": 0.655,
-  "src/debug/settings/task-instance-options.ts": 1,
-  "src/debug/settings/tool-grouping.ts": 0.7058823529411765,
-  "src/debug/state-collector.ts": 0.6503496503496503,
-  "src/deferred-prompts/alerts.ts": 0.5666666666666667,
-  "src/deferred-prompts/fetch-tasks.ts": 0.6037735849056604,
-  "src/deferred-prompts/poller-alerts.ts": 0.6198830409356725,
-  "src/deferred-prompts/proactive-llm-config.ts": 0.625,
-  "src/deferred-prompts/proactive-trigger.ts": 0.66,
-  "src/deferred-prompts/schedule-update-helpers.ts": 0.6461538461538462,
-  "src/deferred-prompts/tool-handlers.ts": 0.9550561797752809,
-  "src/errors.ts": 0.9808917197452229,
-  "src/group-settings/registry.ts": 0.6962025316455697,
-  "src/history.ts": 1,
-  "src/instances/encryption.ts": 1,
-  "src/live-status/tool-status-labels.ts": 0.9714285714285714,
-  "src/llm-orchestrator-attachments.ts": 0.5727272727272728,
-  "src/llm-orchestrator-invoke.ts": 0.691358024691358,
-  "src/llm-orchestrator-tools.ts": 0.5409836065573771,
-  "src/llm-providers/discovery.ts": 0.5303030303030303,
-  "src/llm-providers/env-bootstrap.ts": 0.5540540540540541,
-  "src/llm-providers/resolver.ts": 0.8264462809917356,
-  "src/llm-providers/store.ts": 0.6021505376344086,
-  "src/long-term-memory/store.ts": 0.7079646017699115,
-  "src/mcp/connect-observation.ts": 0.8305084745762712,
-  "src/memory-context-block.ts": 0.9104477611940298,
-  "src/memory.ts": 0.6490066225165563,
-  "src/message-cache/persistence.ts": 0.6666666666666666,
-  "src/message-cache/vector-store.ts": 0.5619047619047619,
-  "src/message-edit/classify.ts": 1,
-  "src/message-edit/edit-prompt-store.ts": 0.75,
-  "src/message-edit/handle.ts": 0.6862745098039216,
-  "src/message-edit/segments.ts": 1,
-  "src/message-edit/w2-regen.ts": 0.6176470588235294,
-  "src/message-queue/queue.ts": 0.5821917808219178,
-  "src/plugins/attachment-transform.ts": 0.7894736842105263,
-  "src/plugins/command-contributions.ts": 1,
-  "src/plugins/contributions.ts": 0.7127659574468085,
-  "src/plugins/loader.ts": 0.5934065934065934,
-  "src/plugins/registry.ts": 0.5942028985507246,
-  "src/plugins/types.ts": 0.572463768115942,
+  "plugins/task-provider-youtrack/task-helpers.ts": 0.5,
+  "plugins/task-provider-youtrack/validate-config.ts": 1,
+  "review-loop/src/agent-command.ts": {
+    "score": 0.86,
+    "killed": 129,
+    "timeout": 0,
+    "scored": 150
+  },
+  "review-loop/src/agent-runner.ts": {
+    "score": 0.7867647058823529,
+    "killed": 107,
+    "timeout": 0,
+    "scored": 136
+  },
+  "review-loop/src/build-checker.ts": {
+    "score": 0.7857142857142857,
+    "killed": 55,
+    "timeout": 0,
+    "scored": 70
+  },
+  "review-loop/src/claude-spawn-dir.ts": {
+    "score": 0.9230769230769231,
+    "killed": 12,
+    "timeout": 0,
+    "scored": 13
+  },
+  "review-loop/src/cli-errors.ts": {
+    "score": 0.8103448275862069,
+    "killed": 47,
+    "timeout": 0,
+    "scored": 58
+  },
+  "review-loop/src/line-handler.ts": {
+    "score": 0.7551020408163265,
+    "killed": 111,
+    "timeout": 0,
+    "scored": 147
+  },
+  "review-loop/src/progress-log.ts": {
+    "score": 1,
+    "killed": 4,
+    "timeout": 0,
+    "scored": 4
+  },
+  "review-loop/src/todo-capture.ts": {
+    "score": 1,
+    "killed": 37,
+    "timeout": 0,
+    "scored": 37
+  },
+  "src/ai-output-settings.ts": {
+    "score": 0.7407407407407407,
+    "killed": 40,
+    "timeout": 0,
+    "scored": 54
+  },
+  "src/analytics/provider-scope-factory.ts": {
+    "score": 0.6571428571428571,
+    "killed": 69,
+    "timeout": 0,
+    "scored": 105
+  },
+  "src/analytics/rekey/copy-children.ts": {
+    "score": 0.8969072164948454,
+    "killed": 87,
+    "timeout": 0,
+    "scored": 97
+  },
+  "src/announcements/humanize.ts": {
+    "score": 0.9369369369369369,
+    "killed": 104,
+    "timeout": 0,
+    "scored": 111
+  },
+  "src/byok-llm/blob-codec.ts": {
+    "score": 1,
+    "killed": 72,
+    "timeout": 0,
+    "scored": 72
+  },
+  "src/chat/telegram/chunking.ts": {
+    "score": 0.86,
+    "killed": 38,
+    "timeout": 5,
+    "scored": 50
+  },
+  "src/chat/telegram/index.ts": {
+    "score": 0.5478723404255319,
+    "killed": 103,
+    "timeout": 0,
+    "scored": 188
+  },
+  "src/chat/telegram/mention-prefix.ts": {
+    "score": 0.8933333333333333,
+    "killed": 67,
+    "timeout": 0,
+    "scored": 75
+  },
+  "src/chat/telegram/reply-helpers.ts": {
+    "score": 0.5083798882681564,
+    "killed": 89,
+    "timeout": 2,
+    "scored": 179
+  },
+  "src/chat/telegram/send-message.ts": {
+    "score": 0.7948717948717948,
+    "killed": 31,
+    "timeout": 0,
+    "scored": 39
+  },
+  "src/coding-sessions/configure.ts": 0.6666666666666666,
+  "src/completion/verified-completion.ts": {
+    "score": 0.7985074626865671,
+    "killed": 107,
+    "timeout": 0,
+    "scored": 134
+  },
+  "src/config-editor/validation.ts": {
+    "score": 0.9305555555555556,
+    "killed": 67,
+    "timeout": 0,
+    "scored": 72
+  },
+  "src/config-keys.ts": {
+    "score": 0.6358974358974359,
+    "killed": 124,
+    "timeout": 0,
+    "scored": 195
+  },
+  "src/config.ts": 0.6535433070866141,
+  "src/context-vault/summarizer.ts": {
+    "score": 0.6153846153846154,
+    "killed": 108,
+    "timeout": 4,
+    "scored": 182
+  },
+  "src/conversation.ts": {
+    "score": 0.6231884057971014,
+    "killed": 86,
+    "timeout": 0,
+    "scored": 138
+  },
+  "src/db/deferred-schema.ts": 0.40540540540540543,
+  "src/db/index.ts": {
+    "score": 0.027777777777777776,
+    "killed": 1,
+    "timeout": 0,
+    "scored": 36
+  },
+  "src/db/llm-providers-schema.ts": {
+    "score": 0.06896551724137931,
+    "killed": 2,
+    "timeout": 0,
+    "scored": 29
+  },
+  "src/db/migrations/081_alert_task_instance_pin.ts": 0.85,
+  "src/db/migrations/082_alert_activity_cursor.ts": 0.8,
+  "src/db/migrations/083_llm_provider_base_refs.ts": {
+    "score": 0.8571428571428571,
+    "killed": 24,
+    "timeout": 0,
+    "scored": 28
+  },
+  "src/db/migrations/084_llm_provider_model_hints.ts": {
+    "score": 0.85,
+    "killed": 17,
+    "timeout": 0,
+    "scored": 20
+  },
+  "src/debug/llm-trace-builders.ts": {
+    "score": 1,
+    "killed": 48,
+    "timeout": 0,
+    "scored": 48
+  },
+  "src/debug/llm-trace-collector.ts": {
+    "score": 0.8554913294797688,
+    "killed": 146,
+    "timeout": 2,
+    "scored": 173
+  },
+  "src/debug/schemas.ts": {
+    "score": 0.40476190476190477,
+    "killed": 17,
+    "timeout": 0,
+    "scored": 42
+  },
+  "src/debug/settings-api-router.ts": {
+    "score": 0.5170940170940171,
+    "killed": 121,
+    "timeout": 0,
+    "scored": 234
+  },
+  "src/debug/settings/admin/instances-routes.ts": 0.6261127596439169,
+  "src/debug/settings/admin/llm-providers-routes.ts": {
+    "score": 0.691358024691358,
+    "killed": 168,
+    "timeout": 0,
+    "scored": 243
+  },
+  "src/debug/settings/byok-field-response.ts": {
+    "score": 0.8085106382978723,
+    "killed": 38,
+    "timeout": 0,
+    "scored": 47
+  },
+  "src/debug/settings/byok-routes.ts": {
+    "score": 0.7853658536585366,
+    "killed": 161,
+    "timeout": 0,
+    "scored": 205
+  },
+  "src/debug/settings/context-task-instance-routes.ts": 0.5808823529411765,
+  "src/debug/settings/group-routes.ts": 0.6975476839237057,
+  "src/debug/settings/llm-model-metadata-routes.ts": {
+    "score": 0.68,
+    "killed": 17,
+    "timeout": 0,
+    "scored": 25
+  },
+  "src/deferred-prompts/activity-gating.ts": 1,
+  "src/deferred-prompts/alert-state.ts": {
+    "score": 0.46153846153846156,
+    "killed": 12,
+    "timeout": 0,
+    "scored": 26
+  },
+  "src/deferred-prompts/alerts.ts": {
+    "score": 0.6028368794326241,
+    "killed": 85,
+    "timeout": 0,
+    "scored": 141
+  },
+  "src/deferred-prompts/condition-eval.ts": 0.8547717842323651,
+  "src/deferred-prompts/condition-schema.ts": {
+    "score": 0.8045977011494253,
+    "killed": 70,
+    "timeout": 0,
+    "scored": 87
+  },
+  "src/deferred-prompts/delivery-input.ts": 0.7446808510638298,
+  "src/deferred-prompts/fetch-tasks.ts": 0.7314814814814815,
+  "src/deferred-prompts/poller-alerts-activity.ts": 0.7665198237885462,
+  "src/deferred-prompts/poller-alerts-grouping.ts": 0.7346938775510204,
+  "src/deferred-prompts/poller-alerts-summary.ts": 0.7608695652173914,
+  "src/deferred-prompts/poller-alerts-watch.ts": {
+    "score": 0.989247311827957,
+    "killed": 92,
+    "timeout": 0,
+    "scored": 93
+  },
+  "src/deferred-prompts/poller-alerts.ts": {
+    "score": 0.6967741935483871,
+    "killed": 108,
+    "timeout": 0,
+    "scored": 155
+  },
+  "src/deferred-prompts/poller.ts": {
+    "score": 0.5714285714285714,
+    "killed": 44,
+    "timeout": 0,
+    "scored": 77
+  },
+  "src/deferred-prompts/proactive-llm-config.ts": {
+    "score": 0.625,
+    "killed": 20,
+    "timeout": 0,
+    "scored": 32
+  },
+  "src/deferred-prompts/proactive-llm-helpers.ts": {
+    "score": 0.734375,
+    "killed": 94,
+    "timeout": 0,
+    "scored": 128
+  },
+  "src/deferred-prompts/proactive-llm.ts": {
+    "score": 1,
+    "killed": 36,
+    "timeout": 0,
+    "scored": 36
+  },
+  "src/deferred-prompts/proof-checks-observe.ts": {
+    "score": 0.668918918918919,
+    "killed": 198,
+    "timeout": 0,
+    "scored": 296
+  },
+  "src/deferred-prompts/proof-checks-prompts.ts": {
+    "score": 0.8106060606060606,
+    "killed": 107,
+    "timeout": 0,
+    "scored": 132
+  },
+  "src/deferred-prompts/proof-checks.ts": {
+    "score": 0.6915887850467289,
+    "killed": 148,
+    "timeout": 0,
+    "scored": 214
+  },
+  "src/deferred-prompts/proof-store.ts": {
+    "score": 0.743455497382199,
+    "killed": 142,
+    "timeout": 0,
+    "scored": 191
+  },
+  "src/deferred-prompts/schedule-update-helpers.ts": 0.6447368421052632,
+  "src/deferred-prompts/snapshots.ts": 0.8125,
+  "src/deferred-prompts/tool-handlers.ts": {
+    "score": 0.9709090909090909,
+    "killed": 267,
+    "timeout": 0,
+    "scored": 275
+  },
+  "src/deferred-prompts/types.ts": {
+    "score": 0.8309859154929577,
+    "killed": 118,
+    "timeout": 0,
+    "scored": 142
+  },
+  "src/embeddings.ts": {
+    "score": 0.65625,
+    "killed": 63,
+    "timeout": 0,
+    "scored": 96
+  },
+  "src/errors.ts": 0.9875776397515528,
+  "src/history.ts": 0.9891304347826086,
+  "src/index.ts": {
+    "score": 0.5735294117647058,
+    "killed": 39,
+    "timeout": 0,
+    "scored": 68
+  },
+  "src/llm-model-builder.ts": {
+    "score": 0.8666666666666667,
+    "killed": 39,
+    "timeout": 0,
+    "scored": 45
+  },
+  "src/llm-orchestrator-events.ts": {
+    "score": 0.6031746031746031,
+    "killed": 38,
+    "timeout": 0,
+    "scored": 63
+  },
+  "src/llm-orchestrator-invoke.ts": {
+    "score": 0.71,
+    "killed": 70,
+    "timeout": 1,
+    "scored": 100
+  },
+  "src/llm-orchestrator-send.ts": {
+    "score": 0.7764705882352941,
+    "killed": 66,
+    "timeout": 0,
+    "scored": 85
+  },
+  "src/llm-orchestrator-support.ts": {
+    "score": 0.5714285714285714,
+    "killed": 56,
+    "timeout": 0,
+    "scored": 98
+  },
+  "src/llm-orchestrator-tool-events.ts": {
+    "score": 0.7156862745098039,
+    "killed": 73,
+    "timeout": 0,
+    "scored": 102
+  },
+  "src/llm-orchestrator-tool-replies.ts": {
+    "score": 0.8478260869565217,
+    "killed": 39,
+    "timeout": 0,
+    "scored": 46
+  },
+  "src/llm-orchestrator.ts": {
+    "score": 0.7105263157894737,
+    "killed": 54,
+    "timeout": 0,
+    "scored": 76
+  },
+  "src/llm-providers/env-bootstrap.ts": {
+    "score": 0.5853658536585366,
+    "killed": 48,
+    "timeout": 0,
+    "scored": 82
+  },
+  "src/llm-providers/model-hints.ts": {
+    "score": 1,
+    "killed": 6,
+    "timeout": 0,
+    "scored": 6
+  },
+  "src/llm-providers/resolver.ts": {
+    "score": 0.8305084745762712,
+    "killed": 98,
+    "timeout": 0,
+    "scored": 118
+  },
+  "src/llm-providers/store-roles.ts": {
+    "score": 0.7254901960784313,
+    "killed": 37,
+    "timeout": 0,
+    "scored": 51
+  },
+  "src/llm-providers/store.ts": {
+    "score": 0.6182795698924731,
+    "killed": 115,
+    "timeout": 0,
+    "scored": 186
+  },
+  "src/long-term-memory/capture.ts": {
+    "score": 0.484375,
+    "killed": 31,
+    "timeout": 0,
+    "scored": 64
+  },
+  "src/long-term-memory/promotion.ts": {
+    "score": 0.391304347826087,
+    "killed": 36,
+    "timeout": 0,
+    "scored": 92
+  },
+  "src/long-term-memory/runner.ts": {
+    "score": 0.3761467889908257,
+    "killed": 41,
+    "timeout": 0,
+    "scored": 109
+  },
+  "src/memory.ts": 0.6538461538461539,
+  "src/message-embedding-sweep.ts": {
+    "score": 0.6942148760330579,
+    "killed": 82,
+    "timeout": 2,
+    "scored": 121
+  },
+  "src/model-context.ts": {
+    "score": 0.6310679611650486,
+    "killed": 65,
+    "timeout": 0,
+    "scored": 103
+  },
+  "src/models-dev/client.ts": {
+    "score": 0.7638888888888888,
+    "killed": 110,
+    "timeout": 0,
+    "scored": 144
+  },
+  "src/models-dev/effort-levels.ts": {
+    "score": 1,
+    "killed": 27,
+    "timeout": 0,
+    "scored": 27
+  },
+  "src/models-dev/provider-id.ts": {
+    "score": 0.7254901960784313,
+    "killed": 37,
+    "timeout": 0,
+    "scored": 51
+  },
+  "src/models-dev/resolve.ts": {
+    "score": 0.9069767441860465,
+    "killed": 78,
+    "timeout": 0,
+    "scored": 86
+  },
+  "src/plugins/discovery-import-scan.ts": 0.9032258064516129,
+  "src/plugins/discovery-imports.ts": 0.8823529411764706,
+  "src/plugins/discovery-paths.ts": 0.6746987951807228,
+  "src/plugins/discovery.ts": 0.6558441558441559,
   "src/providers/auto-provision.ts": 0.8846153846153846,
   "src/providers/builtin-descriptors.ts": 1,
   "src/providers/config-validation.ts": 0.9790209790209791,
-  "src/providers/errors.ts": 0.7605633802816901,
+  "src/providers/errors.ts": 0.8662420382165605,
   "src/providers/membership/backfill.ts": 0.631578947368421,
   "src/providers/membership/ensure-member.ts": 0.5797101449275363,
-  "src/providers/membership/subscriber.ts": 0.5633802816901409,
-  "src/providers/registry.ts": 0.6866666666666666,
-  "src/providers/resolver.ts": 0.5471698113207547,
-  "src/recurrence.ts": 0.9513888888888888,
-  "src/recurring-utils.ts": 0.9636363636363636,
-  "src/recurring.ts": 0.4576271186440678,
-  "src/reply-context.ts": 0.7605633802816901,
-  "src/run-control/last-turn-registry.ts": 0.5,
-  "src/run-control/registry.ts": 0.6111111111111112,
-  "src/run-control/types.ts": 1,
-  "src/scheduler-instance.ts": 0.23148148148148148,
-  "src/scheduler-recurring.ts": 0.47706422018348627,
-  "src/scheduler.ts": 0.5528455284552846,
-  "src/security/prompt-boundary.ts": 0.9,
+  "src/providers/membership/subscriber.ts": 0.5753424657534246,
+  "src/providers/registry.ts": 0.6842105263157895,
+  "src/providers/resolver.ts": 0.5535714285714286,
+  "src/recurrence/recurrence.ts": {
+    "score": 0.8347107438016529,
+    "killed": 101,
+    "timeout": 0,
+    "scored": 121
+  },
+  "src/recurring-run-state.ts": {
+    "score": 0.375,
+    "killed": 12,
+    "timeout": 0,
+    "scored": 32
+  },
+  "src/recurring.ts": {
+    "score": 0.634703196347032,
+    "killed": 139,
+    "timeout": 0,
+    "scored": 219
+  },
+  "src/runtime/production-background.ts": 0.9423076923076923,
+  "src/runtime/production-extensions.ts": 0,
+  "src/scheduler-recurring.ts": {
+    "score": 0.5089285714285714,
+    "killed": 57,
+    "timeout": 0,
+    "scored": 112
+  },
+  "src/scheduler.ts": {
+    "score": 0.5704697986577181,
+    "killed": 85,
+    "timeout": 0,
+    "scored": 149
+  },
   "src/tools/add-comment-reaction.ts": 0.4666666666666667,
   "src/tools/add-comment.ts": 0.5384615384615384,
   "src/tools/add-project-member.ts": 0.5,
@@ -343,48 +1608,85 @@
   "src/tools/add-task-relation.ts": 0.3684210526315789,
   "src/tools/add-vote.ts": 0.5384615384615384,
   "src/tools/add-watcher.ts": 0.813953488372093,
-  "src/tools/admin-tool-defaults.ts": 0.7058823529411765,
-  "src/tools/apply-youtrack-command.ts": 0.6476190476190476,
+  "src/tools/admin-tool-defaults.ts": 0.7714285714285715,
+  "src/tools/apply-youtrack-command.ts": 0.6509433962264151,
   "src/tools/archive-memos.ts": 0.5,
   "src/tools/assign-task-to-sprint.ts": 0.2857142857142857,
   "src/tools/cancel-reminder.ts": 0.4166666666666667,
-  "src/tools/clear-my-identity.ts": 0.7391304347826086,
+  "src/tools/clear-my-identity.ts": 0.75,
   "src/tools/collaboration-tools-builder.ts": 0.9666666666666667,
   "src/tools/compaction/constants.ts": 0,
-  "src/tools/compaction/expand-result.ts": 0.47368421052631576,
-  "src/tools/compaction/result-store.ts": 0.8076923076923077,
+  "src/tools/compaction/expand-result.ts": 0.5789473684210527,
+  "src/tools/compaction/result-store.ts": 0.7796610169491526,
   "src/tools/compaction/size-gate.ts": 0.8333333333333334,
-  "src/tools/compaction/summarizer.ts": 0.5,
-  "src/tools/compaction/types.ts": 0.9210526315789473,
+  "src/tools/compaction/summarizer.ts": {
+    "score": 0.5,
+    "killed": 20,
+    "timeout": 0,
+    "scored": 40
+  },
+  "src/tools/compaction/types.ts": 0.9473684210526315,
   "src/tools/compaction/wrap-compaction.ts": 0.5238095238095238,
-  "src/tools/completion-hook.ts": 0.5079365079365079,
+  "src/tools/completion-hook.ts": 0.5230769230769231,
   "src/tools/confirmation-gate.ts": 0.7368421052631579,
   "src/tools/core-capabilities.ts": 1,
   "src/tools/core-tools.ts": 1,
   "src/tools/count-tasks.ts": 0.6363636363636364,
-  "src/tools/create-alert.ts": 0.2608695652173913,
+  "src/tools/create-alert.ts": {
+    "score": 0.375,
+    "killed": 9,
+    "timeout": 0,
+    "scored": 24
+  },
   "src/tools/create-label.ts": 0.6333333333333333,
   "src/tools/create-project.ts": 0.5333333333333333,
   "src/tools/create-recurring-task.ts": 0.8269230769230769,
   "src/tools/create-reminder.ts": 0.5217391304347826,
   "src/tools/create-sprint.ts": 0.23809523809523808,
   "src/tools/create-status.ts": 0.2857142857142857,
-  "src/tools/create-task.ts": 0.7157894736842105,
-  "src/tools/deferred-tools-builder.ts": 0.7777777777777778,
+  "src/tools/create-task.ts": 0.71875,
+  "src/tools/deferred-tools-builder.ts": 0.7857142857142857,
   "src/tools/delete-project.ts": 0.5416666666666666,
   "src/tools/delete-recurring-task.ts": 0.5526315789473685,
   "src/tools/delete-status.ts": 0.37142857142857144,
   "src/tools/delete-task.ts": 0.4782608695652174,
   "src/tools/describe-project.ts": 0.4444444444444444,
+  "src/tools/diagnostics-llm-traces.ts": 0.7796610169491526,
+  "src/tools/diagnostics-logs.ts": 0.6309523809523809,
+  "src/tools/diagnostics-tool-failures.ts": 0.7236842105263158,
+  "src/tools/diagnostics-turns.ts": 0.7628865979381443,
+  "src/tools/diagnostics.ts": {
+    "score": 0.7448275862068966,
+    "killed": 108,
+    "timeout": 0,
+    "scored": 145
+  },
   "src/tools/disclosure/core.ts": 1,
-  "src/tools/disclosure/embedding-tool-retriever.ts": 0.8382352941176471,
-  "src/tools/disclosure/load-tool.ts": 0.47619047619047616,
+  "src/tools/disclosure/embedding-tool-retriever.ts": {
+    "score": 0.855072463768116,
+    "killed": 117,
+    "timeout": 1,
+    "scored": 138
+  },
+  "src/tools/disclosure/load-tool.ts": {
+    "score": 0.6896551724137931,
+    "killed": 20,
+    "timeout": 0,
+    "scored": 29
+  },
   "src/tools/disclosure/prepare-step.ts": 0.8679245283018868,
-  "src/tools/disclosure/registry.ts": 0.9310344827586207,
-  "src/tools/disclosure/search-tools.ts": 0.5869565217391305,
+  "src/tools/disclosure/registry.ts": 0.9142857142857143,
+  "src/tools/disclosure/repair-tool-call.ts": {
+    "score": 0.8181818181818182,
+    "killed": 18,
+    "timeout": 0,
+    "scored": 22
+  },
+  "src/tools/disclosure/search-tools.ts": 0.6041666666666666,
   "src/tools/disclosure/tool-brief.ts": 0.7906976744186046,
   "src/tools/disclosure/tool-retriever.ts": 0.9361702127659575,
-  "src/tools/disclosure/wire.ts": 0.3333333333333333,
+  "src/tools/disclosure/wire.ts": 0.4444444444444444,
+  "src/tools/feature-opportunities.ts": 0.23529411764705882,
   "src/tools/fetch-chat-link.ts": 0.4090909090909091,
   "src/tools/find-user.ts": 0.4666666666666667,
   "src/tools/get-comments.ts": 0.5625,
@@ -397,7 +1699,7 @@
   "src/tools/get-task-history.ts": 0.23076923076923078,
   "src/tools/get-task.ts": 0.6363636363636364,
   "src/tools/instructions.ts": 0.2564102564102564,
-  "src/tools/kaneo-label-helpers.ts": 0.5833333333333334,
+  "src/tools/kaneo-label-helpers.ts": 0.8333333333333334,
   "src/tools/list-agiles.ts": 0.3333333333333333,
   "src/tools/list-attachments.ts": 0.4666666666666667,
   "src/tools/list-labels.ts": 0.6,
@@ -413,12 +1715,29 @@
   "src/tools/list-watchers.ts": 0.5,
   "src/tools/list-work.ts": 0.48148148148148145,
   "src/tools/log-work.ts": 0.36363636363636365,
-  "src/tools/lookup-group-history.ts": 0.5,
+  "src/tools/lookup-group-history.ts": {
+    "score": 0.5,
+    "killed": 33,
+    "timeout": 0,
+    "scored": 66
+  },
   "src/tools/memory.ts": 0.4700854700854701,
   "src/tools/pause-recurring-task.ts": 0.56,
   "src/tools/permission-gate.ts": 0.9682539682539683,
   "src/tools/promote-memo.ts": 0.4883720930232558,
-  "src/tools/provider-independent-tools-builder.ts": 0.7310344827586207,
+  "src/tools/proof-check-run.ts": {
+    "score": 0.5573770491803278,
+    "killed": 34,
+    "timeout": 0,
+    "scored": 61
+  },
+  "src/tools/proof-checks-read.ts": {
+    "score": 0.7142857142857143,
+    "killed": 20,
+    "timeout": 0,
+    "scored": 28
+  },
+  "src/tools/provider-independent-tools-builder.ts": 0.7467532467532467,
   "src/tools/remove-attachment.ts": 0.52,
   "src/tools/remove-comment-reaction.ts": 0.4666666666666667,
   "src/tools/remove-comment.ts": 0.5714285714285714,
@@ -433,34 +1752,65 @@
   "src/tools/resolve-chat-participant.ts": 0.3333333333333333,
   "src/tools/resume-recurring-task.ts": 0.5576923076923077,
   "src/tools/run-saved-query.ts": 0.35714285714285715,
-  "src/tools/save-memo.ts": 0.21428571428571427,
+  "src/tools/save-memo.ts": 0.20689655172413793,
   "src/tools/search-chat-history.ts": 0.5555555555555556,
-  "src/tools/search-memos.ts": 0.17708333333333334,
+  "src/tools/search-memos.ts": 0.9270833333333334,
   "src/tools/search-tasks.ts": 0.6136363636363636,
-  "src/tools/set-my-identity.ts": 0.5494505494505495,
+  "src/tools/set-my-identity.ts": 0.5543478260869565,
   "src/tools/set-visibility.ts": 0.5,
   "src/tools/skip-recurring-task.ts": 0.5384615384615384,
   "src/tools/staged-tools.ts": 0.5757575757575758,
+  "src/tools/suggest-next-task-ranking.ts": 0.788235294117647,
+  "src/tools/suggest-next-task.ts": 0.7185185185185186,
   "src/tools/tool-aliases.ts": 1,
-  "src/tools/tool-metadata.ts": 1,
-  "src/tools/tool-preferences.ts": 0.8455882352941176,
-  "src/tools/tools-builder.ts": 0.7450331125827815,
+  "src/tools/tool-logging.ts": 1,
+  "src/tools/tool-metadata.ts": {
+    "score": 1,
+    "killed": 191,
+    "timeout": 0,
+    "scored": 191
+  },
+  "src/tools/tool-preferences.ts": 0.8489208633093526,
+  "src/tools/tool-registration.ts": 1,
+  "src/tools/tools-builder.ts": 0.7586206896551724,
   "src/tools/update-comment.ts": 0.5333333333333333,
   "src/tools/update-label.ts": 0.375,
   "src/tools/update-project.ts": 0.4,
   "src/tools/update-recurring-task.ts": 0.4639175257731959,
-  "src/tools/update-reminder.ts": 0.3333333333333333,
+  "src/tools/update-reminder.ts": {
+    "score": 0.3333333333333333,
+    "killed": 5,
+    "timeout": 0,
+    "scored": 15
+  },
   "src/tools/update-sprint.ts": 0.13043478260869565,
   "src/tools/update-status.ts": 0.5217391304347826,
   "src/tools/update-task-relation.ts": 0.3684210526315789,
-  "src/tools/update-task.ts": 0.7653061224489796,
+  "src/tools/update-task.ts": 0.7676767676767676,
   "src/tools/update-work.ts": 0.38095238095238093,
   "src/tools/upload-attachment.ts": 0.6,
-  "src/tools/web-fetch.ts": 0.48717948717948717,
+  "src/tools/web-fetch.ts": 0.475,
   "src/tools/workspace-files.ts": 0.6382978723404256,
-  "src/tools/wrap-tool-execution.ts": 0.6571428571428571,
-  "src/users.ts": 0.6746987951807228,
-  "src/utils/scheduler.events.ts": 0.9,
-  "src/utils/scheduler.helpers.ts": 1,
-  "src/utils/scheduler.ts": 1
+  "src/tools/wrap-tool-execution.ts": 0.6216216216216216,
+  "src/ts-ast/source-parser.ts": 0.8428571428571429,
+  "src/types/config.ts": {
+    "score": 0.75,
+    "killed": 30,
+    "timeout": 0,
+    "scored": 40
+  },
+  "src/users.ts": 0.6764705882352942,
+  "src/utils/current-time-format.ts": {
+    "score": 0.8947368421052632,
+    "killed": 51,
+    "timeout": 0,
+    "scored": 57
+  },
+  "src/utils/fetch.ts": 0,
+  "src/web/distill.ts": {
+    "score": 0.5350877192982456,
+    "killed": 61,
+    "timeout": 0,
+    "scored": 114
+  }
 }

@@ -40,6 +40,7 @@ const META = {
   argv: ['--parallel'],
   scope: { kind: 'full' } as const,
   mode: 'parallel' as const,
+  loadDemoted: false,
   fingerprint: FRESH,
   gitSha: 'deadbeef',
 }

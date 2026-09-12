@@ -99,6 +99,8 @@ const resolveDeps = (deps: AllFilesDeps | undefined): AllFilesDeps => {
   return deps
 }
 
+const isLocaleDataFile = (relPath: string): boolean => relPath.startsWith('src/i18n/locales/')
+
 export const selectAllMutationTargets = (input: SelectAllMutationTargetsInput): string[] => {
   const mutatePatterns = getMutatePatterns(input.baseConfig)
   const includePatterns = mutatePatterns.filter((pattern) => !pattern.startsWith('!'))
@@ -106,6 +108,7 @@ export const selectAllMutationTargets = (input: SelectAllMutationTargetsInput): 
 
   return input.projectFiles
     .map(normalizePath)
+    .filter((filePath) => !isLocaleDataFile(filePath))
     .filter((filePath) => includePatterns.some((pattern) => matchesPattern(pattern, filePath)))
     .filter((filePath) => !excludePatterns.some((pattern) => matchesPattern(pattern, filePath)))
     .filter((filePath, index, files) => files.indexOf(filePath) === index)

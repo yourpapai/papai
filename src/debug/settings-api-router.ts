@@ -28,6 +28,7 @@ import { handleContextVaultTokensRoutes } from './settings/context-vault-tokens-
 import { handleGroupRoutes } from './settings/group-routes.js'
 import { handleIdentityRoutes } from './settings/identity-routes.js'
 import { handleKaneoCredentialsRoutes } from './settings/kaneo-credentials-routes.js'
+import { handleLlmModelMetadataRoutes } from './settings/llm-model-metadata-routes.js'
 import { handleMcpRoutes } from './settings/mcp-routes.js'
 import { handleMemoryRoutes } from './settings/memory-routes.js'
 import { handlePluginsRoutes } from './settings/plugins-routes.js'
@@ -103,6 +104,7 @@ export function routeSettingsApi(
     if (adminResult !== null) return adminResult
   }
   if (url.pathname === '/settings/api/byok') return Promise.resolve(handleByokRoutes(req, url))
+  if (url.pathname === '/settings/api/llm-model-metadata') return handleLlmModelMetadataRoutes(req, url)
   if (
     url.pathname === '/settings/api/analytics/preferences' ||
     url.pathname === '/settings/api/analytics/export' ||

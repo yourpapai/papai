@@ -6,13 +6,15 @@
 import { mkdirSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
 
-import { FROZEN_COVERAGE_SUPPORT } from '../../scripts/story/inputs.js'
+import { FROZEN_COVERAGE_SUPPORT, FROZEN_PARSER_SUPPORT } from '../../scripts/story/inputs.js'
 
-// synthetic repositories must carry the frozen coverage modules the enforcement tree imports.
-export function writeFrozenCoverageSupport(root: string): void {
-  for (const relative of FROZEN_COVERAGE_SUPPORT) {
+// Synthetic repositories must carry every frozen module the enforcement tree
+// imports — the coverage modules and the TypeScript source parser — or capture
+// fails on a missing root before it can read anything.
+export function writeFrozenSupportInputs(root: string): void {
+  for (const relative of [...FROZEN_COVERAGE_SUPPORT, ...FROZEN_PARSER_SUPPORT]) {
     const target = path.join(root, relative)
     mkdirSync(path.dirname(target), { recursive: true })
-    writeFileSync(target, `${path.basename(relative)} coverage support`)
+    writeFileSync(target, `${path.basename(relative)} frozen support`)
   }
 }

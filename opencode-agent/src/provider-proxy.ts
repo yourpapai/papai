@@ -31,6 +31,26 @@ export interface ServeOptions {
   fetch: (request: Request) => Promise<Response>
 }
 
+/** The options {@link defaultServe} hands the runtime. */
+export interface BunServeOptions extends ServeOptions {
+  port: number
+  hostname: string
+  idleTimeout: number
+}
+
+/**
+ * The slice of the runtime's `Bun.serve` {@link defaultServe} calls.
+ *
+ * Injected for the same reason {@link Serve} is, and for one more: a started
+ * server does not report its `idleTimeout` back, so without this seam the only
+ * proof of that value is a test that spends eleven real seconds watching a
+ * stream survive — and it is the value that broke the pipeline.
+ */
+export type BunServe = (options: BunServeOptions) => {
+  port?: number
+  stop: (closeActiveConnections: boolean) => void
+}
+
 export type Serve = (options: ServeOptions) => ProxyListener
 
 /**
@@ -84,10 +104,30 @@ const defaultWait: Wait = (ms) =>
     setTimeout(resolve, ms)
   })
 
-const defaultServe: Serve = (options) => {
-  const server = Bun.serve({ port: 0, hostname: '127.0.0.1', fetch: options.fetch })
+export const defaultServe = (options: ServeOptions, bunServe: BunServe = Bun.serve): ProxyListener => {
+  const server = bunServe({
+    port: 0,
+    hostname: '127.0.0.1',
+    // `0` disables Bun's idle bound, which defaults to ten seconds and counts a
+    // *streamed* response as idle whenever no byte moves. The body forwarded
+    // below is the model's completion stream, and a reasoning turn goes quiet
+    // for longer than that between chunks routinely — so the default cut the
+    // socket mid-completion, which reads downstream as the provider failing:
+    // OpenCode retries, meets the same pause, and the turn stalls out having
+    // finished no step. The turn is already bounded by `AGENT_TIMEOUT_MS` and
+    // `AGENT_STALL_TIMEOUT_MS`, so a third and far fiercer bound buried in the
+    // transport can only fight them — and Bun caps the knob at 255 seconds,
+    // which a long turn would still outlast.
+    idleTimeout: 0,
+    fetch: options.fetch,
+  })
   // Bun types `port` as optional; a bound TCP listener always has one.
-  return { port: server.port ?? 0, stop: (): void => void server.stop(true) }
+  return {
+    port: server.port ?? 0,
+    stop: (): void => {
+      server.stop(true)
+    },
+  }
 }
 
 /** Hop-by-hop and length headers a proxy must not copy verbatim. */

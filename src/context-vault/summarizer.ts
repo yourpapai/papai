@@ -55,7 +55,8 @@ export interface SummarizerDeps {
 
 const defaultDeps: SummarizerDeps = {
   resolveConfig: (configContextId) => resolveLlmConfig(configContextId),
-  buildModel: (config) => buildChatModel(config.small.apiKey, config.small.baseUrl, config.small.model),
+  buildModel: (config) =>
+    buildChatModel(config.small.apiKey, config.small.baseUrl, config.small.model, undefined, config.small.metadata),
   generateText: (args) => generateText(args),
   schedule: (fn, ms) => setTimeout(fn, ms),
   clear: (timer) => {

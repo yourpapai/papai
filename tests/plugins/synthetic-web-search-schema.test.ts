@@ -70,6 +70,7 @@ function createMockContext(): { ctx: PluginContext; registeredTool: { value: Plu
     registration,
     providerRuntime: {
       httpFetch: missingHttpFetch,
+      forInstance: () => missingHttpFetch,
       allowedHosts: new Set(['api.synthetic.new']),
       logger: createMockLogger(),
     },

@@ -18,9 +18,15 @@ export interface MeasureDeps {
 
 // survivingMutantIds rides along with the score so the pipeline's capped-gate
 // can set-match the improve agent's declared residual mutant ids against the
-// runner-measured survivors without re-running the mutation command.
+// runner-measured survivors without re-running the mutation command. The
+// killed/timeout/scored counts ride along too: the record-level baseline bump
+// needs the counts behind the measured score, and they come from the same
+// report the score is computed from (no extra measurement or re-read).
 export interface MeasuredScore {
   readonly score: number
+  readonly killed: number
+  readonly timeout: number
+  readonly scored: number
   readonly survivingMutantIds: readonly string[]
 }
 
@@ -44,7 +50,14 @@ export async function measureMutationScore(
       throw new Error(`mutation run failed (exit ${result.exitCode}): ${result.stderr}`)
     }
     const report = read(reportPath)
-    return { score: mergeReports([report]).score, survivingMutantIds: survivingMutantIds(report) }
+    const merged = mergeReports([report])
+    return {
+      score: merged.score,
+      killed: merged.killed,
+      timeout: merged.timeout,
+      scored: merged.scored,
+      survivingMutantIds: survivingMutantIds(report),
+    }
   }
   try {
     const score = await attempt()

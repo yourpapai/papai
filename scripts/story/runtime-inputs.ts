@@ -14,14 +14,18 @@ import {
   directoryIdentity,
   type DirectoryIdentity,
   errorCode,
+  isFrozenParserSupportRoot,
   readCandidateFile,
   toPosix,
 } from './inputs.js'
 
 export const REQUIRED_RUNTIME_DIRECTORY_ROOTS = ['src', 'plugins', 'context-vault-indexer'] as const
-const OPTIONAL_RUNTIME_DIRECTORY_ROOTS = ['public'] as const
+export const OPTIONAL_RUNTIME_DIRECTORY_ROOTS = ['public'] as const
 export const REQUIRED_RUNTIME_FILE_ROOTS = ['package.json', 'bun.lock'] as const
-const RUNTIME_FILE_ROOTS = new Set<string>(REQUIRED_RUNTIME_FILE_ROOTS)
+// Candidate-provided documents the frozen harness contract tests read (e.g. behavior
+// source anchors). Optional so fixtures and baselines predating the document still load.
+const OPTIONAL_RUNTIME_FILE_ROOTS = ['docs/architecture/behaviors.md'] as const
+const RUNTIME_FILE_ROOTS = new Set<string>([...REQUIRED_RUNTIME_FILE_ROOTS, ...OPTIONAL_RUNTIME_FILE_ROOTS])
 
 export type LoadedRuntimeFile = Readonly<{ kind: 'file'; path: string; bytes: Uint8Array }>
 export type LoadedRuntimeSymlink = Readonly<{ kind: 'symlink'; path: string; target: string }>
@@ -29,6 +33,7 @@ export type LoadedRuntimeInput = LoadedRuntimeFile | LoadedRuntimeSymlink
 export type LoadedRuntimeInputTree = Readonly<{ directories: readonly string[]; files: readonly LoadedRuntimeInput[] }>
 
 export function isRuntimeInputPath(filePath: string): boolean {
+  if (isFrozenParserSupportRoot(filePath)) return false
   return (
     RUNTIME_FILE_ROOTS.has(filePath) ||
     [...REQUIRED_RUNTIME_DIRECTORY_ROOTS, ...OPTIONAL_RUNTIME_DIRECTORY_ROOTS].some((root) =>
@@ -88,6 +93,7 @@ async function visitRuntimeDirectory(
     capturedEntries.map(async ({ entry, stats }): Promise<void> => {
       const absolute = path.join(directory, entry.name)
       const relative = toPosix(path.relative(root, absolute))
+      if (isFrozenParserSupportRoot(relative)) return
       if (stats.isDirectory()) {
         await visitRuntimeDirectory(root, absolute, directoryIdentity(stats), directories, inputs, dependencies)
       } else inputs.push(await readRuntimeInput(root, relative))
@@ -118,6 +124,15 @@ async function loadRuntimeDirectory(
   return { directories: directories.sort(compareText), files: inputs }
 }
 
+async function readOptionalRuntimeInput(root: string, relative: string): Promise<LoadedRuntimeInput | undefined> {
+  try {
+    return await readRuntimeInput(root, relative)
+  } catch (error) {
+    if (errorCode(error) === 'ENOENT') return undefined
+    throw error
+  }
+}
+
 export async function loadCandidateRuntimeInputTree(
   root: string,
   dependencies: CandidateCaptureDependencies = {},
@@ -130,9 +145,11 @@ export async function loadCandidateRuntimeInputTree(
       loadRuntimeDirectory(root, relativeDirectory, false, dependencies),
     ),
   ])
-  const files = await Promise.all(
-    [...RUNTIME_FILE_ROOTS].sort(compareText).map((relative) => readRuntimeInput(root, relative)),
-  )
+  const [requiredFiles, optionalFiles] = await Promise.all([
+    Promise.all([...REQUIRED_RUNTIME_FILE_ROOTS].map((relative) => readRuntimeInput(root, relative))),
+    Promise.all(OPTIONAL_RUNTIME_FILE_ROOTS.map((relative) => readOptionalRuntimeInput(root, relative))),
+  ])
+  const files = [...requiredFiles, ...optionalFiles.filter((file) => file !== undefined)]
   return {
     directories: directories.flatMap((tree) => tree.directories).sort(compareText),
     files: [...directories.flatMap((tree) => tree.files), ...files].sort((left, right) =>

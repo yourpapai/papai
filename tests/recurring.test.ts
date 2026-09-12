@@ -132,6 +132,60 @@ describe('recurring tasks', () => {
       expect(task.nextRun).toBeNull()
     })
 
+    test('on_complete trigger never schedules a next run even with rrule and dtstart', () => {
+      const task = createRecurringTask({
+        userId: USER_ID,
+        projectId: PROJECT_ID,
+        title: 'Manual trigger',
+        triggerType: 'on_complete',
+        rrule: 'FREQ=WEEKLY;BYDAY=MO;BYHOUR=9;BYMINUTE=0',
+        dtstartUtc: '2026-04-20T09:00:00Z',
+      })
+
+      expect(task.nextRun).toBeNull()
+      expect(task.catchUp).toBe(false)
+    })
+
+    test('cron trigger without rrule or dtstart yields no next run', () => {
+      const noRrule = createRecurringTask({
+        userId: USER_ID,
+        projectId: PROJECT_ID,
+        title: 'Missing rrule',
+        triggerType: 'cron',
+        dtstartUtc: '2026-04-20T09:00:00Z',
+      })
+      const noDtstart = createRecurringTask({
+        userId: USER_ID,
+        projectId: PROJECT_ID,
+        title: 'Missing dtstart',
+        triggerType: 'cron',
+        rrule: 'FREQ=WEEKLY;BYDAY=MO;BYHOUR=9;BYMINUTE=0',
+      })
+
+      expect(noRrule.nextRun).toBeNull()
+      expect(noDtstart.nextRun).toBeNull()
+    })
+
+    test('stores description, status, timezone, and catchUp', () => {
+      const task = createRecurringTask({
+        userId: USER_ID,
+        projectId: PROJECT_ID,
+        title: 'Fields',
+        triggerType: 'cron',
+        rrule: 'FREQ=DAILY;BYHOUR=8;BYMINUTE=0',
+        dtstartUtc: '2026-04-20T08:00:00Z',
+        description: 'desc',
+        status: 'todo',
+        timezone: 'Europe/Berlin',
+        catchUp: true,
+      })
+
+      expect(task.description).toBe('desc')
+      expect(task.status).toBe('todo')
+      expect(task.timezone).toBe('Europe/Berlin')
+      expect(task.catchUp).toBe(true)
+    })
+
     test('carries over labels, priority, and assignee', () => {
       const task = createRecurringTask({
         userId: USER_ID,
@@ -229,6 +283,71 @@ describe('recurring tasks', () => {
     test('returns null for non-existent task', () => {
       const result = updateRecurringTask('non-existent', { title: 'X' })
       expect(result).toBeNull()
+    })
+
+    test('updates description, status, assignee, labels, timezone, and catchUp', () => {
+      const task = createRecurringTask({
+        userId: USER_ID,
+        projectId: PROJECT_ID,
+        title: 'Fields',
+        triggerType: 'cron',
+        rrule: 'FREQ=WEEKLY;BYDAY=MO;BYHOUR=9;BYMINUTE=0',
+        dtstartUtc: '2026-04-20T09:00:00Z',
+        description: 'old',
+        status: 'todo',
+        assignee: 'bob',
+        labels: ['a'],
+      })
+
+      const updated = updateRecurringTask(task.id, {
+        description: 'new',
+        status: 'done',
+        assignee: 'carol',
+        labels: ['x', 'y'],
+        timezone: 'Europe/Berlin',
+        catchUp: true,
+      })
+      expect(updated).not.toBeNull()
+      expect(updated!.description).toBe('new')
+      expect(updated!.status).toBe('done')
+      expect(updated!.assignee).toBe('carol')
+      expect(updated!.labels).toEqual(['x', 'y'])
+      expect(updated!.timezone).toBe('Europe/Berlin')
+      expect(updated!.catchUp).toBe(true)
+    })
+
+    test('rrule-only update falls back to existing dtstartUtc and timezone', () => {
+      const task = createRecurringTask({
+        userId: USER_ID,
+        projectId: PROJECT_ID,
+        title: 'Fallback',
+        triggerType: 'cron',
+        rrule: 'FREQ=WEEKLY;BYDAY=MO;BYHOUR=9;BYMINUTE=0',
+        dtstartUtc: '2026-04-20T09:00:00Z',
+      })
+
+      const updated = updateRecurringTask(task.id, { rrule: 'FREQ=DAILY;BYHOUR=7;BYMINUTE=0' })
+      expect(updated).not.toBeNull()
+      expect(updated!.rrule).toBe('FREQ=DAILY;BYHOUR=7;BYMINUTE=0')
+      expect(updated!.nextRun).not.toBeNull()
+    })
+
+    test('switching to on_complete clears schedule fields', () => {
+      const task = createRecurringTask({
+        userId: USER_ID,
+        projectId: PROJECT_ID,
+        title: 'Switch',
+        triggerType: 'cron',
+        rrule: 'FREQ=WEEKLY;BYDAY=MO;BYHOUR=9;BYMINUTE=0',
+        dtstartUtc: '2026-04-20T09:00:00Z',
+      })
+
+      const updated = updateRecurringTask(task.id, { triggerType: 'on_complete' })
+      expect(updated).not.toBeNull()
+      expect(updated!.triggerType).toBe('on_complete')
+      expect(updated!.rrule).toBeNull()
+      expect(updated!.dtstartUtc).toBeNull()
+      expect(updated!.nextRun).toBeNull()
     })
   })
 

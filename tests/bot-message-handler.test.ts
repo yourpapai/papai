@@ -11,9 +11,16 @@ import type { AuthorizedTurnSeed } from '../src/analytics/bot-observer.js'
 import type { AnalyticsObserver } from '../src/analytics/runtime.js'
 import type { AnalyticsSourceContext, AnalyticsSourceFact } from '../src/analytics/source-facts.js'
 import { createTurnContextRegistry } from '../src/analytics/turn-context.js'
-import { processQueuedTurn, type BotDeps } from '../src/bot-message-handler.js'
-import type { CoalescedItem } from '../src/message-queue/types.js'
-import { createMockReply, mockLogger } from './utils/test-helpers.js'
+import { processQueuedTurn, handleAuthorizedMessage, type BotDeps } from '../src/bot-message-handler.js'
+import type { AuthorizationResult, IncomingMessage } from '../src/chat/types.js'
+import type { CoalescedItem, QueueItem } from '../src/message-queue/types.js'
+import {
+  createMockChat,
+  createMockReply,
+  mockLogger,
+  seedCommonTestPlatformInstances,
+  setupTestDb,
+} from './utils/test-helpers.js'
 
 function createSource(actorRole: AnalyticsSourceContext['actorRole'] = 'member'): AnalyticsSourceContext {
   return {
@@ -190,5 +197,93 @@ describe('processQueuedTurn', () => {
     )
 
     expect(called).toBe(1)
+  })
+})
+
+describe('handleAuthorizedMessage identity threading', () => {
+  beforeEach(async () => {
+    mockLogger()
+    await setupTestDb()
+    seedCommonTestPlatformInstances()
+  })
+
+  const identityAuth = (overrides?: Partial<AuthorizationResult>): AuthorizationResult => ({
+    allowed: true,
+    isBotAdmin: false,
+    isGroupAdmin: false,
+    storageContextId: 'ctx-identity',
+    ...overrides,
+  })
+
+  const identityMsg = (overrides?: Partial<IncomingMessage>): IncomingMessage => ({
+    user: { id: 'u1', username: 'user', isAdmin: false },
+    contextId: 'ctx-identity',
+    contextType: 'dm',
+    text: 'hello',
+    platformInstanceId: 'pi-1',
+    isMentioned: false,
+    ...overrides,
+  })
+
+  const enqueueCaptureDeps = (captured: QueueItem[]): BotDeps => ({
+    processMessage: async (): Promise<void> => {},
+    enqueueMessage: (item: QueueItem): void => {
+      captured.push(item)
+    },
+  })
+
+  test('an authorized admin message enqueues isBotAdmin true with the message platformInstanceId', async () => {
+    const captured: QueueItem[] = []
+    const { reply } = createMockReply()
+
+    await handleAuthorizedMessage(
+      createMockChat(),
+      identityMsg({ messageId: 'm1' }),
+      reply,
+      identityAuth({ isBotAdmin: true }),
+      enqueueCaptureDeps(captured),
+    )
+
+    expect(captured).toHaveLength(1)
+    const [adminItem] = captured
+    assert.ok(adminItem !== undefined)
+    expect(adminItem.isBotAdmin).toBe(true)
+    expect(adminItem.platformInstanceId).toBe('pi-1')
+  })
+
+  test('a non-admin message enqueues isBotAdmin false', async () => {
+    const captured: QueueItem[] = []
+    const { reply } = createMockReply()
+
+    await handleAuthorizedMessage(
+      createMockChat(),
+      identityMsg({ messageId: 'm2', platformInstanceId: 'pi-2' }),
+      reply,
+      identityAuth({ isBotAdmin: false }),
+      enqueueCaptureDeps(captured),
+    )
+
+    expect(captured).toHaveLength(1)
+    const [nonAdminItem] = captured
+    assert.ok(nonAdminItem !== undefined)
+    expect(nonAdminItem.isBotAdmin).toBe(false)
+  })
+
+  test('the enqueued item carries no platformInstanceId when the message has none', async () => {
+    const captured: QueueItem[] = []
+    const { reply } = createMockReply()
+
+    await handleAuthorizedMessage(
+      createMockChat(),
+      identityMsg({ messageId: 'm3', platformInstanceId: undefined }),
+      reply,
+      identityAuth({ isBotAdmin: true }),
+      enqueueCaptureDeps(captured),
+    )
+
+    expect(captured).toHaveLength(1)
+    const [noPlatformItem] = captured
+    assert.ok(noPlatformItem !== undefined)
+    expect(noPlatformItem.platformInstanceId).toBeUndefined()
   })
 })

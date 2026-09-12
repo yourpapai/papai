@@ -49,6 +49,33 @@ describe('score-reader', () => {
     expect(measured.survivingMutantIds).toEqual(['s0', 's1'])
   })
 
+  // The record-level baseline bump needs the counts behind the measured score;
+  // they come from the same report the after-score is computed from — no
+  // extra measurement or report re-read.
+  test('measureMutationScore carries killed, timeout, and scored from the same report as the score', async () => {
+    const measured = await measureMutationScore(
+      { exec: successfulExec, readReport: () => reportWith(7, 1, 0, 2) },
+      'reports/paired',
+      'src/foo.ts',
+    )
+    expect(measured.score).toBeCloseTo(0.9, 5)
+    expect(measured.killed).toBe(7)
+    expect(measured.timeout).toBe(2)
+    expect(measured.scored).toBe(10)
+  })
+
+  test('a no-survivor report carries the full population', async () => {
+    const measured = await measureMutationScore(
+      { exec: successfulExec, readReport: () => reportWith(10, 0) },
+      'reports/paired',
+      'src/foo.ts',
+    )
+    expect(measured.score).toBe(1)
+    expect(measured.killed).toBe(10)
+    expect(measured.timeout).toBe(0)
+    expect(measured.scored).toBe(10)
+  })
+
   test('measureMutationScore includes NoCoverage ids among the surviving ids', async () => {
     const measured = await measureMutationScore(
       { exec: successfulExec, readReport: () => reportWith(7, 1, 2) },

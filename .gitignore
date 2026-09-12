@@ -37,6 +37,8 @@ report.[0-9]_.[0-9]_.[0-9]_.[0-9]_.json
 *.db
 *.db-shm
 *.db-wal
+proof-checks.jsonl
+proof-checks.jsonl.tmp-*
 
 # mutation testing
 .stryker-tmp/
@@ -67,7 +69,8 @@ crvy-rprtr-*.json
 # SDD runner state
 .sdd-runner/
 
-codeindex/.codeindex/
+# codeindex MCP per-tree index database (see README developer tooling)
+.codeindex/
 papai-local.tar
 client/assets
 
@@ -96,3 +99,10 @@ opencode.json
 
 # pinned actionlint binary, fetched and checksum-verified by scripts/run-actionlint.ts
 .actionlint/
+
+# Written by the context-vault-indexer story scenario when it runs outside the
+# hermetic sandbox (the sandbox confines it to the session temp mount).
+vault-indexer/
+
+# figma:sync dev-plugin build output, rebuilt by `bun figma:sync`
+scripts/figma-sync-plugin/dist/

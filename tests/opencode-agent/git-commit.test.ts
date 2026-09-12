@@ -5,11 +5,16 @@
 
 import { describe, expect, it } from 'bun:test'
 
+import { commitAll } from '../../opencode-agent/src/git-commit.js'
+import type { GitFn } from '../../opencode-agent/src/git-commit.js'
+import type { GitOptions } from '../../opencode-agent/src/git.js'
 import type { PhaseInput } from '../../opencode-agent/src/phase-context.js'
 import { handleTriage } from '../../opencode-agent/src/phases/triage.js'
+import type { CommandResult } from '../../opencode-agent/src/shell.js'
 import type { TriggerEvent } from '../../opencode-agent/src/trigger-events.js'
+import { TOKEN_SCALE } from '../../opencode-agent/src/types.js'
 import type { AgentState } from '../../opencode-agent/src/types.js'
-import { stubPhaseDeps } from './test-helpers.js'
+import { silentLogger, stubPhaseDeps } from './test-helpers.js'
 
 /**
  * Design D2 — branch from first spec.
@@ -38,7 +43,10 @@ const baseState = (over: Partial<AgentState> = {}): AgentState => ({
   stepsDone: 0,
   changeName: null,
   planRevision: 0,
+  tokenScale: TOKEN_SCALE,
   tokensSpent: 0,
+  usdSpent: 0,
+  usdUnpriced: false,
   lastError: null,
   prUrl: null,
   prNumber: null,
@@ -66,6 +74,7 @@ const captureReply = JSON.stringify({
   status: 'capture',
   changeName: 'add-retry-helper',
   spec: '# Goal\n\nAdd retries.',
+  skipSpecs: false,
 })
 
 describe('handleTriage · capture · branch-from-first-spec (D2)', () => {
@@ -109,5 +118,61 @@ describe('handleTriage · capture · branch-from-first-spec (D2)', () => {
 
     expect(outcome.signal).toBe('NEEDS_CLARIFICATION')
     expect(recording.io.gitCalls).toEqual([])
+  })
+})
+
+const ok = (stdout: string): CommandResult => ({ command: 'git', exitCode: 0, stdout, stderr: '' })
+
+const COMMIT_MESSAGE = 'chore(openspec): scaffold add-retry-helper'
+
+const options: GitOptions = {
+  run: (): Promise<CommandResult> => Promise.resolve(ok('')),
+  cwd: '/repo',
+  authorName: 'agent',
+  authorEmail: 'agent@example.com',
+  limits: { maxFiles: 100, maxLines: 20_000 },
+  secrets: [],
+  log: silentLogger(),
+  credential: null,
+}
+
+const scriptedGit = (status: string, numstat: string): { calls: string[][]; git: GitFn } => {
+  const calls: string[][] = []
+  const git: GitFn = (...argv: readonly string[]): Promise<CommandResult> => {
+    calls.push([...argv])
+    const [sub, ...rest] = argv
+    if (sub === 'status') return Promise.resolve(ok(status))
+    if (sub === 'add') return Promise.resolve(ok(''))
+    if (sub === 'diff' && rest.includes('--numstat')) return Promise.resolve(ok(numstat))
+    if (sub === 'diff') return Promise.resolve(ok(''))
+    if (sub === 'commit') return Promise.resolve(ok(''))
+    return Promise.reject(new Error(`unexpected git call: ${argv.join(' ')}`))
+  }
+  return { calls, git }
+}
+
+describe('commitAll · the direct commit path this file is named after', () => {
+  it('answers clean on an empty tree, asking git only the status probe', async () => {
+    const { calls, git } = scriptedGit('', '')
+
+    const outcome = await commitAll(git, options, COMMIT_MESSAGE)
+
+    expect(outcome).toEqual({ kind: 'clean' })
+    expect(calls.map((argv) => argv.join(' '))).toEqual(['status --porcelain'])
+  })
+
+  it('stages, guards and commits as one: message carried, identity riding the environment', async () => {
+    const { calls, git } = scriptedGit(' M src/a.ts\n', '3\t1\tsrc/a.ts')
+
+    const outcome = await commitAll(git, options, COMMIT_MESSAGE)
+
+    expect(outcome).toEqual({ kind: 'committed', totals: { files: 1, lines: 4 }, dropped: [] })
+    expect(calls.map((argv) => argv.join(' '))).toEqual([
+      'status --porcelain',
+      'add --all',
+      'diff --cached --numstat',
+      'diff --cached',
+      'commit -m chore(openspec): scaffold add-retry-helper',
+    ])
   })
 })

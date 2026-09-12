@@ -6,6 +6,7 @@
 import { afterEach, describe, expect, spyOn, test } from 'bun:test'
 import { chmodSync, existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs'
 import { readFile } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
 import path from 'node:path'
 
 import { runBuildCheck } from '../../review-loop/src/build-checker.js'
@@ -241,19 +242,8 @@ describe('finalizeRun', () => {
   })
 })
 
-function createFakeOpencodeScript(scenarioPath: string): string {
-  return `#!/usr/bin/env bun
-import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
-import path from 'node:path'
-
-const args = process.argv.slice(2)
-const prompt = args[args.length - 1] ?? ''
-
-function extractOutputPath(text) {
-  const match = text.match(/(?:to|JSON to):\\s*(\\S+)/)
-  return match?.[1] ?? null
-}
-
+function fakeAgentResponder(scenarioPath: string): string {
+  return `
 const scenario = JSON.parse(readFileSync(${JSON.stringify(scenarioPath)}, 'utf8'))
 const outputPath = extractOutputPath(prompt)
 
@@ -283,6 +273,65 @@ if (prompt.includes('Review the current implementation')) {
 } else if (prompt.includes('Match newly found')) {
   if (outputPath) writeFileSync(outputPath, JSON.stringify({ matches: scenario.matches ?? [] }))
 }
+`
+}
+
+function createFakeOpencodeScript(scenarioPath: string): string {
+  return `#!/usr/bin/env bun
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import path from 'node:path'
+
+const args = process.argv.slice(2)
+const prompt = args[args.length - 1] ?? ''
+
+function extractOutputPath(text) {
+  const match = text.match(/(?:to|JSON to):\\s*(\\S+)/)
+  return match?.[1] ?? null
+}
+${fakeAgentResponder(scenarioPath)}
+process.exit(0)
+`
+}
+
+/**
+ * The claude-route twin of the fake above: the prompt rides stdin, the child
+ * emits NDJSON lines, and the child env's load-bearing names are dumped to a
+ * file so the composition is assertable without touching the real CLI.
+ */
+function createFakeClaudeScript(scenarioPath: string, dumpPath: string): string {
+  return `#!/usr/bin/env bun
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import path from 'node:path'
+
+let prompt = ''
+for await (const chunk of process.stdin) prompt += chunk.toString()
+
+function extractOutputPath(text) {
+  const match = text.match(/(?:to|JSON to):\\s*(\\S+)/)
+  return match?.[1] ?? null
+}
+
+writeFileSync(${JSON.stringify(dumpPath)}, JSON.stringify({
+  configDir: process.env.CLAUDE_CONFIG_DIR ?? null,
+  apiKey: process.env.ANTHROPIC_API_KEY ?? null,
+  oauth: process.env.CLAUDE_CODE_OAUTH_TOKEN ?? null,
+  llmKey: process.env.LLM_API_KEY ?? null,
+  llmBaseUrl: process.env.LLM_BASE_URL ?? null,
+  author: process.env.GIT_AUTHOR_NAME ?? null,
+  disableAutoupdater: process.env.DISABLE_AUTOUPDATER ?? null,
+}))
+
+function emit(line) { process.stdout.write(line + '\\n') }
+emit(JSON.stringify({ type: 'system', subtype: 'init', cwd: process.cwd(), session_id: 'sess-cli', tools: [] }))
+${fakeAgentResponder(scenarioPath)}
+emit(JSON.stringify({
+  type: 'result',
+  is_error: false,
+  stop_reason: 'end_turn',
+  session_id: 'sess-cli',
+  total_cost_usd: 0.01,
+  usage: { input_tokens: 10, output_tokens: 5, cache_read_input_tokens: 0, cache_creation_input_tokens: 0 },
+}))
 process.exit(0)
 `
 }
@@ -297,6 +346,8 @@ interface RunCliFixture {
   /** Everything the run printed, so its notices are assertable rather than assumed. */
   output: () => string
   getRunDir: () => string
+  /** The fake claude binary's captured child env, on the claude route. */
+  claudeChildEnv: () => Record<string, string | null>
 }
 
 function setupRunCliFixtures(
@@ -306,6 +357,8 @@ function setupRunCliFixtures(
     checkCommand?: string
     /** Extra config keys, for the settings only one or two tests care about. */
     extraConfig?: Record<string, unknown>
+    /** When 'claude', puts a fake `claude` binary on PATH and stamps the backend per role. */
+    backend?: 'opencode' | 'claude'
   } = {},
 ): RunCliFixture {
   const dir = makeTempDir('cli-integration-')
@@ -318,6 +371,12 @@ function setupRunCliFixtures(
 
   writeFileSync(planPath, '# Implementation plan\n')
 
+  const agentBlock = (model: string, extra: Record<string, unknown> = {}): Record<string, unknown> => ({
+    model,
+    ...(opts.backend === 'claude' ? { backend: 'claude' } : {}),
+    extraArgs: [],
+    ...extra,
+  })
   const config: Record<string, unknown> = {
     repoRoot: repoPath,
     workDir,
@@ -325,13 +384,13 @@ function setupRunCliFixtures(
     maxNoProgressRounds: 2,
     checkCommand: opts.checkCommand ?? 'true',
     poolSize: opts.poolSize ?? 3,
-    reviewer: { model: 'test-reviewer', extraArgs: [] },
-    fixer: { model: 'test-fixer', extraArgs: [] },
-    matcher: { model: 'test-matcher', extraArgs: [] },
+    reviewer: agentBlock('test-reviewer'),
+    fixer: agentBlock('test-fixer'),
+    matcher: agentBlock('test-matcher'),
     ...opts.extraConfig,
   }
   if (opts.inspector === true) {
-    config['inspector'] = { model: 'test-inspector', extraArgs: [] }
+    config['inspector'] = agentBlock('test-inspector')
   }
   writeFileSync(configPath, JSON.stringify(config))
 
@@ -348,6 +407,12 @@ function setupRunCliFixtures(
   const scriptPath = path.join(binDir, 'opencode')
   writeFileSync(scriptPath, createFakeOpencodeScript(scenarioPath))
   chmodSync(scriptPath, 0o755)
+  const claudeDumpPath = path.join(dir, 'claude-child-env.json')
+  if (opts.backend === 'claude') {
+    const claudeScript = path.join(binDir, 'claude')
+    writeFileSync(claudeScript, createFakeClaudeScript(scenarioPath, claudeDumpPath))
+    chmodSync(claudeScript, 0o755)
+  }
 
   const stream = captureStream()
   const runCliWithPath = async (args: string[]): Promise<CliOutcome> => {
@@ -369,7 +434,29 @@ function setupRunCliFixtures(
     return path.join(runRoot, entries[0]!)
   }
 
-  return { dir, configPath, planPath, repoPath, workDir, runCliWithPath, getRunDir, output: stream.text }
+  return {
+    dir,
+    configPath,
+    planPath,
+    repoPath,
+    workDir,
+    runCliWithPath,
+    getRunDir,
+    output: stream.text,
+    claudeChildEnv: (): Record<string, string | null> => childEnvRecord(claudeDumpPath),
+  }
+}
+
+/** The fake claude binary's env dump, as string-or-null fields; absent dump answers empty. */
+function childEnvRecord(dumpPath: string): Record<string, string | null> {
+  if (!existsSync(dumpPath)) return {}
+  const dumped: unknown = JSON.parse(readFileSync(dumpPath, 'utf8'))
+  if (typeof dumped !== 'object' || dumped === null || Array.isArray(dumped)) return {}
+  const record: Record<string, string | null> = {}
+  for (const [key, value] of Object.entries(dumped)) {
+    record[key] = typeof value === 'string' ? value : null
+  }
+  return record
 }
 
 async function createResumableRunState(
@@ -893,5 +980,121 @@ describe('runCli under a run budget', () => {
     expect(readFileSync(path.join(runDir, 'metrics.json'), 'utf8')).toContain('"doneReason": "stopped"')
     expect(readFileSync(path.join(runDir, 'summary.txt'), 'utf8')).toContain('stopped early')
     expect(existsSync(path.join(fixture.workDir, 'worktrees', path.basename(runDir), 'gate-ran'))).toBe(false)
+  })
+})
+
+describe('runCli claude route', () => {
+  afterEach(() => {
+    for (const key of [
+      'ANTHROPIC_API_KEY',
+      'CLAUDE_CODE_OAUTH_TOKEN',
+      'LLM_API_KEY',
+      'LLM_BASE_URL',
+      // The healthy-run leg configures a commitAuthor, which applyCommitIdentity
+      // stamps onto process.env — leaking it would flip other suites' committer.
+      'GIT_AUTHOR_NAME',
+      'GIT_AUTHOR_EMAIL',
+      'GIT_COMMITTER_NAME',
+      'GIT_COMMITTER_EMAIL',
+    ]) {
+      Reflect.deleteProperty(process.env, key)
+    }
+  })
+
+  test('a claude-backend run with no credential refuses before any run dir or worktree exists', async () => {
+    const fixture = setupRunCliFixtures({ backend: 'claude' })
+    writeFileSync(path.join(path.dirname(fixture.configPath), 'scenario.json'), JSON.stringify({ reviewerIssues: [] }))
+
+    await expect(fixture.runCliWithPath(['--config', fixture.configPath, '--plan', fixture.planPath])).rejects.toThrow(
+      /\[CLAUDE_CREDENTIALS\]/u,
+    )
+    await expect(fixture.runCliWithPath(['--config', fixture.configPath, '--plan', fixture.planPath])).rejects.toThrow(
+      /ANTHROPIC_API_KEY/u,
+    )
+    await expect(fixture.runCliWithPath(['--config', fixture.configPath, '--plan', fixture.planPath])).rejects.toThrow(
+      /CLAUDE_CODE_OAUTH_TOKEN/u,
+    )
+
+    // The refusal precedes openRun: no run directory, no worktree, nothing spent.
+    expect(existsSync(path.join(fixture.workDir, 'runs'))).toBe(false)
+    expect(existsSync(path.join(fixture.workDir, 'worktrees'))).toBe(false)
+  })
+
+  test('both credentials set refuses with the code, before any spend', async () => {
+    process.env['ANTHROPIC_API_KEY'] = 'sk-ant-secret-0123456789'
+    process.env['CLAUDE_CODE_OAUTH_TOKEN'] = 'oauth-token-0123456789'
+    const fixture = setupRunCliFixtures({ backend: 'claude' })
+
+    await expect(fixture.runCliWithPath(['--config', fixture.configPath, '--plan', fixture.planPath])).rejects.toThrow(
+      /\[CLAUDE_CREDENTIALS\]/u,
+    )
+    expect(existsSync(path.join(fixture.workDir, 'runs'))).toBe(false)
+  })
+
+  test('a set LLM_API_KEY is refused on the claude route', async () => {
+    process.env['ANTHROPIC_API_KEY'] = 'sk-ant-secret-0123456789'
+    process.env['LLM_API_KEY'] = 'gateway-key-0123456789'
+    const fixture = setupRunCliFixtures({ backend: 'claude' })
+
+    await expect(fixture.runCliWithPath(['--config', fixture.configPath, '--plan', fixture.planPath])).rejects.toThrow(
+      /\[LLM_CREDENTIALS\]/u,
+    )
+  })
+
+  test('a healthy claude run stamps the config dir, credential and commit identity into the child env', async () => {
+    const secret = 'sk-ant-secret-0123456789'
+    process.env['ANTHROPIC_API_KEY'] = secret
+    process.env['LLM_API_KEY'] = ''
+    process.env['LLM_BASE_URL'] = ''
+    const fixture = setupRunCliFixtures({
+      backend: 'claude',
+      poolSize: 1,
+      extraConfig: { commitAuthor: { name: 'review-bot', email: 'bot@example' } },
+    })
+    writeFileSync(
+      path.join(path.dirname(fixture.configPath), 'scenario.json'),
+      JSON.stringify({ reviewerIssues: ['{"issues":[]}'] }),
+    )
+
+    const outcome = await fixture.runCliWithPath(['--config', fixture.configPath, '--plan', fixture.planPath])
+    expect(outcome.exitCode).toBe(0)
+
+    const childEnv = fixture.claudeChildEnv()
+    // The run-scoped config dir lives under the OS tmp root outside the worktrees.
+    expect(childEnv['configDir']).toContain('review-loop-claude-')
+    expect(childEnv['configDir']!.startsWith(tmpdir())).toBe(true)
+    expect(childEnv['configDir']!.includes(fixture.workDir)).toBe(false)
+    // Exactly the selected credential crosses; the CI forwarding shape does not refuse.
+    expect(childEnv['apiKey']).toBe(secret)
+    expect(childEnv['oauth']).toBeNull()
+    expect(childEnv['llmKey']).toBeNull()
+    expect(childEnv['llmBaseUrl']).toBeNull()
+    expect(childEnv['disableAutoupdater']).toBe('1')
+    // envSource is read after applyCommitIdentity, so the commit identity rides in.
+    expect(childEnv['author']).toBe('review-bot')
+
+    // The finally removed the parent: no CLI state outlives the run.
+    const parent = path.dirname(childEnv['configDir']!)
+    expect(existsSync(parent)).toBe(false)
+
+    const summary = readFileSync(path.join(fixture.getRunDir(), 'summary.txt'), 'utf8')
+    // Cross-backend accounting: the claude result line's usage lands in the
+    // summary with the same fields and meanings as an opencode turn's.
+    expect(summary).toContain('in 10 / out 5')
+    const agentLog = readFileSync(path.join(fixture.getRunDir(), 'agent-output.log'), 'utf8')
+    expect(agentLog).toContain('"session_id":"sess-cli"')
+  })
+
+  test('the opencode route never consults the claude credentials, even when both are set', async () => {
+    process.env['ANTHROPIC_API_KEY'] = 'sk-ant-secret-0123456789'
+    process.env['CLAUDE_CODE_OAUTH_TOKEN'] = 'oauth-token-0123456789'
+    const fixture = setupRunCliFixtures({ poolSize: 1 })
+    writeFileSync(
+      path.join(path.dirname(fixture.configPath), 'scenario.json'),
+      JSON.stringify({ reviewerIssues: ['{"issues":[]}'] }),
+    )
+
+    const outcome = await fixture.runCliWithPath(['--config', fixture.configPath, '--plan', fixture.planPath])
+    expect(outcome.exitCode).toBe(0)
   })
 })

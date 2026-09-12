@@ -8,9 +8,10 @@ import type { ReviewLoopConfig } from './config.js'
 import { recordNeedsHuman, saveIssueLedger, type IssueLedger, type LedgerIssueRecord } from './issue-ledger.js'
 import { processIssueAttempt, type IssueWorker, type RetryReason } from './issue-processor-attempts.js'
 import type { FixerResult } from './issue-schema.js'
-import { emitFixComplete, tallyDecision, truncate, type RoundCollector } from './loop-trace.js'
+import { emitFixComplete, truncate } from './loop-trace.js'
 import { emitDecision } from './progress-log.js'
 import type { ProgressReporter } from './progress-log.js'
+import { tallyDecision, type RoundCollector } from './round-collector.js'
 import type { RunState } from './run-state.js'
 import type { StopController } from './stop-controller.js'
 import type { TraceLogger } from './trace-log.js'
@@ -208,6 +209,10 @@ export async function processPendingIssues(
   collector: RoundCollector,
   pending: readonly LedgerIssueRecord[],
 ): Promise<number> {
+  if (deps.config.batchVerify) {
+    const { processBatched } = await import('./issue-processor-batch.js')
+    return processBatched(deps, round, collector, pending)
+  }
   let fixed = 0
   let index = 0
   const ordered = orderByExposure(pending)

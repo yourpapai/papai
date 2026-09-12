@@ -1,4 +1,5 @@
 {
+  "enabledMcpjsonServers": ["codeindex"],
   "hooks": {
     "PreToolUse": [
       {

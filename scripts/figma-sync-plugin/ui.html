@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>papai story sync</title>
+    <style>
+      body {
+        font-family: Inter, sans-serif;
+        font-size: 12px;
+        margin: 14px;
+        color: #1a1a1a;
+      }
+      #status {
+        font-weight: 600;
+        margin-bottom: 8px;
+      }
+      #detail {
+        color: #666;
+        white-space: pre-wrap;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="status">connecting to bun figma:sync…</div>
+    <div id="detail">waiting for http://127.0.0.1:7781</div>
+    <script>
+      const ORIGIN = 'http://127.0.0.1:7781'
+      const status = document.getElementById('status')
+      const detail = document.getElementById('detail')
+      const post = (message, transfer) => parent.postMessage(message, '*', transfer)
+
+      const fail = (reason) => {
+        status.textContent = 'sync failed'
+        detail.textContent = reason
+      }
+
+      const fetchImages = async (keys) => {
+        status.textContent = 'placing images…'
+        for (const key of keys) {
+          try {
+            const response = await fetch(`${ORIGIN}/image?key=${encodeURIComponent(key)}`)
+            if (!response.ok) throw new Error(`http_${response.status}`)
+            const buffer = await response.arrayBuffer()
+            post({ type: 'image', key, ok: true, buffer }, [buffer])
+          } catch (error) {
+            post({ type: 'image', key, ok: false, error: String(error) })
+          }
+        }
+      }
+
+      const main = async () => {
+        try {
+          const response = await fetch(`${ORIGIN}/manifest`)
+          if (!response.ok) throw new Error(`manifest_http_${response.status}`)
+          post({ type: 'manifest', manifest: await response.json() })
+          status.textContent = 'building board…'
+        } catch (error) {
+          fail(`cannot reach ${ORIGIN} — is \`bun figma:sync\` running? (${String(error)})`)
+        }
+      }
+
+      window.onmessage = async (event) => {
+        const message = event.data || {}
+        if (message.type === 'plan') await fetchImages(message.keys)
+        if (message.type === 'progress') {
+          detail.textContent = `images ${message.done}/${message.total}`
+        }
+        if (message.type === 'finish') {
+          try {
+            const response = await fetch(`${ORIGIN}/report`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(message.report),
+            })
+            if (!response.ok) throw new Error(`http_${response.status}`)
+            status.textContent = 'sync reported — closing'
+            post({ type: 'reportSent' })
+          } catch (error) {
+            fail(`report delivery failed: ${String(error)}`)
+          }
+        }
+        if (message.type === 'fatal') fail(String(message.message))
+      }
+
+      main()
+    </script>
+  </body>
+</html>

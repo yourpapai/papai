@@ -30,12 +30,20 @@ function zeroMetric(round: number): RoundMetric {
     fixerExposure: { caller: 0, none: 0, unknown: 0 },
     exposureDivergent: 0,
     reviewerKind: { defect: 0, cleanup: 0 },
+    deferred: 0,
     checkBehind: {
       defect: { withCheck: 0, withoutCheck: 0, unmeasured: 0 },
       cleanup: { withCheck: 0, withoutCheck: 0, unmeasured: 0 },
     },
     phaseMs: { review: 0, match: 0, verify: 0, build: 0, inspect: 0, fix: 0 },
-    usage: { inputTokens: 0, outputTokens: 0, reasoningTokens: 0, costUsd: 0 },
+    usage: {
+      inputTokens: 0,
+      outputTokens: 0,
+      reasoningTokens: 0,
+      cachedReadTokens: 0,
+      cachedWriteTokens: 0,
+      costUsd: 0,
+    },
   }
 }
 
@@ -48,7 +56,14 @@ function busyMetric(round: number): RoundMetric {
   metric.reviewerSeverity = { critical: 0, high: 1, medium: 2, low: 1 }
   metric.fixerSeverity = { critical: 0, high: 1, medium: 1, low: 1 }
   metric.phaseMs = { review: 178_300, match: 0, verify: 0, build: 0, inspect: 0, fix: 0 }
-  metric.usage = { inputTokens: 120_000, outputTokens: 8_000, reasoningTokens: 3_000, costUsd: 1.234 }
+  metric.usage = {
+    inputTokens: 120_000,
+    outputTokens: 8_000,
+    reasoningTokens: 3_000,
+    cachedReadTokens: 0,
+    cachedWriteTokens: 0,
+    costUsd: 1.234,
+  }
   return metric
 }
 

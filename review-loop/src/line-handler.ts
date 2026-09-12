@@ -5,16 +5,57 @@
 
 import { appendFile } from 'node:fs/promises'
 
-import type { AgentUsage, LineSink, RunAgentOptions } from './agent-runner.js'
-import { type OpencodeEvent, parseEventLine } from './event-stream.js'
+import { emptyUsage, type AgentUsage, type LineSink, type RunAgentOptions } from './agent-runner.js'
+import { scrubCredentialValue } from './backend-select.js'
+import { type OpencodeEvent, parseEventLine, sessionIdOfLine } from './event-stream.js'
 import { formatLiveLine, formatToolArg } from './live-format.js'
 import type { ProgressReporter } from './progress-log.js'
+import { normalizeTodoItems, TODO_TOOLS } from './todo-capture.js'
 
 export interface LineHandler {
   readonly ctx: LiveCtx
   onLine: LineSink
+  /**
+   * The line decoder this handler applies. Re-armable per attempt (D6): the
+   * claude decoder's tool-pairing map and result outcome are attempt state,
+   * and `runAttempt` replaces it beside `ctx.sessionId` so a stall retry never
+   * reads the stalled attempt's result line as its own.
+   */
+  decoder: EventDecoder
   /** Clears live rendering and resolves after every queued log write has hit disk. */
   dispose: () => Promise<void>
+}
+
+/**
+ * One backend's NDJSON line decode: zero or more events per line (a claude
+ * message carries a content *array*, so one line can yield several tool_use
+ * events) plus the session-id read. The result-outcome read is what the
+ * claude route's exit-0 gate consults; the opencode adapter answers "not
+ * seen" (opencode has no result-line contract).
+ */
+export interface EventDecoder {
+  parseLine(line: string): OpencodeEvent[]
+  sessionIdOf(line: string): string | null
+  resultOutcome(): { seen: boolean; isError: boolean }
+}
+
+/** The opencode adapter: the existing single-event pair, list-wrapped (D6). */
+export const opencodeEventDecoder: EventDecoder = {
+  parseLine: (line): OpencodeEvent[] => {
+    const evt = parseEventLine(line)
+    return evt === null ? [] : [evt]
+  },
+  sessionIdOf: sessionIdOfLine,
+  resultOutcome: () => ({ seen: false, isError: false }),
+}
+
+/**
+ * Session-capture seam (D1): the host records the opencode session id the
+ * moment the first session-bearing line arrives. Best-effort — an error here
+ * must never fail event processing.
+ */
+export interface SessionLedgerSeam {
+  recordSessionId: (opencodeSessionId: string, attempt: number) => unknown
 }
 
 export interface LiveCtx {
@@ -24,6 +65,7 @@ export interface LiveCtx {
   readonly model: string
   readonly logPath: string
   readonly reporter: ProgressReporter | undefined
+  readonly sessionLedger: SessionLedgerSeam | undefined
   startedAt: number
   toolCount: number
   reportedToolCalls: number
@@ -35,6 +77,16 @@ export interface LiveCtx {
   firstStepAt: number | null
   /** Serializes log appends so `dispose` can drain them; never rejects (logging is best-effort). */
   logChain: Promise<void>
+  /** Preferred ledger attempt for this spawn; the id is recorded exactly once per handler. */
+  sessionAttempt: number
+  sessionId: string | null
+  /**
+   * The selected credential's value on the claude route, threaded from the
+   * `claude` context so `enqueueLog` — the single sink both callers write
+   * through — can scrub it from every line it persists (D5). `null` on the
+   * opencode route, which logs verbatim.
+   */
+  credentialValue: string | null
 }
 
 function liveLine(ctx: LiveCtx, done: boolean): string {
@@ -48,6 +100,7 @@ function liveLine(ctx: LiveCtx, done: boolean): string {
     {
       input: ctx.usage.inputTokens,
       output: ctx.usage.outputTokens,
+      cached: ctx.usage.cachedReadTokens,
     },
     done,
   )
@@ -71,12 +124,16 @@ function applyStepFinish(evt: Extract<OpencodeEvent, { type: 'step_finish' }>, c
   ctx.usage.inputTokens += evt.tokens.input
   ctx.usage.outputTokens += evt.tokens.output
   ctx.usage.reasoningTokens += evt.tokens.reasoning
+  ctx.usage.cachedReadTokens += evt.tokens.cacheRead
+  ctx.usage.cachedWriteTokens += evt.tokens.cacheWrite
   ctx.usage.costUsd += evt.cost
   if (reporter === undefined) return
   reporter.usage?.({
     input: evt.tokens.input,
     output: evt.tokens.output,
     reasoning: evt.tokens.reasoning,
+    cacheRead: evt.tokens.cacheRead,
+    cacheWrite: evt.tokens.cacheWrite,
     cost: evt.cost,
     label: ctx.label,
     model: ctx.model,
@@ -110,6 +167,10 @@ function applyEvent(evt: OpencodeEvent, ctx: LiveCtx): void {
       }
       ctx.tool = evt.tool
       ctx.arg = formatToolArg(evt.tool, evt.input)
+      if (TODO_TOOLS.has(evt.tool)) {
+        const todos = normalizeTodoItems(evt.input)
+        if (todos !== null) reporter?.todos?.(todos)
+      }
       renderLive(ctx)
       break
     case 'step_finish':
@@ -120,7 +181,26 @@ function applyEvent(evt: OpencodeEvent, ctx: LiveCtx): void {
   }
 }
 
-export function createLineHandler<T>(options: RunAgentOptions<T>): LineHandler {
+/**
+ * Record the spawn's opencode session id the first time a session-bearing
+ * line arrives (D1). Idempotent per handler; best-effort — a ledger error
+ * must never fail event processing.
+ */
+function captureSessionId(ctx: LiveCtx, decoder: EventDecoder, line: string): void {
+  const sessionId = decoder.sessionIdOf(line)
+  if (sessionId === null || ctx.sessionId !== null) return
+  ctx.sessionId = sessionId
+  try {
+    ctx.sessionLedger?.recordSessionId(sessionId, ctx.sessionAttempt)
+  } catch {
+    // best-effort: capture must never fail event processing
+  }
+}
+
+export function createLineHandler<T>(
+  options: RunAgentOptions<T>,
+  decoder: EventDecoder = opencodeEventDecoder,
+): LineHandler {
   const ctx: LiveCtx = {
     label: options.label,
     slotKey: options.slotKey ?? options.label,
@@ -128,6 +208,7 @@ export function createLineHandler<T>(options: RunAgentOptions<T>): LineHandler {
     model: options.model,
     logPath: options.logPath,
     reporter: options.reporter,
+    sessionLedger: options.sessionLedger,
     startedAt: 0,
     toolCount: 0,
     reportedToolCalls: 0,
@@ -135,48 +216,63 @@ export function createLineHandler<T>(options: RunAgentOptions<T>): LineHandler {
     arg: '',
     seenCalls: new Set<string>(),
     timer: null,
-    usage: { inputTokens: 0, outputTokens: 0, reasoningTokens: 0, costUsd: 0, wallMs: 0 },
+    usage: emptyUsage(),
     firstStepAt: null,
     logChain: Promise.resolve(),
+    sessionAttempt: options.sessionAttempt ?? 1,
+    sessionId: null,
+    credentialValue: options.claude?.credentialValue ?? null,
   }
-  const onLine: LineSink = (line: string): void => {
-    enqueueLog(ctx, `${line}\n`)
-    const evt = parseEventLine(line)
-    if (evt !== null) {
-      applyEvent(evt, ctx)
-    }
-  }
-  const dispose = async (): Promise<void> => {
-    if (ctx.timer !== null) {
-      clearInterval(ctx.timer)
-    }
-    const reporter = ctx.reporter
-    if (reporter !== undefined) {
-      if (reporter.slot === undefined) {
-        reporter.clearLive()
-      } else if (ctx.commitOnDispose && ctx.startedAt !== 0 && reporter.commit !== undefined) {
-        reporter.commit(ctx.slotKey, liveLine(ctx, true))
-      } else if (ctx.commitOnDispose) {
-        // Never started (died before the first step) or the reporter predates
-        // commit(): nothing worth freezing — clear instead.
-        reporter.slot(ctx.slotKey, null)
+  const handler: LineHandler = {
+    ctx,
+    decoder,
+    onLine: (line: string): void => {
+      enqueueLog(ctx, `${line}\n`)
+      captureSessionId(ctx, handler.decoder, line)
+      for (const evt of handler.decoder.parseLine(line)) {
+        applyEvent(evt, ctx)
       }
-      // commitOnDispose === false: leave the slot live for the unit's owner.
-    }
-    await ctx.logChain
+    },
+    dispose: async (): Promise<void> => {
+      if (ctx.timer !== null) {
+        clearInterval(ctx.timer)
+      }
+      commitSlotOnDispose(ctx)
+      await ctx.logChain
+    },
   }
-  return { ctx, onLine, dispose }
+  return handler
+}
+
+function commitSlotOnDispose(ctx: LiveCtx): void {
+  const reporter = ctx.reporter
+  if (reporter === undefined) return
+  if (reporter.slot === undefined) {
+    reporter.clearLive()
+  } else if (ctx.commitOnDispose && ctx.startedAt !== 0 && reporter.commit !== undefined) {
+    reporter.commit(ctx.slotKey, liveLine(ctx, true))
+  } else if (ctx.commitOnDispose) {
+    // Never started (died before the first step) or the reporter predates
+    // commit(): nothing worth freezing — clear instead.
+    reporter.slot(ctx.slotKey, null)
+  }
+  // commitOnDispose === false: leave the slot live for the unit's owner.
 }
 
 /**
- * Best-effort serialized log append. A fire-and-forget `void appendFile(...)` floats past the
- * caller's lifetime: if the destination disappears first (temp-dir cleanup, run teardown), the
- * rejection is unhandled and crashes whichever code is running when it lands. Chaining lets
+ * Best-effort serialized log append, scrubbed of the selected credential's
+ * value inside the sink itself (D5): both callers — every raw NDJSON line and
+ * the attempt's stderr line — write through here, so coverage is by
+ * construction, not by auditing call sites. A fire-and-forget
+ * `void appendFile(...)` floats past the caller's lifetime: if the destination
+ * disappears first (temp-dir cleanup, run teardown), the rejection is
+ * unhandled and crashes whichever code is running when it lands. Chaining lets
  * `dispose` drain the queue so no write outlives `runAgent`'s finally.
  */
 export function enqueueLog(ctx: LiveCtx, text: string): void {
+  const scrubbed = scrubCredentialValue(text, ctx.credentialValue)
   ctx.logChain = ctx.logChain
-    .then(() => appendFile(ctx.logPath, text))
+    .then(() => appendFile(ctx.logPath, scrubbed))
     .then(
       () => undefined,
       () => undefined,

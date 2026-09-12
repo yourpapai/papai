@@ -11,17 +11,17 @@ const TOTAL_CELLS = GRID_COLS * GRID_ROWS
 
 const FREE_CELL = '⬜'
 
-/** Section emoji mapping - exported for use by renderers to avoid duplication. */
+/** Section emoji mapping keyed by stable section id - exported for use by renderers to avoid duplication. */
 export const SECTION_EMOJIS: Readonly<Record<string, string>> = {
-  'System prompt': '🟦',
-  'Memory context': '🟩',
-  'Conversation history': '🟨',
-  Tools: '🟪',
+  system_prompt: '🟦',
+  memory_context: '🟩',
+  conversation_history: '🟨',
+  tools: '🟪',
 }
 
 const FALLBACK_EMOJI = '🟫'
 
-const emojiForLabel = (label: string): string => SECTION_EMOJIS[label] ?? FALLBACK_EMOJI
+const emojiFor = (id: string): string => SECTION_EMOJIS[id] ?? FALLBACK_EMOJI
 
 type Allocation = { emoji: string; cells: number }
 
@@ -38,7 +38,7 @@ const allocateCells = (
     if (section.tokens <= 0) continue
     const rawCells = section.tokens / tokensPerCell
     const cells = Math.max(1, Math.round(rawCells))
-    allocations.push({ emoji: emojiForLabel(section.label), cells })
+    allocations.push({ emoji: emojiFor(section.id), cells })
     assigned += cells
   }
 

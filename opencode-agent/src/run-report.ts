@@ -169,6 +169,7 @@ export const renderFailure = (
   next: AgentState,
   maxAttempts: number,
   runUrl: string | null,
+  retryFutile: boolean,
 ): string =>
   [
     outcomeHeading('RUN_FAILED', `Run failed in ${phase}`),
@@ -180,8 +181,18 @@ export const renderFailure = (
     // and nothing on the issue said where to find it.
     ...jobLink(runUrl, 'The job that failed'),
     '',
-    `Attempt ${next.attempts} of ${maxAttempts}. Reply **\`/retry\`** to resume from \`${phase}\`, ` +
-      'or **`/cancel`** to stop.',
+    // The footer is the reflex a skimming maintainer follows, so it has to
+    // agree with the message above it. A failure whose remedies `/retry`
+    // cannot reach names those remedies in its own body — a drift refusal and
+    // a settings-gated pull-request refusal — and a footer inviting a bare
+    // `/retry` over that message is how issue #323 spent its budget on
+    // retries nothing could change. The attempt count is dropped rather than
+    // carried on that branch: a drift refusal spends no attempt, so there is
+    // no honest count to show.
+    retryFutile
+      ? 'A plain `/retry` will reproduce this failure — the way out is named above. Reply **`/cancel`** to stop.'
+      : `Attempt ${next.attempts} of ${maxAttempts}. Reply **\`/retry\`** to resume from \`${phase}\`, ` +
+        'or **`/cancel`** to stop.',
   ].join('\n')
 
 /**

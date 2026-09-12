@@ -9,7 +9,7 @@ import assert from 'node:assert/strict'
 import { tool } from 'ai'
 import { z } from 'zod'
 
-import { alertConditionSchema } from '../src/deferred-prompts/types.js'
+import { alertConditionSchema } from '../src/deferred-prompts/condition-schema.js'
 import { emitLlmStart, emitLlmEnd, type ResolvedStreamTextResult } from '../src/llm-orchestrator-events.js'
 import { makeTools } from '../src/tools/index.js'
 import { createMockProvider } from './tools/mock-provider.js'
@@ -179,6 +179,64 @@ describe('llm-orchestrator-events', () => {
         assert.ok(isRecord(captured))
         expect(captured['chatUserId']).toBe('user-2')
         expect(captured['contextType']).toBe('group')
+      } finally {
+        unsubscribe(listener)
+      }
+    })
+
+    test('captures the last current_time tag from the consumed messages into the event data', async () => {
+      const { subscribe, unsubscribe } = await import('../src/debug/event-bus.js')
+
+      const { capture, listener } = makeEventCapture('llm:end')
+      subscribe(listener)
+
+      try {
+        const result: ResolvedStreamTextResult = {
+          text: 'Hi',
+          toolCalls: [],
+          toolResults: [],
+          steps: [],
+          finalStep: { response: { messages: [], id: 'resp-3', modelId: 'gpt-4' } },
+          usage: { inputTokens: 1, outputTokens: 1 },
+          finishReason: 'stop',
+        }
+        const provider = createMockProvider()
+        const tools = await makeTools(provider, { storageContextId: 'ctx-tag', chatUserId: 'user-3' })
+        emitLlmEnd(
+          'ctx-tag',
+          'user-3',
+          'dm',
+          'gpt-4',
+          result,
+          Date.now() - 10,
+          [
+            { role: 'user', content: '<current_time>2026-05-25 08:00 (Monday)</current_time> earlier' },
+            { role: 'user', content: [{ type: 'text', text: 'parts are skipped' }] },
+            { role: 'user', content: 'tail <current_time>2026-05-25 09:30 (Monday)</current_time>' },
+          ],
+          tools,
+          'turn-3',
+        )
+
+        const captured = capture()
+        assert.ok(isRecord(captured))
+        expect(captured['currentTimeTag']).toBe('2026-05-25 09:30 (Monday)')
+
+        emitLlmEnd(
+          'ctx-tag',
+          'user-3',
+          'dm',
+          'gpt-4',
+          result,
+          Date.now() - 10,
+          [{ role: 'user', content: 'hi' }],
+          tools,
+          'turn-4',
+        )
+
+        const capturedWithoutTag = capture()
+        assert.ok(isRecord(capturedWithoutTag))
+        expect(capturedWithoutTag['currentTimeTag']).toBeUndefined()
       } finally {
         unsubscribe(listener)
       }

@@ -21,7 +21,7 @@ export type AnalyticsRequestContext = Readonly<{
 }>
 
 export type ProviderRequestObservation = Readonly<{
-  provider: 'kaneo' | 'youtrack' | 'magi' | 'mcp' | 'llm' | 'other'
+  provider: 'kaneo' | 'youtrack' | 'magi' | 'mcp' | 'llm' | 'github' | 'other'
   operation: 'read' | 'search' | 'create' | 'update' | 'delete' | 'connect' | 'stream' | 'other'
   durationMs: number
   outcome: 'success' | 'failure'

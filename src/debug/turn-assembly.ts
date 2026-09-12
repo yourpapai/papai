@@ -53,9 +53,9 @@ export type Turn = z.infer<typeof TurnSchema>
 export type Notification = z.infer<typeof NotificationSchema>
 export type ToolFailure = z.infer<typeof ToolFailureSchema>
 
-const RECENT_TURNS_CAPACITY = 512
-const RECENT_NOTIFICATIONS_CAPACITY = 2048
-const RECENT_TOOL_FAILURES_CAPACITY = 1024
+export const RECENT_TURNS_CAPACITY = 512
+export const RECENT_NOTIFICATIONS_CAPACITY = 2048
+export const RECENT_TOOL_FAILURES_CAPACITY = 1024
 
 export const recentTurns: Turn[] = []
 export const recentNotifications: Notification[] = []

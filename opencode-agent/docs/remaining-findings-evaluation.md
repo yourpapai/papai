@@ -15,8 +15,8 @@ Verdict first:
 
 | Finding                     | Real state after checking          | Fix it?                    | Effort               |
 | --------------------------- | ---------------------------------- | -------------------------- | -------------------- |
-| **S6-5** Stryker blind spot | genuinely open                     | **yes** — highest value    | half a day           |
-| **S6-7** `check.sh` gap     | genuinely open                     | **yes** — do it alongside  | ~15 minutes          |
+| Stryker blind spot          | **closed by the widening** (below) | no — done                  | done — see below     |
+| `check.sh` gap              | **closed by pin** (below)          | no — done                  | done                 |
 | Stale markers               | four wrong, one of them mine       | **yes** — now              | ~20 minutes          |
 | **S6-6** coverage floor     | **closed by measurement** (below)  | no — record the number     | done here            |
 | **S5-5** job timeout        | premise overtaken twice            | no — reword                | ~5 minutes           |
@@ -27,64 +27,58 @@ Verdict first:
 
 ---
 
-## The two worth doing
+## The two worth doing — both since closed by the widening
 
-### S6-5 — the mutation ratchet has never seen this workspace
+Both were re-checked genuinely open at `422c915`, and this file ranked them the
+two worth doing. The mutation-gate widening has since done both — the
+`ROADMAP.md` markers are `[FIXED]` — and the records below are updated to
+closed rather than deleted, because the ROADMAP blurb sends readers here for
+what the two findings cost and what fixing them cost.
 
-**Verified open.** `stryker.config.json`'s `mutate` globs are
-`src/providers/**`, `src/tools/**` and `plugins/task-provider-*/**`. There is no
-`opencode-agent/**` entry, so the repo's strongest quality gate — a per-file
-mutation ratchet that blocks CI — does not look at **8,897 lines** of this
-workspace.
+### The Stryker blind spot — closed by the widening
 
-**Effect of leaving it open, concretely.** This is not theoretical, and this
-session is the evidence in both directions. Five stages of work were
-mutation-checked _by hand_, and that hand process repeatedly found real gaps:
-the `/ask`-counts-as-work mutant survived its first pass and needed a test
-written for it; the "presentation ignores the stance" and "markers no longer
-exclusive" mutants killed 2 and 18 tests respectively only because someone
-thought to try them. It worked — and none of it is enforced or repeatable. The
-next contributor gets a suite that looks comprehensive (894 tests) with no
-mechanism telling them which of those tests actually constrain behaviour. The
-workspace that runs a mutation loop for other people's code is the one place the
-ratchet cannot see, which is the irony the finding already names.
+**The finding stood, and its own scope figure was stale.** The workspace this
+file measured at ~8.9k lines is 152 product files / 25,205 lines (measured
+2026-09-03), so the unmeasured surface was ~3× the recorded size. The ratchet
+now sees all of it:
 
-**Effort: half a day, and the risk is CI time, not correctness.** The config
-change is four lines. The real work is:
+1. `opencode-agent/src/` is a sixth gateable root in `isGateableImplFile` —
+   the changed-file gate's sole scoping authority — so `test:mutate:changed`
+   and the plan/shard/gate CI dispatch select workspace sources, and a
+   workspace-only branch no longer selects zero targets and passes unmeasured.
+2. `stryker.config.json`'s `mutate` globs enumerate the tree for all-files
+   runs, excluding the `index.ts` barrel like every other gated tree.
+3. The resolver mappers learned the workspace's **flat** layout —
+   `opencode-agent/src/**/x.ts` ↔ `tests/opencode-agent/x.test.ts` — which is
+   where all 70 test files actually sit.
 
-1. Add `opencode-agent/src/**/*.ts` to `mutate`, with the same
-   `!**/index.ts`-style exclusions the other globs use.
-2. Seed `scripts/mutation/baseline.json` on master — the documented path is
-   `test:mutate:changed --base=HEAD~1 --update-baseline` / `seedMerge`. Without
-   this every file arrives as "first measurement, seeded" and enforces nothing.
-3. **Measure the added CI time before committing to it.** 8,897 lines is a
-   large addition to a paired mutation run, and `test:mutate:changed` only
-   mutates changed files on a PR — so the steady-state cost is small, but the
-   baseline seeding run is not. This is the step that decides whether the change
-   is half a day or a week.
+Floors shipped in the same commit as the widening
+(`scripts/mutation/baseline.json`), so the scope never existed without them.
+The measurement this file demanded before committing to scope happened, and
+decided it: a fitted per-file cost model (226 measured runs) priced the
+full-scope seed at a one-off ≈4 h of chunkable measurement — 4–8 chunks of
+30–60 min, `seedMerge` per-key max and idempotent — against a steady state
+bounded by changed files (~96 s per touched workspace file). The hot-file
+fallback this file allowed for was declined on those numbers: a one-time few
+hours against a permanent hole in the strongest gate. The hand-run mutation
+checking that carried the workspace until then — five stages of it, repeatedly
+finding real gaps the suite did not pin — is retired with the blind spot.
 
-Do (3) first. If the seeding run is prohibitive, the fallback is to add the
-globs but scope the ratchet to the files this workspace changes most —
-`orchestrator.ts`, `triggers.ts`, `state-manager.ts`, `token-budget.ts`,
-the feedback modules — rather than all 59.
+### The `check.sh` gap — closed by pin, not by proxy entries
 
-### S6-7 — `check.sh`'s full list omits the workspace
-
-**Verified, and narrower than the finding says.** `scripts/check.sh` already
-routes `opencode-agent/src/*` in its staged-file dispatch (lines 38 and 51). What
-is missing is the **full** check list at line 296, which names
-`review-loop:lint`, `review-loop:typecheck`, `review-loop:format:check` and
-`review-loop:test` but no `opencode-agent:*` equivalents.
-
-**Effect.** Low but non-zero. Root `lint`/`typecheck`/`test` cover the workspace
-transitively, so this is not a hole — it is an asymmetry that will mislead. The
-concrete cost showed up in this session: `opencode-agent:format:check` covers
-only `src` and `tests` and **does not see markdown**, so a doc-only change passed
-the workspace gate and broke the root `format:check`. Somebody running "the
-workspace's checks" reasonably believes they have run the workspace's checks.
-
-**Effort: ~15 minutes.** Four entries in the `checks=(…)` array plus the
-`test`-style special-casing at line 301, mirroring `review-loop:test`.
+**Verified, and the remedy this file proposed is not the one that closed it.**
+Four `opencode-agent:*` entries in the full checks array would have
+re-introduced the per-workspace proxies that root-checks-only full mode had
+already removed. The staged enumerations already routed
+`opencode-agent/src/*`; what remained was the risk the effect clause named —
+the shell check and the gate silently disagreeing about what product code is.
+That is pinned shut from both sides: `tests/scripts/check.test.ts` derives the
+gateable roots live from the widened `isGateableImplFile` and the path-prefix
+arms live from `check.sh`'s staged license/oxlint enumerations, then asserts
+every root is routed by both or recorded as a keyed exception (`plugins/` and
+`afk-runner/src/` are the two known gateable-but-unrouted trees). A seventh
+gateable root without a matching shell arm fails the pin instead of drifting —
+the asymmetry can no longer mislead silently.
 
 ---
 
@@ -225,8 +219,4 @@ instead of the 1,600 lines below it.
 
 1. **Doc staleness** (~20 min) — cheapest, and it stops the file misleading the
    person who does the rest.
-2. **S6-7** (~15 min) — trivial, and it makes the workspace's own gate honest.
-3. **S6-5 step 3 only**: measure the mutation seeding cost. That measurement
-   decides whether step 1–2 of S6-5 is a half-day or a project.
-4. **S6-5 proper**, if the measurement allows.
-5. **S3-2**, only on the trigger stated above.
+2. **S3-2**, only on the trigger stated above.

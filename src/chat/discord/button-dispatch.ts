@@ -6,6 +6,7 @@
 import { MessageFlags } from 'discord.js'
 
 import { checkAuthorizationExtended } from '../../auth.js'
+import { replyToUnauthorized } from '../../bot-unauthorized-reply.js'
 import { logger } from '../../logger.js'
 import type { CommandHandler, IncomingInteraction, IncomingMessage, ReplyFn } from '../types.js'
 import type { ButtonInteractionLike } from './buttons.js'
@@ -159,7 +160,7 @@ async function executeCommand(
   )
 
   if (!auth.allowed) {
-    await reply.text('You are not authorized to use this bot.')
+    await replyToUnauthorized(reply, auth, mapped.contextId)
     return
   }
 

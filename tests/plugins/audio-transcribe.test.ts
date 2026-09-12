@@ -87,6 +87,7 @@ function createMockContext(
         ? undefined
         : {
             httpFetch: overrides.httpFetch ?? mock(),
+            forInstance: () => overrides.httpFetch ?? mock(),
             allowedHosts: new Set(['api.openai.com', 'api.groq.com']),
             logger: createMockLogger(),
           },

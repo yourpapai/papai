@@ -5,6 +5,7 @@
 
 import { describe, expect, test } from 'bun:test'
 
+import { getResponse } from 'msw'
 import type { HttpHandler } from 'msw'
 
 import {
@@ -35,6 +36,64 @@ describe('personal settings msw handlers (part 2)', () => {
 
   test('configHandlers populated covers /settings/api/config', () => {
     expect(pathsOf(configHandlers.populated).some((p) => p.includes('/settings/api/config'))).toBe(true)
+  })
+
+  test('configHandlers populated response carries exactly the three profile fields', async () => {
+    const response = await getResponse(
+      configHandlers.populated,
+      new Request('http://localhost/settings/api/config?contextId=ctx-personal-1'),
+    )
+    expect(response).toBeDefined()
+    const body: unknown = await response?.json()
+    // Full deep equality (not objectContaining) so a malformed language select — wrong
+    // control, missing options, stray field keys — fails here rather than downstream
+    // in the Profile section stories that render from this fixture.
+    expect(body).toEqual({
+      contextId: 'ctx-personal-1',
+      fields: [
+        {
+          key: 'display_name',
+          label: 'Display name',
+          required: false,
+          sensitive: false,
+          hasValue: true,
+          value: 'Alice',
+          storageKey: 'display_name',
+          kind: 'preference',
+          control: 'text',
+        },
+        {
+          key: 'language',
+          label: 'Language',
+          required: false,
+          sensitive: false,
+          hasValue: true,
+          value: 'en',
+          storageKey: 'language',
+          kind: 'preference',
+          control: 'select',
+          options: [
+            { value: 'en', label: 'English' },
+            { value: 'ru', label: 'Русский' },
+          ],
+        },
+        {
+          key: 'ai_output_detail_level',
+          label: 'Output detail level',
+          required: false,
+          sensitive: false,
+          hasValue: true,
+          value: 'standard',
+          storageKey: 'ai_output_detail_level',
+          kind: 'ai-output',
+          control: 'select',
+          options: [
+            { value: 'standard', label: 'Standard' },
+            { value: 'raw', label: 'Raw' },
+          ],
+        },
+      ],
+    })
   })
 
   // --- releaseSubscriptionHandlers ---

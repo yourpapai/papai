@@ -12,8 +12,8 @@ import { getPluginAdminConfig, getPluginAdminState, isPluginEnabledForContext } 
 import type { DiscoveredPlugin } from '../../src/plugins/types.js'
 import { mockLogger, setupTestDb } from '../utils/test-helpers.js'
 
-const configure = (updatedBy: string, magiBaseUrl = 'https://magi.invalid'): void => {
-  configureCodingSessionCapability({
+const configure = async (updatedBy: string, magiBaseUrl = 'https://magi.invalid'): Promise<void> => {
+  await configureCodingSessionCapability({
     pluginDirectory: 'plugins',
     contextId: 'platform:user',
     magiBaseUrl,
@@ -41,8 +41,8 @@ describe('configureCodingSessionCapability', () => {
     pluginRegistry.clearForTesting()
   })
 
-  test('configures the available coding-session implementation without exposing plugin details', () => {
-    const result = configureCodingSessionCapability({
+  test('configures the available coding-session implementation without exposing plugin details', async () => {
+    const result = await configureCodingSessionCapability({
       pluginDirectory: 'plugins',
       contextId: 'platform:user',
       magiBaseUrl: 'https://magi.invalid',
@@ -57,8 +57,8 @@ describe('configureCodingSessionCapability', () => {
     expect(isPluginEnabledForContext('acp', 'platform:user')).toBe(true)
   })
 
-  test('fails actionably when the current implementation is unavailable', () => {
-    expect(() =>
+  test('fails actionably when the current implementation is unavailable', async () => {
+    await expect(
       configureCodingSessionCapability({
         pluginDirectory: '/missing/coding-session-implementations',
         contextId: 'platform:user',
@@ -66,24 +66,24 @@ describe('configureCodingSessionCapability', () => {
         magiToken: 'secret-token',
         updatedBy: 'admin-user',
       }),
-    ).toThrow('Coding-session capability implementation is unavailable')
+    ).rejects.toThrow('Coding-session capability implementation is unavailable')
   })
 
-  test('updates configuration for an approved implementation without rewriting approval identity', () => {
-    configure('approving-admin')
+  test('updates configuration for an approved implementation without rewriting approval identity', async () => {
+    await configure('approving-admin')
 
-    configure('configuration-editor', 'https://updated-magi.invalid')
+    await configure('configuration-editor', 'https://updated-magi.invalid')
 
     expect(pluginRegistry.getEntry('acp')?.state).toBe('approved')
     expect(getPluginAdminState('acp')?.approvedBy).toBe('approving-admin')
     expect(getPluginAdminConfig('acp', 'magi_base_url')).toBe('https://updated-magi.invalid')
   })
 
-  test('preserves explicit rejection instead of silently reapproving the implementation', () => {
-    configure('approving-admin')
+  test('preserves explicit rejection instead of silently reapproving the implementation', async () => {
+    await configure('approving-admin')
     pluginRegistry.reject('acp')
 
-    expect(() => configure('configuration-editor', 'https://updated-magi.invalid')).toThrow(
+    await expect(configure('configuration-editor', 'https://updated-magi.invalid')).rejects.toThrow(
       'Coding-session capability implementation is unavailable: explicitly rejected',
     )
 
@@ -93,11 +93,11 @@ describe('configureCodingSessionCapability', () => {
   })
 
   test('reconfigures a deactivated implementation without replacing its original approver', async () => {
-    configure('approving-admin')
+    await configure('approving-admin')
     await activatePlugins([requireConfiguredImplementation()])
     await deactivateAllPlugins()
 
-    configure('configuration-editor', 'https://restarted-magi.invalid')
+    await configure('configuration-editor', 'https://restarted-magi.invalid')
 
     expect(pluginRegistry.getEntry('acp')?.state).toBe('approved')
     expect(getPluginAdminState('acp')?.approvedBy).toBe('approving-admin')

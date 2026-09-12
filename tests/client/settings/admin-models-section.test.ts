@@ -9,7 +9,7 @@ import { flushSync, mount, unmount } from 'svelte'
 
 import { setCsrfToken } from '../../../client/settings/fetchers.js'
 import AdminModelsSection from '../../../client/settings/sections/admin/AdminModelsSection.svelte'
-import { restoreFetch, setMockFetch } from '../../utils/test-helpers.js'
+import { restoreFetch, setMockFetch, waitFor } from '../../utils/test-helpers.js'
 
 const json = (payload: unknown, status = 200): Response =>
   new Response(JSON.stringify(payload), { status, headers: { 'Content-Type': 'application/json' } })
@@ -41,11 +41,30 @@ const rolesPayload = {
   roles: { main: { providerId: 'prov_1', model: 'gpt-4o' }, small: null, embedding: null },
 }
 
+const metadataHitPayload = {
+  providerId: 'openai',
+  modelId: 'gpt-4o',
+  contextWindow: 128_000,
+  maxOutputTokens: 16_384,
+  source: 'models-dev',
+  via: 'inferred',
+  snapshotFetchedAt: 1_700_000_000_000,
+}
+
 /** Route the providers and llm-roles endpoints from a single fetch mock. */
 const routeLlmFetch = (url: string): Promise<Response> => {
   if (url.includes('/settings/api/admin/providers')) return Promise.resolve(json(providersPayload))
   return Promise.resolve(json(rolesPayload))
 }
+
+/** Route the providers, llm-roles, and model-metadata endpoints from a single fetch mock. */
+const routeFetch = (url: string): Promise<Response> => {
+  if (url.includes('/settings/api/llm-model-metadata')) return Promise.resolve(json(metadataHitPayload))
+  return routeLlmFetch(url)
+}
+
+const mainHint = (): Element | null =>
+  document.querySelector('[data-testid="role-main"] [data-testid="model-metadata-hint"]')
 
 let target: HTMLElement
 
@@ -88,5 +107,38 @@ describe('AdminModelsSection', () => {
     const checkbox = document.querySelector<HTMLInputElement>('[data-testid="role-small-inherit"]')
     expect(checkbox).not.toBeNull()
     expect(checkbox?.checked).toBe(true)
+  })
+
+  test('shows the model metadata hint under a role with a bound model', async () => {
+    setMockFetch(routeFetch)
+    mount(AdminModelsSection, { target })
+    await drain()
+
+    await waitFor(() => {
+      flushSync()
+      return mainHint() !== null
+    })
+    expect(mainHint()?.textContent).toContain('models.dev · openai/gpt-4o')
+    expect(mainHint()?.textContent).toContain('ctx 128000')
+    expect(mainHint()?.textContent).toContain('max out 16384')
+  })
+
+  test('hides the metadata hint when the model field is cleared', async () => {
+    setMockFetch(routeFetch)
+    mount(AdminModelsSection, { target })
+    await drain()
+    await waitFor(() => {
+      flushSync()
+      return mainHint() !== null
+    })
+
+    const modelInput = document.querySelector<HTMLInputElement>('[data-testid="role-main-model"]')!
+    modelInput.value = ''
+    modelInput.dispatchEvent(new Event('input', { bubbles: true }))
+
+    await waitFor(() => {
+      flushSync()
+      return mainHint() === null
+    })
   })
 })

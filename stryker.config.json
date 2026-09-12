@@ -16,6 +16,10 @@
     "!plugins/task-provider-*/**/index.ts",
     "!plugins/task-provider-*/**/constants.ts",
     "!plugins/task-provider-*/**/client.ts",
+    "!plugins/task-provider-kaneo/auto-provision.ts",
+    "opencode-agent/src/**/*.ts",
+    "!opencode-agent/src/**/index.ts",
+    "!opencode-agent/src/**/constants.ts",
     "src/errors.ts",
     "src/config.ts",
     "src/memory.ts",
@@ -23,9 +27,11 @@
     "src/cron.ts",
     "src/recurring.ts",
     "src/history.ts",
-    "src/conversation.ts"
+    "src/conversation.ts",
+    "!src/i18n/locales/**/*.ts"
   ],
   "coverageAnalysis": "perTest",
+  "disableTypeChecks": false,
   "ignoreStatic": true,
   "incremental": true,
   "incrementalFile": "reports/stryker-incremental.json",
@@ -55,5 +61,6 @@
     "!.opencode/plugins/**",
     ".worktrees"
   ],
-  "cleanTempDir": true
+  "cleanTempDir": true,
+  "tsconfigFile": "tsconfig.stryker-rewrite-disabled.json"
 }

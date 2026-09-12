@@ -35,12 +35,30 @@ export type ScenarioReply = Readonly<{
   data?: unknown
 }>
 
+export type ScenarioProactiveDeliveryOutcome = 'sent' | 'failed' | 'throws'
+
+export type ScenarioProactiveDeliveryPlan = Readonly<{
+  contextId: string
+  outcomes: readonly ScenarioProactiveDeliveryOutcome[]
+}>
+
+type ScenarioProactiveAttempt = Readonly<{
+  contextId: string
+  platformInstanceId: string
+  markdown: string
+}>
+
 export type ScenarioChat = Omit<ChatProvider, 'onInteraction'> &
   RuntimeIngress &
   Readonly<{
     onInteraction: NonNullable<ChatProvider['onInteraction']>
+    resolveUserLabel: NonNullable<ChatProvider['resolveUserLabel']>
     allReplies(): readonly ScenarioReply[]
     addGroupAdmin(groupId: string, userId: string): void
+    /** Seed the label a userId resolves to; an Error makes the lookup reject. */
+    setUserLabel(userId: string, label: string | Error): void
+    configureProactiveDelivery(plans: readonly ScenarioProactiveDeliveryPlan[]): void
+    proactiveAttempts(): readonly ScenarioProactiveAttempt[]
   }>
 
 const clone = <T>(value: T): T => structuredClone(value)
@@ -89,8 +107,11 @@ export function createScenarioChat(scenarioName: string, events: ScenarioEvents)
   let messageHandler: MessageHandler | undefined
   let interactionHandler: InteractionHandler | undefined
   let replies: readonly ScenarioReply[] = []
+  const proactiveOutcomes = new Map<string, ScenarioProactiveDeliveryOutcome[]>()
+  let proactiveAttempts: readonly ScenarioProactiveAttempt[] = []
   const commands = new Map<string, CommandHandler>()
   const groupAdmins = new Set<string>()
+  const userLabels = new Map<string, string | Error>()
 
   const hasGroupAdmin = (platformInstanceId: string, nativeGroupId: string, userId: string): boolean =>
     groupAdmins.has(`${toScopedContextId({ platformInstanceId, nativeContextId: nativeGroupId })}:${userId}`)
@@ -253,7 +274,10 @@ export function createScenarioChat(scenarioName: string, events: ScenarioEvents)
         threadId: target.threadId,
         data: target,
       })
-      return Promise.resolve(true)
+      proactiveAttempts = [...proactiveAttempts, { contextId: target.contextId, platformInstanceId, markdown }]
+      const outcome = proactiveOutcomes.get(target.contextId)?.shift() ?? 'sent'
+      if (outcome === 'throws') return Promise.reject(new Error('Scripted proactive delivery failure'))
+      return Promise.resolve(outcome === 'sent')
     },
     renderContext(snapshot: ContextSnapshot) {
       return { method: 'text', content: JSON.stringify(snapshot) }
@@ -302,8 +326,41 @@ export function createScenarioChat(scenarioName: string, events: ScenarioEvents)
       await handler(normalized, createReply(normalized))
     },
     allReplies: () => clone(replies),
+    configureProactiveDelivery(plans): void {
+      if (state !== 'new') {
+        throw new Error(events.formatFailure('proactive delivery must be configured before chat start'))
+      }
+      const configuredOutcomes = new Map<string, ScenarioProactiveDeliveryOutcome[]>()
+      for (const plan of plans) {
+        if (plan.contextId.length === 0) {
+          throw new Error(events.formatFailure('proactive delivery context ID cannot be empty'))
+        }
+        if (plan.outcomes.length === 0) {
+          throw new Error(events.formatFailure('proactive delivery outcomes cannot be empty'))
+        }
+        if (configuredOutcomes.has(plan.contextId)) {
+          throw new Error(events.formatFailure(`duplicate proactive delivery context ID: ${plan.contextId}`))
+        }
+        configuredOutcomes.set(plan.contextId, [...plan.outcomes])
+      }
+      proactiveOutcomes.clear()
+      for (const [contextId, outcomes] of configuredOutcomes) {
+        proactiveOutcomes.set(contextId, outcomes)
+      }
+    },
+    proactiveAttempts: () => clone(proactiveAttempts),
     addGroupAdmin(groupId: string, userId: string): void {
       groupAdmins.add(`${groupId}:${userId}`)
+    },
+    setUserLabel(userId: string, label: string | Error): void {
+      userLabels.set(userId, label)
+    },
+    // Unseeded ids resolve to null, matching a real provider that does not know the user.
+    resolveUserLabel(userId: string): Promise<string | null> {
+      const label = userLabels.get(userId)
+      if (label === undefined) return Promise.resolve(null)
+      if (label instanceof Error) return Promise.reject(label)
+      return Promise.resolve(label)
     },
   }
 }

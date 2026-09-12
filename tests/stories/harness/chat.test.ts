@@ -140,6 +140,30 @@ describe('scenario chat', () => {
     expect(chat.allReplies()[1]).toMatchObject({ threadId: 'thread-7' })
   })
 
+  test('records every proactive attempt while consuming scripted outcomes', async () => {
+    const events = createScenarioEvents('proactive-outcomes')
+    const chat = createScenarioChat('proactive-outcomes', events)
+    chat.configureProactiveDelivery([
+      { contextId: 'dm-ok', outcomes: ['sent'] },
+      { contextId: 'group-retry', outcomes: ['failed', 'sent'] },
+      { contextId: 'dm-throws', outcomes: ['throws'] },
+    ])
+    await chat.start()
+
+    expect(await chat.sendMessage('scenario-platform', dmTarget('dm-ok'), 'release')).toBe(true)
+    expect(await chat.sendMessage('scenario-platform', dmTarget('group-retry'), 'release')).toBe(false)
+    await expect(chat.sendMessage('scenario-platform', dmTarget('dm-throws'), 'release')).rejects.toThrow(
+      'Scripted proactive delivery failure',
+    )
+    expect(await chat.sendMessage('scenario-platform', dmTarget('group-retry'), 'release')).toBe(true)
+    expect(
+      chat
+        .proactiveAttempts()
+        .map(({ contextId }) => contextId)
+        .toSorted(),
+    ).toEqual(['dm-ok', 'dm-throws', 'group-retry', 'group-retry'])
+  })
+
   test('dispatches interactions through the registered interaction handler', async () => {
     const events = createScenarioEvents('interaction')
     const chat = createScenarioChat('interaction', events)
@@ -231,6 +255,21 @@ describe('scenario chat', () => {
       ],
       fileCandidates: [{ fileId: 'file-2', filename: 'later.txt', size: 12 }],
     })
+  })
+
+  test('resolves seeded user labels and reports unseeded ids as unresolved', async () => {
+    const chat = createScenarioChat('user labels', createScenarioEvents('user labels'))
+    chat.setUserLabel('user-1', 'Alice Anders')
+
+    expect(await chat.resolveUserLabel('user-1', undefined)).toBe('Alice Anders')
+    expect(await chat.resolveUserLabel('user-2', undefined)).toBeNull()
+  })
+
+  test('throws from resolveUserLabel when an id is seeded with an error', async () => {
+    const chat = createScenarioChat('user label failure', createScenarioEvents('user label failure'))
+    chat.setUserLabel('user-1', new Error('platform lookup failed'))
+
+    await expect(chat.resolveUserLabel('user-1', undefined)).rejects.toThrow('platform lookup failed')
   })
 
   test('reply snapshots do not leak mutations', async () => {

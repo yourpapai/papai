@@ -172,46 +172,46 @@ export const decodeAbort = (aborted: unknown): boolean => {
 }
 
 /**
- * What a session has spent so far, as the server itself accounts for it.
+ * The children envelope: `GET /session/{id}/children` answers
+ * `200: Array<Session>` under the same `{ data, error }` envelope every other
+ * response here uses — the recorded convention applied to a list.
  *
- * Read back from `session.get` rather than summed from the event stream. Both
- * numbers exist and agree, but only this one is free of a race: a total summed
- * from events is whatever has arrived by the time it is asked for, and the
- * budget is checked immediately after a prompt returns. Verified against a real
- * server — two prompts of 1234/567 tokens each read back as exactly 2468/1134.
- *
- * `cost` is decoded and reported, never enforced on. It is derived from
- * OpenCode's model catalogue, and a model the catalogue does not price reports
- * the right token counts and a cost of **0**.
+ * Only `id` is read from each entry: the session-tree walk this feeds needs
+ * addresses and nothing else. An entry whose `id` has moved or gone is dropped
+ * whole — one bent child must not fail the list — and an unrecognised payload
+ * reports `null` on the `decodeSessionUsage` doctrine: the walk decorates the
+ * spend read, and an SDK that moved this list must not fail the turn or the
+ * phase. A listing that parses as an array but vouches for no entry at all is
+ * the unrecognised case, not an empty tree: every `id` having moved is shape
+ * drift, and the walk must read the subtree as absent loudly, never silently.
  */
-const sessionUsageSchema = z.object({
-  data: z
-    .object({
-      tokens: z.object({ input: z.number(), output: z.number(), reasoning: z.number().default(0) }),
-      cost: z.number().default(0),
-    })
-    .optional(),
+const sessionChildSchema = z
+  .object({ id: z.string().min(1) })
+  .optional()
+  .catch(undefined)
+
+const sessionChildrenSchema = z.object({
+  data: z.array(sessionChildSchema).optional().catch(undefined),
   error: z.unknown().optional(),
 })
 
-export interface SessionUsage {
-  tokens: number
-  cost: number
+export const decodeSessionChildren = (fetched: unknown): readonly string[] | null => {
+  const parsed = sessionChildrenSchema.safeParse(fetched)
+  if (!parsed.success || parsed.data.data === undefined) return null
+
+  const ids = parsed.data.data.flatMap((entry) => (entry === undefined ? [] : [entry.id]))
+  // A non-empty listing that vouches for no entry is shape drift, not an empty
+  // tree: report it unrecognised so the walk degrades loudly (readNode throws,
+  // sessionTreeUsage warns and answers parent-only) instead of silently
+  // reading the subtree as absent.
+  if (parsed.data.data.length > 0 && ids.length === 0) return null
+  return ids
 }
 
 /**
- * Decodes a session's running totals.
- *
- * Unlike the other decoders here this one does **not** throw on a shape it does
- * not recognise. A budget is a guardrail on the work, not part of it, and an SDK
- * upgrade that moves these fields must not turn every phase into a failure. It
- * reports zero and says so at the call site, which is visible in the log and in
- * the totals the run reports.
+ * The usage half — the `session.get` account and the tree sum — lives in
+ * `sdk-usage.ts`, split when this file reached `max-lines` again. Re-exported
+ * so the contract's consumers keep naming this module for what the SDK says.
  */
-export const decodeSessionUsage = (fetched: unknown): SessionUsage | null => {
-  const parsed = sessionUsageSchema.safeParse(fetched)
-  if (!parsed.success || parsed.data.data === undefined) return null
-
-  const { tokens, cost } = parsed.data.data
-  return { tokens: Math.round(tokens.input + tokens.output + tokens.reasoning), cost }
-}
+export { decodeSessionUsage, sumSessionUsage } from './sdk-usage.js'
+export type { SessionUsage } from './sdk-usage.js'

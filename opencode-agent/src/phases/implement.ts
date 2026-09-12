@@ -6,7 +6,7 @@
 import { findHandoff, renderArtifact, REPORT_MARKER } from '../artifacts.js'
 import { noChangesError } from '../errors.js'
 import { branchNameFor } from '../git.js'
-import { IMPLEMENT_INSTRUCTIONS } from '../implement-prompts.js'
+import { IMPLEMENT_INSTRUCTIONS, steeringNote } from '../implement-prompts.js'
 import { composeSystemPrompt } from '../obra-skills.js'
 import type { PhaseHandler, PhaseInput, PhaseOutcome } from '../phase-context.js'
 import { planBoxes } from '../plan-steps.js'
@@ -79,6 +79,9 @@ export const handleImplement: PhaseHandler = async (input): Promise<PhaseOutcome
     // `findHandoff`, which is where the revision check lives — a note about a plan
     // that has since been rewritten describes work nobody asked for any more.
     handoff: findHandoff(input.thread, await deps.selfLogin(), state.planRevision),
+    // The maintainer's steering note, when the command that re-entered this
+    // phase carried one. Prompt-scoped: nothing downstream persists it.
+    note: steeringNote(input.command),
   })
 
   return settleWalk({ input, branch, system, total: steps.length, walk })

@@ -121,6 +121,8 @@
     providerType: string
     baseUrl: string
     apiKey: string
+    baseProvider: string | null
+    baseModel: string | null
   }): Promise<boolean> {
     saving = true
     error = null
@@ -131,6 +133,8 @@
         providerType: input.providerType,
         baseUrl: input.baseUrl,
         apiKey: input.apiKey,
+        baseProvider: input.baseProvider,
+        baseModel: input.baseModel,
         verification: {
           status: 'unverified' as const,
           error: null,

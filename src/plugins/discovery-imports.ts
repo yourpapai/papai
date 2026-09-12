@@ -3,18 +3,13 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import ts from '@typescript/typescript6'
+import type { SourceParser } from '../ts-ast/source-parser.js'
+import { collectImports, type ImportScanResult } from './discovery-import-scan.js'
 
-type ImportScanResult = {
-  staticSpecifiers: string[]
-  dynamicSpecifiers: string[]
-  importMetaRequireSpecifiers: string[]
-  hasNonDeterministicDynamicImport: boolean
-  hasNonDeterministicImportMetaRequire: boolean
-}
-
-type RequireAliasSet = Set<string>
-
+/**
+ * Walks a plugin's entry graph: every source reachable from the entry point
+ * through relative imports, literal dynamic imports, and `import.meta.require`.
+ */
 type PendingPluginSource = {
   path: string
   fromRequire: boolean
@@ -25,148 +20,8 @@ type ReadPluginSourceGraphDeps = {
   resolveEntryImport(fromFile: string, pluginDir: string, specifier: string): string
 }
 
-function readDynamicImportSpecifier(node: ts.CallExpression): string | null {
-  const [argument] = node.arguments
-  if (argument === undefined) return null
-  if (ts.isStringLiteral(argument)) return argument.text
-  if (ts.isNoSubstitutionTemplateLiteral(argument)) return argument.text
-  return null
-}
-
-function readImportDeclarationSpecifier(node: ts.ImportDeclaration): string | null {
-  return ts.isStringLiteral(node.moduleSpecifier) ? node.moduleSpecifier.text : null
-}
-
-function readExportDeclarationSpecifier(node: ts.ExportDeclaration): string | null {
-  return node.moduleSpecifier !== undefined && ts.isStringLiteral(node.moduleSpecifier)
-    ? node.moduleSpecifier.text
-    : null
-}
-
-function isImportMetaRequireCall(node: ts.Node): node is ts.CallExpression {
-  return (
-    ts.isCallExpression(node) &&
-    ts.isPropertyAccessExpression(node.expression) &&
-    node.expression.name.text === 'require' &&
-    ts.isMetaProperty(node.expression.expression) &&
-    node.expression.expression.keywordToken === ts.SyntaxKind.ImportKeyword &&
-    node.expression.expression.name.text === 'meta'
-  )
-}
-
-function isRequireAliasDeclaration(node: ts.Node): node is ts.VariableDeclaration {
-  return (
-    ts.isVariableDeclaration(node) &&
-    ts.isIdentifier(node.name) &&
-    node.initializer !== undefined &&
-    ts.isPropertyAccessExpression(node.initializer) &&
-    node.initializer.name.text === 'require' &&
-    ts.isMetaProperty(node.initializer.expression) &&
-    node.initializer.expression.keywordToken === ts.SyntaxKind.ImportKeyword &&
-    node.initializer.expression.name.text === 'meta'
-  )
-}
-
-function readRequireAlias(node: ts.Node): string | null {
-  if (!isRequireAliasDeclaration(node)) return null
-  return ts.isIdentifier(node.name) ? node.name.text : null
-}
-
-function isAliasedImportMetaRequireCall(node: ts.Node, aliases: ReadonlySet<string>): node is ts.CallExpression {
-  return ts.isCallExpression(node) && ts.isIdentifier(node.expression) && aliases.has(node.expression.text)
-}
-
-function collectImportSpecifiers(
-  node: ts.Node,
-  aliases: ReadonlySet<string>,
-  specifiers: {
-    staticSpecifiers: string[]
-    dynamicSpecifiers: string[]
-    importMetaRequireSpecifiers: string[]
-  },
-): { hasNonDeterministicDynamicImport: boolean; hasNonDeterministicImportMetaRequire: boolean } {
-  let hasNonDeterministicDynamicImport = false
-  let hasNonDeterministicImportMetaRequire = false
-
-  if (ts.isImportDeclaration(node)) {
-    const specifier = readImportDeclarationSpecifier(node)
-    if (specifier !== null) specifiers.staticSpecifiers.push(specifier)
-  }
-
-  if (ts.isExportDeclaration(node)) {
-    const specifier = readExportDeclarationSpecifier(node)
-    if (specifier !== null) specifiers.staticSpecifiers.push(specifier)
-  }
-
-  if (ts.isCallExpression(node) && node.expression.kind === ts.SyntaxKind.ImportKeyword) {
-    const specifier = readDynamicImportSpecifier(node)
-    if (specifier === null) hasNonDeterministicDynamicImport = true
-    else specifiers.dynamicSpecifiers.push(specifier)
-  }
-
-  if (isImportMetaRequireCall(node) || isAliasedImportMetaRequireCall(node, aliases)) {
-    const specifier = readDynamicImportSpecifier(node)
-    if (specifier === null) hasNonDeterministicImportMetaRequire = true
-    else specifiers.importMetaRequireSpecifiers.push(specifier)
-  }
-
-  return { hasNonDeterministicDynamicImport, hasNonDeterministicImportMetaRequire }
-}
-
-function collectImports(sourceFile: ts.SourceFile): ImportScanResult {
-  const staticSpecifiers: string[] = []
-  const dynamicSpecifiers: string[] = []
-  const importMetaRequireSpecifiers: string[] = []
-  const requireAliases: RequireAliasSet = new Set()
-  let hasNonDeterministicDynamicImport = false
-  let hasNonDeterministicImportMetaRequire = false
-
-  function visit(node: ts.Node): void {
-    const requireAlias = readRequireAlias(node)
-    if (requireAlias !== null) {
-      requireAliases.add(requireAlias)
-    }
-
-    const result = collectImportSpecifiers(node, requireAliases, {
-      staticSpecifiers,
-      dynamicSpecifiers,
-      importMetaRequireSpecifiers,
-    })
-    if (result.hasNonDeterministicDynamicImport) {
-      hasNonDeterministicDynamicImport = true
-    }
-    if (result.hasNonDeterministicImportMetaRequire) {
-      hasNonDeterministicImportMetaRequire = true
-    }
-
-    ts.forEachChild(node, visit)
-  }
-
-  visit(sourceFile)
-
-  return {
-    staticSpecifiers,
-    dynamicSpecifiers,
-    importMetaRequireSpecifiers,
-    hasNonDeterministicDynamicImport,
-    hasNonDeterministicImportMetaRequire,
-  }
-}
-
-function parseSource(source: string): ts.SourceFile {
-  return ts.createSourceFile('plugin-source.ts', source, ts.ScriptTarget.Latest, false, ts.ScriptKind.TS)
-}
-
 function makePendingVisitKey(current: PendingPluginSource): string {
   return `${current.path}::${current.fromRequire ? 'require' : 'import'}`
-}
-
-function readPluginDynamicImports(currentPath: string, source: string): string[] {
-  try {
-    return readLiteralDynamicImports(source)
-  } catch {
-    throw new Error(`Unresolvable plugin dynamic import in ${currentPath}`)
-  }
 }
 
 function enqueueResolvedImport(
@@ -210,78 +65,82 @@ function addPendingRequireImports(
   }
 }
 
-export function readStaticImportSpecifiers(source: string): string[] {
-  return collectImports(parseSource(source)).staticSpecifiers
-}
-
-export function readLiteralDynamicImports(source: string): string[] {
-  const result = collectImports(parseSource(source))
-  if (result.hasNonDeterministicDynamicImport) {
-    throw new Error('Unresolvable plugin dynamic import in source')
-  }
-
-  return result.dynamicSpecifiers
-}
-
-export function readLiteralImportMetaRequires(source: string): string[] {
-  const result = collectImports(parseSource(source))
+function visitPluginSource(
+  result: ImportScanResult,
+  pending: PendingPluginSource[],
+  current: PendingPluginSource,
+  pluginDir: string,
+  deps: ReadPluginSourceGraphDeps,
+): void {
   if (result.hasNonDeterministicImportMetaRequire) {
-    throw new Error('Unresolvable plugin import.meta.require in source')
+    throw new Error(`Unresolvable plugin import.meta.require in ${current.path}`)
   }
+  addPendingRequireImports(pending, current, pluginDir, result.importMetaRequireSpecifiers, deps)
+  if (current.fromRequire) return
 
-  return result.importMetaRequireSpecifiers
+  if (result.hasNonDeterministicDynamicImport) {
+    throw new Error(`Unresolvable plugin dynamic import in ${current.path}`)
+  }
+  addPendingStaticImports(pending, current.path, pluginDir, result.dynamicSpecifiers, deps)
+  addPendingStaticImports(pending, current.path, pluginDir, result.staticSpecifiers, deps)
 }
 
-function readPluginImportMetaRequireSpecifiers(currentPath: string, source: string): string[] {
-  try {
-    return readLiteralImportMetaRequires(source)
-  } catch {
-    throw new Error(`Unresolvable plugin import.meta.require in ${currentPath}`)
-  }
+type WalkState = {
+  readonly visited: Set<string>
+  readonly ordered: string[]
 }
 
-export function readPluginSourceGraph(
+/** Claim the unvisited entries of a round, recording their arrival order. */
+function admit(pending: readonly PendingPluginSource[], state: WalkState): PendingPluginSource[] {
+  const admitted: PendingPluginSource[] = []
+  for (const current of pending) {
+    const visitKey = makePendingVisitKey(current)
+    if (state.visited.has(visitKey)) continue
+    state.visited.add(visitKey)
+    if (!state.ordered.includes(current.path)) state.ordered.push(current.path)
+    admitted.push(current)
+  }
+  return admitted
+}
+
+/**
+ * Breadth-first by depth level rather than file: every source at one depth is
+ * parsed in a single batch, so the walk stays cache-friendly and its outputs
+ * fold in arrival order. Recursion rather than a loop keeps the awaits out of
+ * iteration.
+ */
+async function walkPluginSources(
+  parser: SourceParser,
+  pending: readonly PendingPluginSource[],
+  state: WalkState,
+  pluginDir: string,
+  deps: ReadPluginSourceGraphDeps,
+  readFileSync: (path: string, encoding: 'utf-8') => string,
+): Promise<void> {
+  const round = admit(pending, state)
+  if (round.length === 0) return
+
+  const sources = new Map(round.map((current) => [current.path, readFileSync(current.path, 'utf-8')]))
+  const parsed = await parser.parseAll(sources)
+
+  const next: PendingPluginSource[] = []
+  for (const current of round) {
+    const sourceFile = parsed.get(current.path)
+    if (sourceFile === undefined) throw new Error(`Unreadable plugin source ${current.path}`)
+    visitPluginSource(collectImports(sourceFile), next, current, pluginDir, deps)
+  }
+
+  return walkPluginSources(parser, next, state, pluginDir, deps, readFileSync)
+}
+
+export async function readPluginSourceGraph(
+  parser: SourceParser,
   entryPoint: string,
   pluginDir: string,
   deps: ReadPluginSourceGraphDeps,
   readFileSync: (path: string, encoding: 'utf-8') => string,
-): string[] {
-  const pending: PendingPluginSource[] = [{ path: entryPoint, fromRequire: false }]
-  const visited = new Set<string>()
-  const ordered: string[] = []
-
-  while (pending.length > 0) {
-    const current = pending.pop()
-    if (current === undefined) continue
-
-    const visitKey = makePendingVisitKey(current)
-    if (visited.has(visitKey)) continue
-
-    visited.add(visitKey)
-    if (!ordered.includes(current.path)) ordered.push(current.path)
-
-    const source = readFileSync(current.path, 'utf-8')
-    if (current.fromRequire) {
-      addPendingRequireImports(
-        pending,
-        current,
-        pluginDir,
-        readPluginImportMetaRequireSpecifiers(current.path, source),
-        deps,
-      )
-      continue
-    }
-
-    addPendingStaticImports(pending, current.path, pluginDir, readPluginDynamicImports(current.path, source), deps)
-    addPendingRequireImports(
-      pending,
-      current,
-      pluginDir,
-      readPluginImportMetaRequireSpecifiers(current.path, source),
-      deps,
-    )
-    addPendingStaticImports(pending, current.path, pluginDir, readStaticImportSpecifiers(source), deps)
-  }
-
-  return ordered.sort()
+): Promise<string[]> {
+  const state: WalkState = { visited: new Set(), ordered: [] }
+  await walkPluginSources(parser, [{ path: entryPoint, fromRequire: false }], state, pluginDir, deps, readFileSync)
+  return state.ordered.sort()
 }

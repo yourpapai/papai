@@ -6,6 +6,8 @@
 import { Octokit } from '@octokit/rest'
 
 import type { IssueComment } from './blocks.js'
+import { createActionsEndpoints } from './github-actions.js'
+import type { ActionsApi } from './github-actions.js'
 import { createLabelEndpoints } from './github-labels.js'
 import type { LabelApi } from './github-labels.js'
 import { createPullRequestEndpoints } from './github-pulls.js'
@@ -32,7 +34,12 @@ export interface PostedComment {
  * extending them is what keeps a fake that satisfies `GitHubApi` unable to leave
  * one of them out, which is the property the whole interface exists for.
  */
-export interface GitHubApi extends LabelApi, PullRequestApi, ReactionApi {
+export interface GitHubUser {
+  login: string
+  id: number
+}
+
+export interface GitHubApi extends ActionsApi, LabelApi, PullRequestApi, ReactionApi {
   listIssueComments(issueNumber: number): Promise<IssueComment[]>
   /** Returns the created comment, including the author GitHub recorded. */
   createComment(issueNumber: number, body: string): Promise<PostedComment>
@@ -53,6 +60,7 @@ export interface GitHubApi extends LabelApi, PullRequestApi, ReactionApi {
   updateComment(commentId: number, body: string): Promise<void>
   getIssue(issueNumber: number): Promise<IssueContext>
   getAuthenticatedLogin(): Promise<string>
+  getUser(login: string): Promise<GitHubUser>
 }
 
 export interface OctokitApiOptions {
@@ -122,6 +130,18 @@ const listIssueComments = async (octokit: Octokit, repo: Repo, issueNumber: numb
   }))
 }
 
+/** The comment write, lifted out of the factory: both halves are free text. */
+const createComment = async (
+  octokit: Octokit,
+  repo: Repo,
+  clean: (text: string) => string,
+  issueNumber: number,
+  body: string,
+): Promise<PostedComment> => {
+  const { data } = await octokit.rest.issues.createComment({ ...repo, issue_number: issueNumber, body: clean(body) })
+  return { id: data.id, url: data.html_url, authorLogin: data.user?.login ?? '' }
+}
+
 /** Builds a {@link GitHubApi} backed by `@octokit/rest`. */
 export const createOctokitApi = (options: OctokitApiOptions): GitHubApi => {
   const repo: Repo = { owner: options.owner, repo: options.repo }
@@ -143,15 +163,12 @@ export const createOctokitApi = (options: OctokitApiOptions): GitHubApi => {
     // The pull-request family does carry free text, so it is handed `clean`
     // rather than exempted from it. See `github-pulls.ts`.
     ...createPullRequestEndpoints(octokit, repo, clean),
+    // The Actions family reads the free text of a CI log rather than writing
+    // any, and is handed the same `clean` for the same reason. See
+    // `github-actions.ts`.
+    ...createActionsEndpoints(octokit, repo, clean),
 
-    createComment: async (issueNumber, body) => {
-      const { data } = await octokit.rest.issues.createComment({
-        ...repo,
-        issue_number: issueNumber,
-        body: clean(body),
-      })
-      return { id: data.id, url: data.html_url, authorLogin: data.user?.login ?? '' }
-    },
+    createComment: (issueNumber, body) => createComment(octokit, repo, clean, issueNumber, body),
 
     updateComment: async (commentId, body) => {
       await octokit.rest.issues.updateComment({ ...repo, comment_id: commentId, body: clean(body) })
@@ -165,6 +182,11 @@ export const createOctokitApi = (options: OctokitApiOptions): GitHubApi => {
     getAuthenticatedLogin: async () => {
       const { data } = await octokit.rest.users.getAuthenticated()
       return data.login
+    },
+
+    getUser: async (login) => {
+      const { data } = await octokit.rest.users.getByUsername({ username: login })
+      return { login: data.login, id: data.id }
     },
   }
 }

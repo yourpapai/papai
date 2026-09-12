@@ -9,6 +9,16 @@
 // Set log level to silent before any modules load
 process.env['LOG_LEVEL'] = 'silent'
 
+// Force ink/chalk color on before any suite can load them. chalk snapshots
+// color support from the env at import time, and in a serial run whichever
+// test file first reaches `sdd-runner/src` transitively loads ink — a pure
+// reducer suite with no color interest of its own works just as well. If that
+// happens before FORCE_COLOR is set (CI's file-discovery order does exactly
+// this), every later suite's frames render monochrome and the escape-asserting
+// TUI tests fail no matter what they set. A preload precedes every file load,
+// so this line is the only place the snapshot cannot be raced.
+process.env['FORCE_COLOR'] ??= '1'
+
 // Store original console methods
 const originalConsole = {
   log: console.log,
@@ -44,6 +54,6 @@ export { originalConsole }
 // never set the flag, so neither `bun` nor `svelte/compiler` is imported.
 if (process.env['PAPAI_SVELTE_TEST_PLUGIN'] === '1') {
   const { plugin } = await import('bun')
-  const { sveltePlugin } = await import('../scripts/svelte-plugin.js')
-  void plugin(sveltePlugin({ dev: true }))
+  const { sveltePlugin } = await import('./utils/svelte-plugin.js')
+  void plugin(sveltePlugin())
 }

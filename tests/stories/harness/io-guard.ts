@@ -208,6 +208,13 @@ function restoreEnvironment(snapshot: Readonly<Record<string, string>>): readonl
   return mutations
 }
 
+/**
+ * No child process is admitted, ever. Parsing is in-process (see
+ * `src/ts-ast/source-parser.ts`), so every spawn — any executable, from any
+ * path, through any entry point — is a hermetic I/O violation. The probe
+ * scenarios in `io-guard-probe.ts` pin that even a compiler-binary lookalike
+ * inside the execution root stays denied.
+ */
 function installProcessAndNetworkMocks(): void {
   const deniedChildProcess = {
     exec: (): never => deny('child_process.exec'),
@@ -335,7 +342,7 @@ export function installIoGuard(): void {
     if (boundary.bindings === undefined) throw diagnostic(boundary, 'fetch')
     return boundary.bindings.http.fetch(input, init)
   })
-  Reflect.set(Bun, 'spawn', () => deny('Bun.spawn'))
+  Reflect.set(Bun, 'spawn', (): never => deny('Bun.spawn'))
   Reflect.set(Bun, 'spawnSync', () => deny('Bun.spawnSync'))
   Reflect.set(Bun, 'serve', () => deny('Bun.serve'))
   Reflect.set(Bun, 'listen', () => deny('Bun.listen'))

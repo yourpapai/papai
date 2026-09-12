@@ -205,16 +205,18 @@ export const unsetToolDefaults = (): Promise<ToolsResponse> =>
 
 // --- Admin: release notes ---
 
+export type ReleaseLocale = 'en' | 'ru'
+
 export const fetchReleaseNotes = (): Promise<ReleaseNotesResponse> =>
   getJson('/settings/api/admin/release-notes', (b) => ReleaseNotesResponseSchema.parse(b))
 
-export const regenerateReleaseNotes = (): Promise<ReleaseNotesResponse> =>
-  writeJson('/settings/api/admin/release-notes', 'POST', { action: 'regenerate' }, (b) =>
+export const regenerateReleaseNotes = (locale: ReleaseLocale): Promise<ReleaseNotesResponse> =>
+  writeJson('/settings/api/admin/release-notes', 'POST', { action: 'regenerate', locale }, (b) =>
     ReleaseNotesResponseSchema.parse(b),
   )
 
-export const saveReleaseNotes = (body: string): Promise<ReleaseNotesResponse> =>
-  writeJson('/settings/api/admin/release-notes', 'POST', { action: 'save', body }, (b) =>
+export const saveReleaseNotes = (body: string, locale: ReleaseLocale): Promise<ReleaseNotesResponse> =>
+  writeJson('/settings/api/admin/release-notes', 'POST', { action: 'save', locale, body }, (b) =>
     ReleaseNotesResponseSchema.parse(b),
   )
 

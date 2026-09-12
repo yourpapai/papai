@@ -8,7 +8,8 @@ import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, w
 import { tmpdir } from 'node:os'
 import { join, win32 } from 'node:path'
 
-import { discoverPlugins, discoveryPathOps, isPathInsideDirectory } from '../../src/plugins/discovery.js'
+import { discoveryPathOps, isPathInsideDirectory } from '../../src/plugins/discovery-paths.js'
+import { discoverPlugins } from '../../src/plugins/discovery.js'
 
 const tempDirs: string[] = []
 
@@ -62,39 +63,39 @@ afterEach(() => {
 })
 
 describe('discoverPlugins', () => {
-  test('returns no plugins and no errors when plugins directory is missing', () => {
+  test('returns no plugins and no errors when plugins directory is missing', async () => {
     const missingDir = join(makeTempDir(), 'does-not-exist')
-    const result = discoverPlugins(missingDir)
+    const result = await discoverPlugins(missingDir)
 
     expect(result.plugins).toEqual([])
     expect(result.errors).toEqual([])
   })
 
-  test('reports directoryMissing=true when the plugins directory is absent', () => {
+  test('reports directoryMissing=true when the plugins directory is absent', async () => {
     const missingDir = join(makeTempDir(), 'does-not-exist')
-    const result = discoverPlugins(missingDir)
+    const result = await discoverPlugins(missingDir)
     expect(result.directoryMissing).toBe(true)
   })
 
-  test('reports directoryMissing=false when the plugins directory exists but is empty', () => {
+  test('reports directoryMissing=false when the plugins directory exists but is empty', async () => {
     const emptyDir = makeTempDir()
-    const result = discoverPlugins(emptyDir)
+    const result = await discoverPlugins(emptyDir)
     expect(result.directoryMissing).toBe(false)
   })
 
-  test('discovers valid plugins in deterministic directory/id order', () => {
+  test('discovers valid plugins in deterministic directory/id order', async () => {
     const root = makeTempDir()
     writePlugin(root, 'zeta')
     writePlugin(root, 'alpha')
 
-    const result = discoverPlugins(root)
+    const result = await discoverPlugins(root)
 
     expect(result.errors).toEqual([])
     expect(result.plugins.map((plugin) => plugin.manifest.id)).toEqual(['alpha', 'zeta'])
   })
 
-  test('discovers built-in plugins under strict relative-only entry-graph rules', () => {
-    const result = discoverPlugins(join(process.cwd(), 'plugins'))
+  test('discovers built-in plugins under strict relative-only entry-graph rules', async () => {
+    const result = await discoverPlugins(join(process.cwd(), 'plugins'))
     const pluginIds = result.plugins.map((plugin) => plugin.manifest.id)
     const errorDirectoryNames = new Set(result.errors.map((error) => error.directoryName))
 
@@ -124,13 +125,13 @@ describe('discoverPlugins', () => {
     }
   })
 
-  test('reports invalid plugin.json as discovery error without throwing', () => {
+  test('reports invalid plugin.json as discovery error without throwing', async () => {
     const root = makeTempDir()
     const pluginDir = join(root, 'broken')
     mkdirSync(pluginDir)
     writeFileSync(join(pluginDir, 'plugin.json'), '{ invalid-json', 'utf-8')
 
-    const result = discoverPlugins(root)
+    const result = await discoverPlugins(root)
 
     expect(result.plugins).toEqual([])
     expect(result.errors).toHaveLength(1)
@@ -141,7 +142,7 @@ describe('discoverPlugins', () => {
   // chmod(0) does not block reads for the root user, so this assertion is only
   // meaningful for unprivileged users (skipped when the suite runs as root, e.g. in CI containers).
   const isRoot = typeof process.getuid === 'function' && process.getuid() === 0
-  test.skipIf(isRoot)('reports plugin.json read failures distinctly from JSON parse failures', () => {
+  test.skipIf(isRoot)('reports plugin.json read failures distinctly from JSON parse failures', async () => {
     const root = makeTempDir()
     const pluginDir = join(root, 'unreadable')
     mkdirSync(pluginDir)
@@ -149,7 +150,7 @@ describe('discoverPlugins', () => {
     chmodSync(join(pluginDir, 'plugin.json'), 0)
 
     try {
-      const result = discoverPlugins(root)
+      const result = await discoverPlugins(root)
 
       expect(result.plugins).toEqual([])
       expect(result.errors).toHaveLength(1)
@@ -160,18 +161,18 @@ describe('discoverPlugins', () => {
     }
   })
 
-  test('reports plugin id mismatch with directory name', () => {
+  test('reports plugin id mismatch with directory name', async () => {
     const root = makeTempDir()
     writePlugin(root, 'my-dir', { id: 'different-id' })
 
-    const result = discoverPlugins(root)
+    const result = await discoverPlugins(root)
 
     expect(result.plugins).toEqual([])
     expect(result.errors).toHaveLength(1)
     expect(result.errors[0]?.reason).toContain('does not match directory name')
   })
 
-  test('rejects unsafe main paths with .. components', () => {
+  test('rejects unsafe main paths with .. components', async () => {
     const root = makeTempDir()
     const pluginDir = join(root, 'escape-main')
     mkdirSync(pluginDir)
@@ -188,14 +189,14 @@ describe('discoverPlugins', () => {
       'utf-8',
     )
 
-    const result = discoverPlugins(root)
+    const result = await discoverPlugins(root)
 
     expect(result.plugins).toEqual([])
     expect(result.errors).toHaveLength(1)
     expect(result.errors[0]?.reason).toContain('main must be a relative .ts or .js path without ".." components')
   })
 
-  test('rejects unsafe absolute main paths', () => {
+  test('rejects unsafe absolute main paths', async () => {
     const root = makeTempDir()
     const pluginDir = join(root, 'absolute-main')
     mkdirSync(pluginDir)
@@ -212,26 +213,26 @@ describe('discoverPlugins', () => {
       'utf-8',
     )
 
-    const result = discoverPlugins(root)
+    const result = await discoverPlugins(root)
 
     expect(result.plugins).toEqual([])
     expect(result.errors).toHaveLength(1)
     expect(result.errors[0]?.reason).toContain('main must be a relative .ts or .js path without ".." components')
   })
 
-  test('rejects symlinked plugin directories', () => {
+  test('rejects symlinked plugin directories', async () => {
     const root = makeTempDir()
     const realDir = join(root, 'real-plugin')
     writePlugin(root, 'real-plugin')
     symlinkSync(realDir, join(root, 'symlink-plugin'))
 
-    const result = discoverPlugins(root)
+    const result = await discoverPlugins(root)
 
     expect(result.plugins.map((plugin) => plugin.manifest.id)).toEqual(['real-plugin'])
     expect(result.errors.some((error) => error.directoryName === 'symlink-plugin')).toBe(true)
   })
 
-  test('rejects symlinked entry point that resolves outside plugin directory', () => {
+  test('rejects symlinked entry point that resolves outside plugin directory', async () => {
     const root = makeTempDir()
     const pluginDir = join(root, 'outside-link')
     mkdirSync(pluginDir)
@@ -254,19 +255,19 @@ describe('discoverPlugins', () => {
     )
     symlinkSync(externalEntry, join(pluginDir, 'index.ts'))
 
-    const result = discoverPlugins(root)
+    const result = await discoverPlugins(root)
 
     expect(result.plugins).toEqual([])
     expect(result.errors).toHaveLength(1)
     expect(result.errors[0]?.reason).toContain('resolves outside the plugin directory')
   })
 
-  test('prevents duplicate valid plugin IDs by rejecting id/directory mismatches first', () => {
+  test('prevents duplicate valid plugin IDs by rejecting id/directory mismatches first', async () => {
     const root = makeTempDir()
     writePlugin(root, 'alpha')
     writePlugin(root, 'beta', { id: 'alpha' })
 
-    const result = discoverPlugins(root)
+    const result = await discoverPlugins(root)
 
     expect(result.plugins.map((plugin) => plugin.manifest.id)).toEqual(['alpha'])
     expect(result.errors).toHaveLength(1)
@@ -280,7 +281,7 @@ describe('discoverPlugins', () => {
     expect(isPathInsideDirectory('C:\\plugins\\demo', 'C:\\plugins\\demo\\..\\escape.ts', win32)).toBe(false)
   })
 
-  test('manifest hash changes when an imported local helper changes', () => {
+  test('manifest hash changes when an imported local helper changes', async () => {
     const root = makeTempDir()
     const pluginDir = join(root, 'hash-imported-helper')
     mkdirSync(pluginDir, { recursive: true })
@@ -303,19 +304,19 @@ describe('discoverPlugins', () => {
       'utf-8',
     )
 
-    const first = discoverPlugins(root)
+    const first = await discoverPlugins(root)
     expect(first.errors).toEqual([])
     const firstHash = first.plugins[0]?.manifestHash
     expect(typeof firstHash).toBe('string')
 
     writeFileSync(join(pluginDir, 'helper.ts'), 'export const value = 2\n', 'utf-8')
 
-    const second = discoverPlugins(root)
+    const second = await discoverPlugins(root)
     expect(second.errors).toEqual([])
     expect(second.plugins[0]?.manifestHash).not.toBe(firstHash)
   })
 
-  test('manifest hash changes when a side-effect import target changes', () => {
+  test('manifest hash changes when a side-effect import target changes', async () => {
     const root = makeTempDir()
     const pluginDir = join(root, 'hash-side-effect-import')
     mkdirSync(pluginDir, { recursive: true })
@@ -338,19 +339,19 @@ describe('discoverPlugins', () => {
       'utf-8',
     )
 
-    const first = discoverPlugins(root)
+    const first = await discoverPlugins(root)
     expect(first.errors).toEqual([])
     const firstHash = first.plugins[0]?.manifestHash
     expect(typeof firstHash).toBe('string')
 
     writeFileSync(join(pluginDir, 'setup.ts'), 'globalThis.__sideEffect = 2\n', 'utf-8')
 
-    const second = discoverPlugins(root)
+    const second = await discoverPlugins(root)
     expect(second.errors).toEqual([])
     expect(second.plugins[0]?.manifestHash).not.toBe(firstHash)
   })
 
-  test('manifest hash changes when an import.meta.require local target changes', () => {
+  test('manifest hash changes when an import.meta.require local target changes', async () => {
     const root = makeTempDir()
     const pluginDir = join(root, 'hash-import-meta-require')
     mkdirSync(pluginDir, { recursive: true })
@@ -378,19 +379,19 @@ describe('discoverPlugins', () => {
       'utf-8',
     )
 
-    const first = discoverPlugins(root)
+    const first = await discoverPlugins(root)
     expect(first.errors).toEqual([])
     const firstHash = first.plugins[0]?.manifestHash
     expect(typeof firstHash).toBe('string')
 
     writeFileSync(join(pluginDir, 'helper.ts'), 'export const value = 2\n', 'utf-8')
 
-    const second = discoverPlugins(root)
+    const second = await discoverPlugins(root)
     expect(second.errors).toEqual([])
     expect(second.plugins[0]?.manifestHash).not.toBe(firstHash)
   })
 
-  test('manifest hash changes when an aliased import.meta.require local target changes', () => {
+  test('manifest hash changes when an aliased import.meta.require local target changes', async () => {
     const root = makeTempDir()
     const pluginDir = join(root, 'hash-aliased-import-meta-require')
     mkdirSync(pluginDir, { recursive: true })
@@ -418,19 +419,19 @@ describe('discoverPlugins', () => {
       'utf-8',
     )
 
-    const first = discoverPlugins(root)
+    const first = await discoverPlugins(root)
     expect(first.errors).toEqual([])
     const firstHash = first.plugins[0]?.manifestHash
     expect(typeof firstHash).toBe('string')
 
     writeFileSync(join(pluginDir, 'helper.ts'), 'export const value = 2\n', 'utf-8')
 
-    const second = discoverPlugins(root)
+    const second = await discoverPlugins(root)
     expect(second.errors).toEqual([])
     expect(second.plugins[0]?.manifestHash).not.toBe(firstHash)
   })
 
-  test('aliased import.meta.require resolves .js specifiers to plugin-local .ts source files', () => {
+  test('aliased import.meta.require resolves .js specifiers to plugin-local .ts source files', async () => {
     const root = makeTempDir()
     const pluginDir = join(root, 'aliased-import-meta-require-js-specifier')
     mkdirSync(pluginDir, { recursive: true })
@@ -458,14 +459,14 @@ describe('discoverPlugins', () => {
       'utf-8',
     )
 
-    const result = discoverPlugins(root)
+    const result = await discoverPlugins(root)
 
     expect(result.errors).toEqual([])
     expect(result.plugins).toHaveLength(1)
     expect(result.plugins[0]?.manifest.id).toBe('aliased-import-meta-require-js-specifier')
   })
 
-  test('manifest hash is stable across different plugin root paths', () => {
+  test('manifest hash is stable across different plugin root paths', async () => {
     const firstRoot = makeTempDir()
     const secondRoot = makeTempDir()
 
@@ -484,15 +485,15 @@ describe('discoverPlugins', () => {
     writeFileSync(join(firstRoot, 'stable-hash-plugin', 'helper.ts'), 'export const value = 1\n', 'utf-8')
     writeFileSync(join(secondRoot, 'stable-hash-plugin', 'helper.ts'), 'export const value = 1\n', 'utf-8')
 
-    const first = discoverPlugins(firstRoot)
-    const second = discoverPlugins(secondRoot)
+    const first = await discoverPlugins(firstRoot)
+    const second = await discoverPlugins(secondRoot)
 
     expect(first.errors).toEqual([])
     expect(second.errors).toEqual([])
     expect(first.plugins[0]?.manifestHash).toBe(second.plugins[0]?.manifestHash)
   })
 
-  test('rejects plugin when imported path realpath throws', () => {
+  test('rejects plugin when imported path realpath throws', async () => {
     const root = makeTempDir()
     const pluginDir = join(root, 'realpath-fails')
     mkdirSync(pluginDir, { recursive: true })
@@ -522,7 +523,7 @@ describe('discoverPlugins', () => {
     )
 
     try {
-      const result = discoverPlugins(root)
+      const result = await discoverPlugins(root)
 
       expect(result.plugins).toEqual([])
       expect(result.errors[0]?.reason).toContain('helper.ts')
@@ -531,7 +532,7 @@ describe('discoverPlugins', () => {
     }
   })
 
-  test('rejects bare-module imports from plugin entry graph', () => {
+  test('rejects bare-module imports from plugin entry graph', async () => {
     const root = makeTempDir()
     writePlugin(
       root,
@@ -540,13 +541,13 @@ describe('discoverPlugins', () => {
       "import 'left-pad'\nexport default function createPlugin(){ return { activate() {} } }",
     )
 
-    const result = discoverPlugins(root)
+    const result = await discoverPlugins(root)
 
     expect(result.plugins).toEqual([])
     expect(result.errors[0]?.reason).toContain('Bare-module imports are not allowed in plugin entry graphs')
   })
 
-  test('rejects bare import.meta.require calls from plugin-owned imported modules', () => {
+  test('rejects bare import.meta.require calls from plugin-owned imported modules', async () => {
     const root = makeTempDir()
     const pluginDir = join(root, 'bare-import-meta-require-plugin')
     mkdirSync(pluginDir, { recursive: true })
@@ -569,13 +570,13 @@ describe('discoverPlugins', () => {
       'utf-8',
     )
 
-    const result = discoverPlugins(root)
+    const result = await discoverPlugins(root)
 
     expect(result.plugins).toEqual([])
     expect(result.errors[0]?.reason).toContain('Bare-module imports are not allowed in plugin entry graphs')
   })
 
-  test('rejects bare aliased import.meta.require calls from plugin-owned imported modules', () => {
+  test('rejects bare aliased import.meta.require calls from plugin-owned imported modules', async () => {
     const root = makeTempDir()
     const pluginDir = join(root, 'bare-aliased-import-meta-require-plugin')
     mkdirSync(pluginDir, { recursive: true })
@@ -602,13 +603,13 @@ describe('discoverPlugins', () => {
       'utf-8',
     )
 
-    const result = discoverPlugins(root)
+    const result = await discoverPlugins(root)
 
     expect(result.plugins).toEqual([])
     expect(result.errors[0]?.reason).toContain('Bare-module imports are not allowed in plugin entry graphs')
   })
 
-  test('rejects plugin-owned computed import.meta.require calls that cannot be resolved deterministically', () => {
+  test('rejects plugin-owned computed import.meta.require calls that cannot be resolved deterministically', async () => {
     const root = makeTempDir()
     const pluginDir = join(root, 'computed-import-meta-require-plugin')
     mkdirSync(pluginDir, { recursive: true })
@@ -635,14 +636,14 @@ describe('discoverPlugins', () => {
       'utf-8',
     )
 
-    const result = discoverPlugins(root)
+    const result = await discoverPlugins(root)
 
     expect(result.plugins).toEqual([])
     expect(result.errors).toHaveLength(1)
     expect(result.errors[0]?.reason).toContain('import.meta.require')
   })
 
-  test('rejects plugin-owned dynamic imports that cannot be resolved deterministically', () => {
+  test('rejects plugin-owned dynamic imports that cannot be resolved deterministically', async () => {
     const root = makeTempDir()
     writePlugin(
       root,
@@ -651,14 +652,14 @@ describe('discoverPlugins', () => {
       "export default function createPlugin(){ return { async activate(){ const name = './helper.ts'; await import(name) } } }",
     )
 
-    const result = discoverPlugins(root)
+    const result = await discoverPlugins(root)
 
     expect(result.plugins).toEqual([])
     expect(result.errors).toHaveLength(1)
     expect(result.errors[0]?.reason).toContain('dynamic import')
   })
 
-  test('ignores import text inside string literals when scanning dynamic imports', () => {
+  test('ignores import text inside string literals when scanning dynamic imports', async () => {
     const root = makeTempDir()
     writePlugin(
       root,
@@ -667,14 +668,14 @@ describe('discoverPlugins', () => {
       'export default function createPlugin(){ const note = "import(name)"; return { activate(){ return note } } }',
     )
 
-    const result = discoverPlugins(root)
+    const result = await discoverPlugins(root)
 
     expect(result.errors).toEqual([])
     expect(result.plugins).toHaveLength(1)
     expect(result.plugins[0]?.manifest.id).toBe('quoted-import-text-plugin')
   })
 
-  test('ignores static import text inside ordinary string literals', () => {
+  test('ignores static import text inside ordinary string literals', async () => {
     const root = makeTempDir()
     writePlugin(
       root,
@@ -683,14 +684,14 @@ describe('discoverPlugins', () => {
       'export default function createPlugin(){ const note = "import \'./missing.ts\'"; return { activate(){ return note } } }',
     )
 
-    const result = discoverPlugins(root)
+    const result = await discoverPlugins(root)
 
     expect(result.errors).toEqual([])
     expect(result.plugins).toHaveLength(1)
     expect(result.plugins[0]?.manifest.id).toBe('quoted-static-import-text-plugin')
   })
 
-  test('resolves deterministic literal dynamic imports', () => {
+  test('resolves deterministic literal dynamic imports', async () => {
     const root = makeTempDir()
     writePlugin(
       root,
@@ -700,14 +701,14 @@ describe('discoverPlugins', () => {
     )
     writeFileSync(join(root, 'literal-dynamic-import-plugin', 'helper.ts'), 'export const value = 1\n', 'utf-8')
 
-    const result = discoverPlugins(root)
+    const result = await discoverPlugins(root)
 
     expect(result.errors).toEqual([])
     expect(result.plugins).toHaveLength(1)
     expect(result.plugins[0]?.manifest.id).toBe('literal-dynamic-import-plugin')
   })
 
-  test('resolves comment-bearing literal dynamic imports', () => {
+  test('resolves comment-bearing literal dynamic imports', async () => {
     const root = makeTempDir()
     writePlugin(
       root,
@@ -717,14 +718,14 @@ describe('discoverPlugins', () => {
     )
     writeFileSync(join(root, 'comment-dynamic-import-plugin', 'helper.ts'), 'export const value = 1\n', 'utf-8')
 
-    const result = discoverPlugins(root)
+    const result = await discoverPlugins(root)
 
     expect(result.errors).toEqual([])
     expect(result.plugins).toHaveLength(1)
     expect(result.plugins[0]?.manifest.id).toBe('comment-dynamic-import-plugin')
   })
 
-  test('manifest hash changes when template literal expressions contain deterministic dynamic imports', () => {
+  test('manifest hash changes when template literal expressions contain deterministic dynamic imports', async () => {
     const root = makeTempDir()
     const pluginDir = join(root, 'template-expression-dynamic-import')
     mkdirSync(pluginDir, { recursive: true })
@@ -747,19 +748,19 @@ describe('discoverPlugins', () => {
       'utf-8',
     )
 
-    const first = discoverPlugins(root)
+    const first = await discoverPlugins(root)
     expect(first.errors).toEqual([])
     const firstHash = first.plugins[0]?.manifestHash
     expect(typeof firstHash).toBe('string')
 
     writeFileSync(join(pluginDir, 'helper.ts'), 'export const value = 2\n', 'utf-8')
 
-    const second = discoverPlugins(root)
+    const second = await discoverPlugins(root)
     expect(second.errors).toEqual([])
     expect(second.plugins[0]?.manifestHash).not.toBe(firstHash)
   })
 
-  test('accepts explicit mcp-only plugins without reading index.ts', () => {
+  test('accepts explicit mcp-only plugins without reading index.ts', async () => {
     const root = makeTempDir()
     const pluginDir = join(root, 'mcp-only-plugin')
     mkdirSync(pluginDir, { recursive: true })
@@ -784,7 +785,7 @@ describe('discoverPlugins', () => {
       'utf-8',
     )
 
-    const result = discoverPlugins(root)
+    const result = await discoverPlugins(root)
 
     expect(result.errors).toEqual([])
     expect(result.plugins).toHaveLength(1)

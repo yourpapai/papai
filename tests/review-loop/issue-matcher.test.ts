@@ -11,7 +11,14 @@ import type { SpawnFn } from '../../review-loop/src/agent-runner.js'
 import type { LedgerIssueRecord } from '../../review-loop/src/issue-ledger.js'
 import { matchIssues } from '../../review-loop/src/issue-matcher.js'
 import type { ReviewerIssue } from '../../review-loop/src/issue-schema.js'
-import { cleanupTempDirs, makeTempDir, silentReporter } from './test-helpers.js'
+import {
+  claudeRecordingSpawn,
+  claudeRunContext,
+  claudeScratchResponder,
+  cleanupTempDirs,
+  makeTempDir,
+  silentReporter,
+} from './test-helpers.js'
 
 afterEach(cleanupTempDirs)
 
@@ -182,5 +189,65 @@ describe('issue-matcher', () => {
     expect(prompt).toContain(expectedAbsolute)
     expect(path.isAbsolute(expectedAbsolute)).toBe(true)
     expect(prompt).not.toContain(`\n.review-loop/matches.json\n`)
+  })
+})
+
+describe('issue-matcher backend threading', () => {
+  test('passes the resolved backend and claude context into the matcher spawn', async () => {
+    const dir = makeTempDir('matcher-claude-')
+    const outputPath = path.join(dir, 'matches.json')
+    const { spawn, commands } = claudeRecordingSpawn(
+      claudeScratchResponder(() => ({ matches: [{ newIssueIndex: 0, existingId: 'existing-001' }] })),
+    )
+
+    const result = await matchIssues({
+      spawn,
+      newIssues: [newIssue],
+      existingRecords: [existingRecord],
+      outputPath,
+      logPath: path.join(dir, 'log.txt'),
+      cwd: dir,
+      model: 'test-model',
+      extraArgs: [],
+      reporter: silentReporter(),
+      backend: 'claude',
+      claude: claudeRunContext(),
+    })
+
+    expect(result.matches[0]?.existingId).toBe('existing-001')
+    expect(commands[0]).toBe('claude')
+  })
+
+  test('the matcher effort rides the spawn as --effort after --model (D4, D6)', async () => {
+    const dir = makeTempDir('matcher-effort-')
+    const outputPath = path.join(dir, 'matches.json')
+    const { spawn, args } = claudeRecordingSpawn(
+      claudeScratchResponder(() => ({ matches: [{ newIssueIndex: 0, existingId: 'existing-001' }] })),
+    )
+
+    // The deps are deliberately built unannotated — a structural superset —
+    // so this assertion states the spawn contract directly rather than
+    // through the deps interface.
+    const deps = {
+      spawn,
+      newIssues: [newIssue],
+      existingRecords: [existingRecord],
+      outputPath,
+      logPath: path.join(dir, 'log.txt'),
+      cwd: dir,
+      model: 'test-model',
+      extraArgs: [],
+      reporter: silentReporter(),
+      backend: 'claude' as const,
+      claude: claudeRunContext(),
+      effort: 'low',
+    }
+
+    const result = await matchIssues(deps)
+
+    expect(result.matches[0]?.existingId).toBe('existing-001')
+    const argv = args[0]!
+    const model = argv.indexOf('--model')
+    expect(argv.slice(model + 2, model + 4)).toEqual(['--effort', 'low'])
   })
 })

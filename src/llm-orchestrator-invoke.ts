@@ -16,12 +16,12 @@ import { createNoProgressCondition } from './run-control/no-progress-condition.j
 import { runRegistry } from './run-control/registry.js'
 import { composePrepareSteps, createSteeringPrepareStep } from './run-control/steering-prepare-step.js'
 import { createStopRequestedCondition } from './run-control/stop-condition.js'
+import { createTurnLimitTracker, TURN_LIMIT_STOP_REASON } from './run-control/turn-limit.js'
 import { RunAbortedError } from './run-control/types.js'
 import { buildProviderlessSystemPrompt, buildSystemPrompt } from './system-prompt.js'
 import { createDisclosurePrepareStep } from './tools/disclosure/prepare-step.js'
+import { createRepairToolCall } from './tools/disclosure/repair-tool-call.js'
 import { buildToolsContextRecord } from './tools/wrap-tool-execution.js'
-
-// Re-exported for existing importers/tests that reach these through this module.
 
 const log = logger.child({ scope: 'llm-orchestrator:invoke' })
 
@@ -31,7 +31,7 @@ const log = logger.child({ scope: 'llm-orchestrator:invoke' })
  * total budget for one user turn — not a per-round cap. Kept generous so ordinary requests
  * finish in one turn; the no-progress guard stops a stalled turn well before this.
  */
-const AGENT_MAX_STEPS = 50
+export const AGENT_MAX_STEPS = 125
 
 /**
  * Per-turn LLM attempt ordinals. One turn may drive several outbound attempts
@@ -71,13 +71,22 @@ export const resolveSystemPrompt = (
   args: Pick<InvokeModelArgs, 'provider' | 'contextId' | 'enabledToolNames' | 'disclosure' | 'contextType'>,
 ): string => {
   const { provider, contextId, enabledToolNames, disclosure, contextType } = args
-  const opts = { askPermissionAvailable: true, progressiveDisclosure: disclosure !== undefined, contextType }
+  const opts = {
+    askPermissionAvailable: true,
+    progressiveDisclosure: disclosure !== undefined,
+    contextType,
+  }
   return provider === null
     ? buildProviderlessSystemPrompt(contextId, enabledToolNames, opts)
     : buildSystemPrompt(provider, contextId, enabledToolNames, opts)
 }
 
-const callGenerateText = async (a: GenerateArgs): ReturnType<LlmOrchestratorDeps['generateText']> => {
+type GeneratedTurn = {
+  result: Awaited<ReturnType<LlmOrchestratorDeps['generateText']>>
+  turnLimitHit: boolean
+}
+
+const callGenerateText = async (a: GenerateArgs): Promise<GeneratedTurn> => {
   const { contextId, turnId, model, systemPrompt, messages, tools, toolsContext, deps, disclosure, ctx } = a
   const run = runRegistry.get(contextId)
   const disclosureStep =
@@ -85,10 +94,11 @@ const callGenerateText = async (a: GenerateArgs): ReturnType<LlmOrchestratorDeps
   const prepareStep =
     run === undefined ? disclosureStep : composePrepareSteps(createSteeringPrepareStep(run), disclosureStep)
   // Budget cap + no-progress guard always apply; a live force-stop condition is added when a run is active.
+  const turnLimit = createTurnLimitTracker(deps.stepCountIs, AGENT_MAX_STEPS)
   const stopWhen =
     run === undefined
-      ? [deps.stepCountIs(AGENT_MAX_STEPS), createNoProgressCondition()]
-      : [deps.stepCountIs(AGENT_MAX_STEPS), createNoProgressCondition(), createStopRequestedCondition(run)]
+      ? [turnLimit.condition, createNoProgressCondition()]
+      : [turnLimit.condition, createNoProgressCondition(), createStopRequestedCondition(run)]
   const finishHandler = buildToolCallFinishHandler(ctx)
   try {
     // `toolsContext` is keyed by every name in the final ToolSet. The generic
@@ -109,8 +119,10 @@ const callGenerateText = async (a: GenerateArgs): ReturnType<LlmOrchestratorDeps
         finishHandler?.(event)
       },
       ...(prepareStep === undefined ? {} : { prepareStep }),
+      ...(disclosure === undefined ? {} : { repairToolCall: createRepairToolCall(disclosure, contextId) }),
     }
-    return await deps.generateText(Object.assign({}, baseOptions, { toolsContext }))
+    const result = await deps.generateText(Object.assign({}, baseOptions, { toolsContext }))
+    return { result, turnLimitHit: turnLimit.hit }
   } catch (error) {
     if (run !== undefined && run.abortController.signal.aborted) {
       log.info({ contextId, turnId }, 'Run force-aborted by user')
@@ -125,6 +137,21 @@ const buildAttempt = (args: InvokeArgs): LlmAttemptAnalytics => ({
   modelRole: 'main',
   ...(args.analytics?.providerBinding === undefined ? {} : { providerBinding: args.analytics.providerBinding }),
 })
+
+const buildToolCallContext = (args: InvokeArgs, mainModel: string, turnId: string): ToolCallContext => ({
+  contextId: args.contextId,
+  chatUserId: args.chatUserId,
+  contextType: args.contextType,
+  model: mainModel,
+  modelRole: 'main',
+  turnId,
+  ...(args.progressReporter === undefined ? {} : { progressReporter: args.progressReporter }),
+  ...(args.liveStatus === undefined ? {} : { liveStatus: args.liveStatus }),
+})
+
+const warnTurnLimitReached = (contextId: string, turnId: string, steps: number): void => {
+  log.warn({ contextId, turnId, steps }, 'Agent turn ended at the step cap (turn_limit)')
+}
 
 export const invokeModel = async (args: InvokeArgs): ReturnType<LlmOrchestratorDeps['generateText']> => {
   const {
@@ -142,23 +169,20 @@ export const invokeModel = async (args: InvokeArgs): ReturnType<LlmOrchestratorD
     disclosure,
   } = args
   const start = Date.now()
-  const systemPrompt = resolveSystemPrompt({ provider, contextId, enabledToolNames, disclosure, contextType })
+  const systemPrompt = resolveSystemPrompt({
+    provider,
+    contextId,
+    enabledToolNames,
+    disclosure,
+    contextType,
+  })
   const attempt = buildAttempt(args)
   const ttft = createTtftClock()
   ttft.start()
   const timedModel = wrapModelForTtft(model, ttft)
   emitLlmStart(contextId, mainModel, messages, tools, turnId, attempt)
-  const ctx: ToolCallContext = {
-    contextId,
-    chatUserId,
-    contextType,
-    model: mainModel,
-    modelRole: 'main',
-    turnId,
-    progressReporter: args.progressReporter,
-    liveStatus: args.liveStatus,
-  }
-  const result = await callGenerateText({
+  const ctx = buildToolCallContext(args, mainModel, turnId)
+  const { result, turnLimitHit } = await callGenerateText({
     contextId,
     turnId,
     model: timedModel,
@@ -170,9 +194,11 @@ export const invokeModel = async (args: InvokeArgs): ReturnType<LlmOrchestratorD
     disclosure,
     ctx,
   })
+  if (turnLimitHit) warnTurnLimitReached(contextId, turnId, result.steps.length)
   emitLlmEnd(contextId, chatUserId, contextType, mainModel, result, start, messages, tools, turnId, {
     ...attempt,
     timeToFirstTokenMs: ttft.read(),
+    ...(turnLimitHit ? { stopReason: TURN_LIMIT_STOP_REASON } : {}),
   })
   return result
 }

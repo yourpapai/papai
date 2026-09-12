@@ -43,7 +43,8 @@ export function buildSelectPrompt(input: {
   return [
     'You are the SELECT phase of an autonomous mutation-coverage improvement runner.',
     '',
-    'Read scripts/mutation/baseline.json (a {filePath: score} map; current contents below) and pick',
+    'Read scripts/mutation/baseline.json (entries are either a bare score number — a not-yet-converted',
+    'legacy entry — or a {score, killed, timeout, scored} record; current contents below) and pick',
     'the SINGLE highest-ROI source file to improve, where ROI = reliable mutation-score gain per',
     'unit of test effort. Prefer pure functions with zero external dependencies, an existing',
     'companion test file, and surviving mutants that each map to an observable bug.',
@@ -61,7 +62,8 @@ export function buildSelectPrompt(input: {
     `baseline.json contents: ${input.baselineSummary}`,
     '',
     `Write your pick as JSON to this ABSOLUTE path: ${input.outputPath}`,
-    'Schema: { file: string (repo-relative), beforeScore: number (your read of baseline[file], 0..1),',
+    "Schema: { file: string (repo-relative), beforeScore: number (your read of the entry's score — the bare",
+    "number itself for a legacy entry, otherwise the entry's score field, 0..1),",
     'rationale: string (1-3 sentences), runnerUps: [{file, score, why}] (2-3 rejected candidates) }.',
     'Write ONLY that file; do not edit any source.',
   ].join('\n')

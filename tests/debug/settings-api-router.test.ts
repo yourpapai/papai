@@ -66,4 +66,13 @@ describe('routeSettingsApi', () => {
     expect(res).not.toBeNull()
     expect(res?.status).toBe(401)
   })
+
+  test('routes /settings/api/llm-model-metadata (401 without a session)', async () => {
+    const res = await routeSettingsApi(
+      new Request('https://x/settings/api/llm-model-metadata?model=gpt-4o'),
+      new URL('https://x/settings/api/llm-model-metadata?model=gpt-4o'),
+    )
+    expect(res).not.toBeNull()
+    expect(res?.status).toBe(401)
+  })
 })

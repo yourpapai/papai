@@ -60,7 +60,13 @@ const CONFIRM_PROMPT = (content: string): string =>
 const defaultConfirm = async (content: string, configContextId: string): Promise<boolean> => {
   const resolved = resolveLlmConfig(configContextId)
   if (!resolved.ok) return false
-  const model = buildChatModel(resolved.small.apiKey, resolved.small.baseUrl, resolved.small.model)
+  const model = buildChatModel(
+    resolved.small.apiKey,
+    resolved.small.baseUrl,
+    resolved.small.model,
+    undefined,
+    resolved.small.metadata,
+  )
   const { text } = await generateText({ model, prompt: CONFIRM_PROMPT(content) })
   return text.trim().toLowerCase().startsWith('yes')
 }

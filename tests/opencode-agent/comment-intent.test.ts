@@ -8,6 +8,7 @@ import { describe, expect, it } from 'bun:test'
 import { applySteeringIntent } from '../../opencode-agent/src/comment-intent.js'
 import type { PhaseInput } from '../../opencode-agent/src/phase-context.js'
 import type { TriggerEvent } from '../../opencode-agent/src/trigger-events.js'
+import { TOKEN_SCALE } from '../../opencode-agent/src/types.js'
 import type { AgentState } from '../../opencode-agent/src/types.js'
 import { stubPhaseDeps } from './test-helpers.js'
 
@@ -38,7 +39,10 @@ const implState = (over: Partial<AgentState> = {}): AgentState => ({
   stepsDone: 0,
   changeName: 'add-retries',
   planRevision: 1,
+  tokenScale: TOKEN_SCALE,
   tokensSpent: 0,
+  usdSpent: 0,
+  usdUnpriced: false,
   lastError: null,
   prUrl: null,
   prNumber: null,

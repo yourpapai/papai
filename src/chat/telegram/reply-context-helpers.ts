@@ -50,6 +50,7 @@ export function extractReplyContext(ctx: ExtractReplyContextInput, contextId: st
       contextId,
       replyToMessageId: idStr,
       authorId: fromId,
+      chatUserId: fromId === undefined ? undefined : String(fromId),
       authorUsername: replyToMessage.from?.username ?? null,
       fullMessageLength,
       hasQuote,

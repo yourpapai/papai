@@ -11,27 +11,44 @@ const NEVER_RESOLVE_MS = 60_000
 const boom = (): HttpResponse<{ error: string }> => HttpResponse.json({ error: 'boom' }, { status: 500 })
 
 // --- Admin: release notes (GET /settings/api/admin/release-notes) ---
-// ReleaseNotesResponseSchema: { version, body: string|null, broadcastAt: string|null, counts: { dm, group } }
+// ReleaseNotesResponseSchema: { version, bodies: { en, ru }, rawBody?, broadcastAt, counts }
 
 const adminReleaseNotesPopulated = {
   version: '1.2.3',
-  body: "## What's new\n- Improved performance\n- Bug fixes",
+  bodies: {
+    en: "## What's new\n- Improved performance\n- Bug fixes",
+    ru: '## Что нового\n- Улучшена производительность',
+  },
   broadcastAt: null,
   counts: { dm: 42, group: 5 },
 }
+
+/** Pinned by tests/client/stories/msw/scenarios-admin.test.ts: per-locale bodies, never a single `body`. */
+export const adminReleaseNotesPopulatedFixture = adminReleaseNotesPopulated
 
 export const adminReleaseNotesHandlers: HandlerFamily = {
   populated: [http.get('/settings/api/admin/release-notes', () => HttpResponse.json(adminReleaseNotesPopulated))],
   empty: [
     http.get('/settings/api/admin/release-notes', () =>
-      HttpResponse.json({ version: '1.2.3', body: null, broadcastAt: null, counts: { dm: 0, group: 0 } }),
+      HttpResponse.json({
+        version: '1.2.3',
+        bodies: { en: null, ru: null },
+        rawBody: '### Added\n- nothing user-facing yet',
+        broadcastAt: null,
+        counts: { dm: 0, group: 0 },
+      }),
     ),
   ],
   error: [http.get('/settings/api/admin/release-notes', boom)],
   loading: [
     http.get('/settings/api/admin/release-notes', async () => {
       await delay(NEVER_RESOLVE_MS)
-      return HttpResponse.json({ version: '1.2.3', body: null, broadcastAt: null, counts: { dm: 0, group: 0 } })
+      return HttpResponse.json({
+        version: '1.2.3',
+        bodies: { en: null, ru: null },
+        broadcastAt: null,
+        counts: { dm: 0, group: 0 },
+      })
     }),
   ],
 }

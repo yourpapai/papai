@@ -6,6 +6,7 @@
 import { mkdir, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 
+import type { BackendSelection } from './config-backend-values.js'
 import type { Logger } from './logger.js'
 import { modelRef } from './openai-config.js'
 import type { OpenAiSettings } from './openai-config.js'
@@ -68,6 +69,38 @@ export interface ReviewLoopSettings {
    * that way, having already paid for the turn that wrote it.
    */
   commitAuthor: { name: string; email: string }
+  /**
+   * Which backend the loop's role subprocesses run on — the job's own route,
+   * handed through (design D9). On `claude` every agent block names the backend
+   * and the model crosses as the plain id, never the `OpenAiSettings` object
+   * whose gateway half must not reach a claude path.
+   */
+  backend: BackendSelection
+}
+
+/**
+ * The per-role agent block: one shape for every role, differing only by route
+ * (design D9). The tier the loop's role subprocesses run at rides here too
+ * (design D4): every worker resolves to the primary `build` agent on the
+ * opencode route — where the tier reaches it as `agent.build.variant` inside
+ * `OPENCODE_CONFIG_CONTENT` — so on the claude route the same fact is written
+ * into the role config each spawn reads, and the opencode branch is left alone.
+ * Absent stays absent, never `null`: the loop's schema types the tier as an
+ * optional string, and a written null would refuse the whole config.
+ */
+const roleAgentBlock = (settings: ReviewLoopSettings, subprocessTimeoutMs: number): Record<string, unknown> => {
+  if (settings.backend !== 'claude') {
+    return { model: modelRef(settings.openai), extraArgs: [], timeoutMs: subprocessTimeoutMs }
+  }
+
+  const effort = settings.openai.profiles?.buildEffort ?? null
+  return {
+    model: settings.openai.model,
+    backend: 'claude',
+    extraArgs: [],
+    timeoutMs: subprocessTimeoutMs,
+    ...(effort === null ? {} : { effort }),
+  }
 }
 
 export const buildReviewLoopConfig = (settings: ReviewLoopSettings): Record<string, unknown> => {
@@ -77,7 +110,7 @@ export const buildReviewLoopConfig = (settings: ReviewLoopSettings): Record<stri
   // for an hour past the point the loop agreed to stop, which is the whole
   // budget spent on one subprocess nobody will read the result of.
   const subprocessTimeoutMs = Math.min(settings.agentTimeoutMs, settings.softStopMs)
-  const agent = { model: modelRef(settings.openai), extraArgs: [], timeoutMs: subprocessTimeoutMs }
+  const agent = roleAgentBlock(settings, subprocessTimeoutMs)
 
   return {
     repoRoot: settings.repoRoot,

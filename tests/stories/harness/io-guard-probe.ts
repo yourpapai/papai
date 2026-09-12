@@ -70,6 +70,23 @@ scenario('rejects Bun.spawnSync', ({ world }) => {
   Bun.spawnSync(['true'])
 })
 
+// Parsing is fully in-process: no executable is admitted, not even a
+// compiler-binary lookalike planted inside the execution root where a spawn
+// allowance could plausibly be scoped.
+scenario('rejects a tsgo-shaped executable inside the execution root', ({ world }) => {
+  phase(world)
+  const executionRoot = process.env['PAPAI_STORY_EXECUTION_ROOT']
+  if (executionRoot === undefined) throw new Error('story execution root is unavailable')
+  Bun.spawn([`${executionRoot}/node_modules/@typescript/typescript-linux-x64/lib/tsc`])
+})
+
+scenario('rejects a tsgo-shaped child_process spawn inside the execution root', ({ world }) => {
+  phase(world)
+  const executionRoot = process.env['PAPAI_STORY_EXECUTION_ROOT']
+  if (executionRoot === undefined) throw new Error('story execution root is unavailable')
+  spawn(`${executionRoot}/node_modules/@typescript/typescript-linux-x64/lib/tsc`)
+})
+
 scenario('rejects child_process execFile', ({ world }) => {
   phase(world)
   execFile('true')

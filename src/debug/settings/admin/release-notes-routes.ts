@@ -8,8 +8,9 @@ import { z } from 'zod'
 import packageJson from '../../../../package.json' with { type: 'json' }
 import { broadcastAnnouncement } from '../../../announcements/broadcast.js'
 import { humanizeChangelog } from '../../../announcements/humanize.js'
-import { countSubscribers, getAnnouncementDraft, updateHumanizedBody } from '../../../announcements/store.js'
+import { countSubscribers, getAnnouncementDraft, updateHumanizedBodies } from '../../../announcements/store.js'
 import { readChangelogFile } from '../../../changelog-reader.js'
+import { SUPPORTED_LOCALES, type Locale } from '../../../i18n/index.js'
 import { logger } from '../../../logger.js'
 import type { AuthenticatedSettingsRequest } from '../../../settings/request-auth.js'
 import { extractChangelogSection } from '../../../utils/changelog.js'
@@ -21,20 +22,27 @@ const log = logger.child({ scope: 'debug-server:settings-release-notes' })
 
 const VERSION: string = packageJson.version
 
+const localeSchema = z.enum(SUPPORTED_LOCALES)
+
 const ActionSchema = z.discriminatedUnion('action', [
-  z.object({ action: z.literal('regenerate') }),
-  z.object({ action: z.literal('save'), body: z.string().min(1) }),
+  z.object({ action: z.literal('regenerate'), locale: localeSchema.optional() }),
+  z.object({ action: z.literal('save'), locale: localeSchema.optional(), body: z.string().min(1) }),
   z.object({ action: z.literal('broadcast') }),
 ])
 
 function view(): Response {
   const draft = getAnnouncementDraft(VERSION)
-  return settingsJson(200, {
+  const bodies = draft?.humanizedBodies ?? {}
+  const payload = {
     version: VERSION,
-    body: draft?.humanizedBody ?? draft?.rawBody ?? null,
+    bodies: { en: bodies.en ?? null, ru: bodies.ru ?? null },
     broadcastAt: draft?.broadcastAt ?? null,
     counts: countSubscribers(),
-  })
+  }
+  // rawBody is the editor's fallback content; include it when no humanized body exists
+  if (payload.bodies.en === null && payload.bodies.ru === null)
+    return settingsJson(200, { ...payload, rawBody: draft?.rawBody ?? null })
+  return settingsJson(200, payload)
 }
 
 async function resolveRawSection(): Promise<string | null> {
@@ -64,29 +72,36 @@ async function handlePost(req: Request, authed: AuthenticatedSettingsRequest): P
   if (!body.success) return settingsJson(422, { error: 'invalid request' })
 
   if (body.data.action === 'save') {
-    updateHumanizedBody(VERSION, body.data.body)
-    log.info({ version: VERSION }, 'release notes draft saved')
+    const locale: Locale = body.data.locale ?? 'en'
+    updateHumanizedBodies(VERSION, { [locale]: body.data.body })
+    log.info({ version: VERSION, locale }, 'release notes draft saved')
     return view()
   }
 
   if (body.data.action === 'regenerate') {
+    const locale: Locale = body.data.locale ?? 'en'
     const raw = await resolveRawSection()
     if (raw === null) return settingsJson(422, { error: 'no changelog content for this version' })
-    const humanized = await humanizeChangelog(raw)
+    // D7: run the pipeline but persist only the requested locale's write pass
+    const bodies = await humanizeChangelog(raw, { locales: [locale] })
+    const humanized = bodies[locale] ?? null
     if (humanized === null) return settingsJson(422, { error: 'LLM unavailable or returned empty output' })
-    updateHumanizedBody(VERSION, humanized)
-    log.info({ version: VERSION }, 'release notes draft regenerated')
+    updateHumanizedBodies(VERSION, { [locale]: humanized })
+    log.info({ version: VERSION, locale }, 'release notes draft regenerated')
     return view()
   }
 
   if (body.data.action === 'broadcast') {
     const draft = getAnnouncementDraft(VERSION)
-    const sendBody = draft?.humanizedBody ?? draft?.rawBody
-    if (sendBody === null || sendBody === undefined || sendBody.length === 0)
+    const bodies = draft?.humanizedBodies ?? {}
+    const rawBody = draft?.rawBody ?? null
+    // per-recipient fallback (locale -> en -> raw) happens in broadcastAnnouncement;
+    // reject only when no recipient could resolve any body at all
+    if (Object.keys(bodies).length === 0 && rawBody === null)
       return settingsJson(422, { error: 'nothing to broadcast' })
     const chat = getRuntimeChatRouter()
     if (chat === null) return settingsJson(422, { error: 'chat router not running' })
-    const result = await broadcastAnnouncement(chat, VERSION, sendBody)
+    const result = await broadcastAnnouncement(chat, VERSION, bodies, rawBody)
     log.info({ version: VERSION, ...result }, 'release notes broadcast')
     return settingsJson(200, { version: VERSION, broadcast: result, counts: countSubscribers() })
   }

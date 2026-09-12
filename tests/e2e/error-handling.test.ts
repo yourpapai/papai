@@ -4,9 +4,11 @@
 // See LICENSE in the project root for details.
 
 import { beforeEach, describe, expect, setDefaultTimeout, test } from 'bun:test'
+import assert from 'node:assert/strict'
 
 setDefaultTimeout(10000)
 
+import { KaneoClassifiedError } from '../../plugins/task-provider-kaneo/classify-error.js'
 import type { KaneoConfig } from '../../plugins/task-provider-kaneo/client.js'
 import { createTask } from '../../plugins/task-provider-kaneo/create-task.js'
 import { getComments } from '../../plugins/task-provider-kaneo/get-comments.js'
@@ -30,6 +32,27 @@ describe('E2E: Error Handling', () => {
       title: 'Test',
     })
     await expect(promise).rejects.toThrow()
+  })
+
+  test('classifies a stale-project creation failure as project-not-found (pinned-image behavior)', async () => {
+    // Kaneo answers 400 "Workspace ID could not be determined" for a project id that
+    // does not exist or is not visible to the caller — pinned against the e2e image so
+    // an upstream copy change surfaces here rather than as silent misclassification.
+    let caught: unknown = null
+    try {
+      await createTask({
+        config: kaneoConfig,
+        projectId: 'sutuhvgbp2rczkh16u68ckqd',
+        title: 'Stale project probe',
+      })
+    } catch (error) {
+      caught = error
+    }
+
+    expect(caught).toBeInstanceOf(KaneoClassifiedError)
+    assert(caught instanceof KaneoClassifiedError)
+    expect(caught.appError.code).toBe('project-not-found')
+    expect(caught.appError).toHaveProperty('projectId', 'sutuhvgbp2rczkh16u68ckqd')
   })
 
   test('throws error with invalid API key', async () => {

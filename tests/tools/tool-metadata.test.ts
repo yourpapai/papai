@@ -37,6 +37,31 @@ describe('tool metadata', () => {
     })
   })
 
+  test('registers run_diagnostics in the diagnostics domain as a read tool', () => {
+    expect(isToolDomain('diagnostics')).toBe(true)
+    expect(getToolMetadata('run_diagnostics')).toEqual({
+      domain: 'diagnostics',
+      operation: 'read',
+      risk: 'read',
+    })
+  })
+
+  test('registers the proof-check runner as a diagnostics write with the create operation', () => {
+    expect(getToolMetadata('run_proof_check')).toEqual({
+      domain: 'diagnostics',
+      operation: 'create',
+      risk: 'write',
+    })
+  })
+
+  test('registers the proof-results reader as a diagnostics read tool', () => {
+    expect(getToolMetadata('read_proof_results')).toEqual({
+      domain: 'diagnostics',
+      operation: 'read',
+      risk: 'read',
+    })
+  })
+
   test('identifies read-only tools', () => {
     expect(getToolRisk('list_tasks')).toBe('read')
     expect(getToolRisk('create_task')).toBe('write')
@@ -103,6 +128,7 @@ describe('isToolDomain', () => {
   test('narrows exactly to the declared tool domains', () => {
     expect(isToolDomain('task')).toBe(true)
     expect(isToolDomain('memory')).toBe(true)
+    expect(isToolDomain('diagnostics')).toBe(true)
     expect(isToolDomain('nope')).toBe(false)
     expect(isToolDomain('')).toBe(false)
   })
@@ -115,6 +141,7 @@ const EXPECTED_STATIC: Readonly<Record<string, ToolClassification>> = {
   update_task: { domain: 'task', operation: 'update', risk: 'write' },
   search_tasks: { domain: 'task', operation: 'read', risk: 'read' },
   list_tasks: { domain: 'task', operation: 'read', risk: 'read' },
+  suggest_next_task: { domain: 'task', operation: 'read', risk: 'read' },
   get_task: { domain: 'task', operation: 'read', risk: 'read' },
   count_tasks: { domain: 'task', operation: 'read', risk: 'read' },
   delete_task: { domain: 'task', operation: 'delete', risk: 'destructive' },
@@ -211,6 +238,13 @@ const EXPECTED_STATIC: Readonly<Record<string, ToolClassification>> = {
   web_fetch: { domain: 'web', operation: 'read', risk: 'open-world' },
   plugin_context_vault__list_agent_specs: { domain: 'plugin', operation: 'read', risk: 'read' },
   plugin_context_vault__get_agent_spec: { domain: 'plugin', operation: 'read', risk: 'read' },
+  run_diagnostics: { domain: 'diagnostics', operation: 'read', risk: 'read' },
+  read_recent_logs: { domain: 'diagnostics', operation: 'read', risk: 'read' },
+  read_llm_traces: { domain: 'diagnostics', operation: 'read', risk: 'read' },
+  read_recent_turns: { domain: 'diagnostics', operation: 'read', risk: 'read' },
+  read_recent_tool_failures: { domain: 'diagnostics', operation: 'read', risk: 'read' },
+  run_proof_check: { domain: 'diagnostics', operation: 'create', risk: 'write' },
+  read_proof_results: { domain: 'diagnostics', operation: 'read', risk: 'read' },
 }
 
 describe('static tool classification table', () => {

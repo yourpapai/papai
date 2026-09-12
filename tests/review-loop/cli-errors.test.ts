@@ -62,6 +62,41 @@ describe('formatBuildFailureMessage', () => {
     expect(message).toContain('truncated')
     expect(message).not.toContain(firstLine)
   })
+
+  // Run 33974052563: `bun build:client` wrote ~170 vite warnings to stderr while
+  // check.sh wrote its verdict to stdout. Tailing the concatenation put the whole
+  // window inside stderr and reported nothing about which check failed.
+  test('a noisy stderr cannot evict the stdout verdict from the tail', () => {
+    const runState = makeRunState()
+    const verdict = '2/8 checks passed, 6 failed'
+    const build: BuildCheckResult = {
+      passed: false,
+      stdout: [...Array.from({ length: 200 }, (_, i) => `stdout-noise-${i}`), verdict].join('\n'),
+      stderr: Array.from({ length: 200 }, (_, i) => `vite warning ${i}`).join('\n'),
+    }
+
+    const message = formatBuildFailureMessage(runState, build)
+
+    expect(message).toContain(verdict)
+    expect(message).toContain('vite warning 199')
+  })
+
+  test('labels each stream so the reader knows which one they are looking at', () => {
+    const runState = makeRunState()
+    const build: BuildCheckResult = { passed: false, stdout: 'out-line', stderr: 'err-line' }
+
+    const message = formatBuildFailureMessage(runState, build)
+
+    expect(message).toContain('--- stdout ---')
+    expect(message).toContain('--- stderr ---')
+    expect(message.indexOf('out-line')).toBeLessThan(message.indexOf('err-line'))
+  })
+
+  test('says so when the build command produced no output at all', () => {
+    const message = formatBuildFailureMessage(makeRunState(), { passed: false, stdout: '', stderr: '' })
+
+    expect(message).toContain('produced no output')
+  })
 })
 
 describe('MergeConflictError', () => {

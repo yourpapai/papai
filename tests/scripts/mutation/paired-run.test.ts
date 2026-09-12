@@ -10,11 +10,17 @@ import path from 'node:path'
 
 import {
   pairedRun,
+  pairedRunMain,
   parsePairedRunCliArgs,
   resolvePairedRunCliUsageExitCode,
   resolvePairedRunExitCode,
 } from '../../../scripts/mutation/paired-run.js'
-import type { PairedRunDeps } from '../../../scripts/mutation/paired-run.js'
+import type {
+  PairedRunDeps,
+  PairedRunFileResult,
+  PairedRunMainDeps,
+  PairedRunResult,
+} from '../../../scripts/mutation/paired-run.js'
 import type { StrykerReport } from '../../../scripts/mutation/score-merger.js'
 import type { MergedScore } from '../../../scripts/mutation/score-merger.js'
 
@@ -545,12 +551,101 @@ describe('pairedRun', () => {
   })
 })
 
+describe('pairedRunMain', () => {
+  const scoredPerFile = (sourceFile: string, score: number): PairedRunFileResult => {
+    const killed = Math.round(score * 10)
+    return {
+      sourceFile,
+      testFiles: [],
+      configPath: '',
+      reportPath: '',
+      merged: { ...ZERO_SCORE, killed, survived: 10 - killed, total: 10, scored: 10, score },
+    }
+  }
+
+  const runResultFor = (
+    perFile: readonly PairedRunFileResult[],
+    merged: MergedScore = ZERO_SCORE,
+  ): PairedRunResult => ({
+    merged,
+    perFile,
+    skipped: [],
+    errored: [],
+  })
+
+  const mainDeps = (
+    result: PairedRunResult,
+  ): PairedRunMainDeps & {
+    readonly runPaired: ReturnType<typeof mock>
+    readonly seedBaseline: ReturnType<typeof mock>
+  } => ({
+    runPaired: mock((): Promise<PairedRunResult> => Promise.resolve(result)),
+    seedBaseline: mock(() => result.perFile.length),
+  })
+
+  test('routes an --update-baseline run through runUpdateBaseline with the repo baseline paths', async () => {
+    const perFile = [scoredPerFile('src/foo.ts', 0.5)]
+    const deps = mainDeps(runResultFor(perFile))
+
+    const exitCode = await pairedRunMain(['src/foo.ts', '--threshold=0.9', '--update-baseline'], deps)
+
+    expect(deps.seedBaseline).toHaveBeenCalledTimes(1)
+    expect(deps.seedBaseline).toHaveBeenCalledWith({
+      baselinePath: path.join(process.cwd(), 'scripts', 'mutation', 'baseline.json'),
+      reportDir: path.join(process.cwd(), 'reports', 'paired'),
+      perFile,
+    })
+    expect(exitCode).toBe(0)
+  })
+
+  test('exits 0 on the seed path even when the score is below the threshold (seed, not gate)', async () => {
+    const deps = mainDeps(runResultFor([]))
+
+    const exitCode = await pairedRunMain(['src/foo.ts', '--threshold=0.75', '--update-baseline'], deps)
+
+    expect(deps.runPaired).toHaveBeenCalledTimes(1)
+    expect(deps.seedBaseline).toHaveBeenCalledTimes(1)
+    expect(exitCode).toBe(0)
+  })
+
+  test('without the flag the threshold verdict still gates and no seed runs', async () => {
+    const perFile = [scoredPerFile('src/foo.ts', 0.5)]
+    const deps = mainDeps(runResultFor(perFile, { ...ZERO_SCORE, score: 0.5 }))
+
+    const exitCode = await pairedRunMain(['src/foo.ts', '--threshold=0.9'], deps)
+
+    expect(exitCode).toBe(1)
+    expect(deps.seedBaseline).not.toHaveBeenCalled()
+  })
+
+  test("seeds exactly this run's fresh per-file scores (reuse disabled)", async () => {
+    const perFile = [scoredPerFile('src/a.ts', 0.7), scoredPerFile('src/b.ts', 0.4)]
+    const deps = mainDeps(runResultFor(perFile))
+
+    await pairedRunMain(['src/a.ts', 'src/b.ts', '--update-baseline'], deps)
+
+    expect(deps.runPaired).toHaveBeenCalledWith(expect.objectContaining({ sourceFiles: ['src/a.ts', 'src/b.ts'] }))
+    expect(deps.seedBaseline).toHaveBeenCalledWith(expect.objectContaining({ perFile }))
+  })
+
+  test('an empty selection still exits 2 on the flag path before any run or seed', async () => {
+    const deps = mainDeps(runResultFor([]))
+
+    const exitCode = await pairedRunMain(['--update-baseline'], deps)
+
+    expect(exitCode).toBe(2)
+    expect(deps.runPaired).not.toHaveBeenCalled()
+    expect(deps.seedBaseline).not.toHaveBeenCalled()
+  })
+})
+
 describe('parsePairedRunCliArgs', () => {
   test('parses source files with a threshold value', () => {
     expect(parsePairedRunCliArgs(['src/foo.ts', 'src/bar.ts', '--threshold=0.75'])).toEqual({
       kind: 'ok',
       sourceFiles: ['src/foo.ts', 'src/bar.ts'],
       threshold: 0.75,
+      updateBaseline: false,
       verbose: false,
     })
   })
@@ -560,6 +655,7 @@ describe('parsePairedRunCliArgs', () => {
       kind: 'ok',
       sourceFiles: ['src/foo.ts'],
       threshold: 0,
+      updateBaseline: false,
       verbose: true,
     })
   })

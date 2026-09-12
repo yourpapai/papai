@@ -18,6 +18,14 @@ import {
 
 const log = logger.child({ scope: 'deferred:schedule-update-helpers' })
 
+export function validateFutureFireAt(date: string, time: string, timezone: string): string | { error: string } {
+  const utcStr = localDatetimeToUtc(date, time, timezone)
+  const fireDate = new Date(utcStr)
+  if (Number.isNaN(fireDate.getTime())) return { error: `Invalid fire_at date/time: '${date}T${time}'` }
+  if (fireDate.getTime() <= Date.now()) return { error: 'fire_at must be a future date and time.' }
+  return utcStr
+}
+
 export function parseExecution(
   input: ({ delivery_brief: string } & Partial<Readonly<{ context_snapshot: string }>>) | undefined,
 ): ExecutionMetadata {

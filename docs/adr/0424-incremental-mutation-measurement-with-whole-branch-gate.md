@@ -114,6 +114,23 @@ Verified end-to-end on a scratch branch before shipping: a commit introducing an
 - `scripts/mutation/changed-files.ts` — `--no-score-cache`; boolean flags now match exactly rather than by prefix, so a mistyped flag is rejected instead of silently ignored.
 - `.github/workflows/ci.yml` — `actions/cache/restore` and `actions/cache/save` around the PR gate; save carries `if: always()` and `continue-on-error: true`. The `mutation-baseline` job is deliberately left without a score cache.
 
+## Later amendment: measurement is now distributed
+
+The gate since runs as **plan → k × shard → gate** (`openspec/changes/shard-mutation-gate/`), which
+changes *where* a measurement happens but not this ADR's contract. Two properties here become
+requirements on the combining job rather than on a single process:
+
+- **Record before gating.** Still load-bearing for exactly the reason stated above, but the caller
+  is now the gate job, which records what every shard measured before rendering the verdict.
+- **Whole-branch coverage.** The plan records the targets it will measure; the gate reconciles what
+  came back against that list and fails on any target with no result. Distributing measurement adds
+  a way to lose a file that a single process did not have — a dead shard — and an unaccounted file
+  is treated as unmeasurable, never as absent. This is the distributed form of "an unmeasurable file
+  must never pass the gate by not showing up".
+
+The `actions/cache` wiring described above splits by producer: the plan job writes the coverage-map
+cache, the gate job writes the score cache under its own key, and `if: always()` moves with it.
+
 ## Related Decisions
 
 - ADR-0342: Mutation gate becomes a pure regression ratchet — defines *what* the gate compares. This ADR changes only *when* a score is measured; the ratchet contract is untouched.

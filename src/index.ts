@@ -4,6 +4,7 @@
 // See LICENSE in the project root for details.
 
 import { logger } from './logger.js'
+import { prewarmModelsDevSnapshot } from './models-dev/client.js'
 import { createPapaiRuntime } from './runtime/create-runtime.js'
 import { createProductionRuntimeDeps } from './runtime/production-deps.js'
 import {
@@ -112,4 +113,7 @@ export async function runProduction(
   registerShutdownHandlers(runtime, deps, shellLog)
 }
 
-if (import.meta.main) await runProduction()
+if (import.meta.main) {
+  void prewarmModelsDevSnapshot()
+  await runProduction()
+}

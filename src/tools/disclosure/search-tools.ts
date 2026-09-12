@@ -6,15 +6,27 @@
 import { tool, type Tool, type ToolSet } from 'ai'
 import { z } from 'zod'
 
+import { getConfigContextIdFromStorageContextId } from '../../chat/scoped-context.js'
 import { emitUser } from '../../debug/event-bus.js'
 import { logger } from '../../logger.js'
-import { buildToolFailureResult } from '../../tool-failure.js'
+import { buildToolFailureResult, resolveContextLocale, type ToolFailureResult } from '../../tool-failure.js'
 import { ALWAYS_ON_TOOL_NAMES } from './core.js'
 import type { DisclosureSession } from './registry.js'
 import { buildBriefs } from './tool-brief.js'
 import type { ToolRetriever } from './tool-retriever.js'
 
 const log = logger.child({ scope: 'tool:search_tools' })
+
+/**
+ * The tool returns the failure instead of throwing, so the localized rebuild
+ * in the outer execution wrapper never applies; build the body in the
+ * context locale here.
+ */
+function buildSearchToolsFailure(error: unknown, contextId: string, toolCallId: string): ToolFailureResult {
+  return buildToolFailureResult(error, 'search_tools', toolCallId, {
+    locale: resolveContextLocale(getConfigContextIdFromStorageContextId(contextId)),
+  })
+}
 
 export function makeSearchToolsTool(
   session: DisclosureSession,
@@ -56,7 +68,7 @@ export function makeSearchToolsTool(
             : 'No tool matched, and no additional tools are available to load in this context.'
         return { results, hint }
       } catch (error) {
-        const failure = buildToolFailureResult(error, 'search_tools', opts?.toolCallId ?? '')
+        const failure = buildSearchToolsFailure(error, contextId, opts?.toolCallId ?? '')
         log.error(
           { contextId, tool: 'search_tools', errorType: failure.errorType, errorCode: failure.errorCode },
           'search_tools execution failed',

@@ -4,7 +4,7 @@
 // See LICENSE in the project root for details.
 
 import { Database } from 'bun:sqlite'
-import { mock } from 'bun:test'
+import { expect, mock } from 'bun:test'
 
 import { drizzle } from 'drizzle-orm/bun-sqlite'
 
@@ -440,6 +440,28 @@ export {
   type LogCall,
   type TrackedLoggerMock,
 } from './logger-mock.js'
+import type { TrackedLoggerMock } from './logger-mock.js'
+
+// src/i18n/index.ts logs fallbacks through the module-level logger, so it is
+// loaded via cache-busting dynamic import AFTER the tracked logger mock is
+// installed (same pattern as tests/startup-helpers.test.ts).
+type I18nModule = typeof import('../../src/i18n/index.js')
+
+const isI18nModule = (value: unknown): value is I18nModule =>
+  typeof value === 'object' &&
+  value !== null &&
+  typeof Reflect.get(value, 't') === 'function' &&
+  typeof Reflect.get(value, 'isSupportedLocale') === 'function'
+
+export async function loadI18nModule(tracked: TrackedLoggerMock): Promise<I18nModule> {
+  void mock.module('../../src/logger.js', () => ({
+    getLogLevel: tracked.getLogLevel,
+    logger: tracked.logger,
+  }))
+  const loaded: unknown = await import(`../../src/i18n/index.js?t=${crypto.randomUUID()}`)
+  if (!isI18nModule(loaded)) throw new Error('i18n module did not export the expected API')
+  return loaded
+}
 
 // ============================================================================
 // REPLY MOCK FACTORIES
@@ -1184,4 +1206,26 @@ export async function waitFor(predicate: () => boolean, timeoutMs = 2000): Promi
       setTimeout(resolve, 5)
     })
   }
+}
+
+/**
+ * Assert that `work` rejects with a message matching `expected`.
+ *
+ * History: Bun 1.4 made `expect(promise).rejects` pathologically slow when the
+ * rejecting chain touched a live child process (~33s vs ~100ms caught directly,
+ * ~1s on Bun 1.3.11) — measured on the plugin entry-graph walk while the AST
+ * parser still spawned `tsgo`. Parsing is in-process now, so that trigger is
+ * gone, but the helper stays the repo-standard rejection assertion: it names
+ * the Bun defect, and `.rejects` regressions of this shape have happened
+ * before. The assertion semantics are identical either way.
+ */
+export async function expectRejection(work: Promise<unknown>, expected: string | RegExp): Promise<void> {
+  let message: string | undefined
+  try {
+    await work
+  } catch (error) {
+    message = error instanceof Error ? error.message : String(error)
+  }
+  if (message === undefined) throw new Error(`Expected a rejection matching ${String(expected)}, but none was thrown`)
+  expect(message).toMatch(expected)
 }

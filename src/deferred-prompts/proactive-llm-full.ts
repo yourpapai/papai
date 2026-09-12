@@ -10,6 +10,7 @@ import { getConfigContextIdFromStorageContextId } from '../chat/scoped-context.j
 import { getConfig } from '../config.js'
 import { buildMessagesWithMemory } from '../conversation.js'
 import type { TaskProvider } from '../providers/types.js'
+import { resolveContextLocale } from '../tool-failure.js'
 import { getToolRetriever } from '../tools/disclosure/embedding-tool-retriever.js'
 import type { DisclosureSession } from '../tools/disclosure/registry.js'
 import { maybeApplyDisclosure } from '../tools/disclosure/wire.js'
@@ -69,7 +70,10 @@ export async function buildFullToolSet(
   // Single final pass over the actual ToolSet (after preferences + disclosure):
   // attaches the strict ProviderRequestScope contextSchema and outer wrapper to
   // every executable descriptor. No later step may create or replace a tool.
-  const finalized = finalizeProviderScopedTools(tools)
+  const finalized = finalizeProviderScopedTools(
+    tools,
+    resolveContextLocale(getConfigContextIdFromStorageContextId(storageContextId)),
+  )
   return { tools: finalized, enabledToolNames: new Set(Object.keys(finalized)), disclosure }
 }
 

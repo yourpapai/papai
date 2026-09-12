@@ -14,6 +14,8 @@ import {
 } from '../../src/chat/permission-prompt.js'
 import { resetPermissionPromptForTesting } from '../../src/chat/permission-prompt.testing.js'
 import type { ButtonReplyOptions, ChatButton, PromptHandle, ReplyFn } from '../../src/chat/types.js'
+import { setConfigValue } from '../../src/config.js'
+import { mockLogger, setupTestDb } from '../utils/test-helpers.js'
 
 type CapturedButtonCall = { body: string; options: ButtonReplyOptions }
 
@@ -50,7 +52,11 @@ async function tickAsync(): Promise<void> {
 }
 
 describe('askPermissionViaChat', () => {
-  beforeEach(() => resetPermissionPromptForTesting())
+  beforeEach(async () => {
+    mockLogger()
+    await setupTestDb()
+    resetPermissionPromptForTesting()
+  })
   afterEach(() => resetPermissionPromptForTesting())
 
   test('posts an Allow/Deny prompt and resolves on allow', async () => {
@@ -135,6 +141,20 @@ describe('askPermissionViaChat', () => {
     await tickAsync()
     expect(getButtonCall()!.body).toContain('`delete_task`')
   })
+
+  test('renders the prompt body and buttons in the context language', async () => {
+    setConfigValue('ctx-ru', 'language', 'ru')
+    const { reply, getButtonCall } = makeReply()
+    void askPermissionViaChat(reply, 'ctx-ru', { toolName: 'delete_task', reason: 'причина', args: { id: 'T-1' } })
+    await tickAsync()
+
+    const call = getButtonCall()!
+    expect(call.body).toContain('🔐 Запустить `delete_task`?')
+    expect(call.body).toContain('**Аргументы:**\nid: T-1')
+    const btns = extractButtons(call)
+    expect(btns[0]!.text).toBe('✅ Разрешить')
+    expect(btns[1]!.text).toBe('🚫 Запретить')
+  })
 })
 
 type RequestedEvent = { timeoutMs: number }
@@ -162,7 +182,11 @@ function makeLifecycleRecorder(): {
 }
 
 describe('analytics confirmation lifecycle', () => {
-  beforeEach(() => resetPermissionPromptForTesting())
+  beforeEach(async () => {
+    mockLogger()
+    await setupTestDb()
+    resetPermissionPromptForTesting()
+  })
   afterEach(() => resetPermissionPromptForTesting())
 
   test('allow: requested fires after the prompt send resolves, then granted with latency', async () => {
@@ -308,6 +332,52 @@ describe('formatDecisionConfirmation', () => {
   test('includes the tool name for deny', () => {
     expect(formatDecisionConfirmation('delete_task', 'deny')).toBe('Denied delete_task 🚫')
   })
+  test('renders allow in the requested locale', () => {
+    expect(formatDecisionConfirmation('delete_task', 'allow', 'ru')).toBe('Разрешено: delete_task ✅')
+  })
+  test('renders deny in the requested locale', () => {
+    expect(formatDecisionConfirmation('delete_task', 'deny', 'ru')).toBe('Отклонено: delete_task 🚫')
+  })
+})
+
+describe('expired-prompt redaction', () => {
+  beforeEach(() => resetPermissionPromptForTesting())
+  afterEach(() => resetPermissionPromptForTesting())
+
+  test('redacts the expired prompt in the context language', async () => {
+    mockLogger()
+    await setupTestDb()
+    setConfigValue('ctx-ru', 'language', 'ru')
+    const redactions: string[] = []
+    const handle: PromptHandle = {
+      redact: (text: string): Promise<void> => {
+        redactions.push(text)
+        return Promise.resolve()
+      },
+      remove: (): Promise<void> => Promise.resolve(),
+    }
+    const reply: ReplyFn = {
+      text: mock(() => Promise.resolve()),
+      formatted: mock(() => Promise.resolve()),
+      typing: mock(() => {}),
+      buttons: (): Promise<PromptHandle> => Promise.resolve(handle),
+    }
+
+    const decision = askPermissionViaChat(
+      reply,
+      'ctx-ru',
+      {
+        toolName: 'delete_task',
+        reason: 'r',
+        args: {},
+      },
+      { timeoutMs: 25 },
+    )
+    await tickAsync()
+
+    await expect(decision).resolves.toBe('deny')
+    expect(redactions).toEqual(['⌛ Время истекло — отклонено.'])
+  })
 })
 
 describe('formatArguments', () => {
@@ -379,9 +449,20 @@ describe('formatPrompt', () => {
     const result = formatPrompt('delete_task', 'cleanup *task*', { id: 'task-123' })
     expect(result).toContain('cleanup \\*task\\*')
   })
+
+  test('renders the prompt body in the requested locale', () => {
+    const result = formatPrompt('delete_task', 'cleanup', { id: 'task-123' }, 'ru')
+    expect(result).toContain('🔐 Запустить `delete_task`?')
+    expect(result).toContain('**Аргументы:**\nid: task-123')
+  })
 })
 
 describe('askPermissionViaChat handle lifecycle', () => {
+  beforeEach(async () => {
+    mockLogger()
+    await setupTestDb()
+  })
+
   type SpyHandle = {
     redact: ReturnType<typeof mock<() => Promise<void>>>
     remove: ReturnType<typeof mock<() => Promise<void>>>

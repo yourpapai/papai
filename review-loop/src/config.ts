@@ -8,16 +8,60 @@ import path from 'node:path'
 
 import { z } from 'zod'
 
+import type { ClaudeRunContext } from './agent-runner.js'
 import { PricingTableSchema } from './cost.js'
 import { detectGitRoot } from './worktree.js'
 
+/**
+ * Which subprocess backend serves the run's agent roles. One backend per run —
+ * per-role placement makes a mixed config representable so validation can
+ * refuse it by name, rather than a top-level key silently stripping a stray
+ * per-role spelling and proceeding on the wrong backend.
+ */
+export type AgentBackend = 'opencode' | 'claude'
+
+/**
+ * The effort-tier shape check, duplicated from the pipeline side's
+ * `effortTier` (`opencode-agent/src/config-model-values.ts`) rather than
+ * imported — the documented workspace boundary (`claude-argv.ts`'s header):
+ * the two workspaces do not compile against each other. Deliberately a
+ * **shape** check and not a list, for the reason recorded on the twin: the
+ * valid set is model- and release-date-dependent, and a copied list would
+ * reject tiers that work — the model refuses the rest. If either side ever
+ * loosens its shape, the doctrine test is where the two get pinned equal.
+ */
+export const EFFORT_MAX_LENGTH = 16
+export const EFFORT_PATTERN = /^[a-z][a-z0-9-]*$/u
+
 const AgentConfigSchema = z.object({
   model: z.string().min(1),
+  /**
+   * The reasoning-effort tier this role's subprocess runs at (design D4);
+   * absent names none. Shape-checked at load, before any subprocess starts.
+   */
+  effort: z
+    .string()
+    .max(EFFORT_MAX_LENGTH)
+    .refine((value) => EFFORT_PATTERN.test(value), {
+      error: (iss) =>
+        `effort must be a lowercase effort tier such as \`low\`, \`high\` or \`xhigh\`, got ${JSON.stringify(iss.input)}`,
+    })
+    .optional(),
+  /**
+   * See {@link AgentBackend}; omit-or-agree per role, resolved run-wide. The
+   * error names the received value because a bare expected-one-of message does
+   * not say which knob the bad spelling came from.
+   */
+  backend: z
+    .enum(['opencode', 'claude'], {
+      error: (iss) => `backend must be "opencode" or "claude", got ${JSON.stringify(iss.input) ?? 'unknown'}`,
+    })
+    .optional(),
   extraArgs: z.array(z.string()).default([]),
   timeoutMs: z.number().int().min(0).optional(),
 })
 
-export const ReviewLoopConfigSchema = z.object({
+const ReviewLoopConfigShape = z.object({
   repoRoot: z.string().min(1).optional(),
   workDir: z.string().min(1),
   maxRounds: z.number().int().positive().default(10),
@@ -49,6 +93,12 @@ export const ReviewLoopConfigSchema = z.object({
    * why an unattended CI run wants it on and a laptop does not.
    */
   mergeEachFix: z.boolean().default(false),
+  /**
+   * Batched verification: one fixer per theme batch, one build + one inspector
+   * per round over the aggregated diff. Off by default — see `issue-clustering.ts`
+   * and `loop-controller.ts` batch path.
+   */
+  batchVerify: z.boolean().default(false),
   reviewer: AgentConfigSchema,
   fixer: AgentConfigSchema,
   inspector: AgentConfigSchema.optional(),
@@ -56,9 +106,58 @@ export const ReviewLoopConfigSchema = z.object({
   pricing: PricingTableSchema.optional(),
 })
 
+/** The per-role backend spellings a config names, in role order, `undefined`s dropped. */
+function namedBackends(config: {
+  reviewer: { backend?: AgentBackend }
+  fixer: { backend?: AgentBackend }
+  matcher: { backend?: AgentBackend }
+  inspector?: { backend?: AgentBackend }
+}): AgentBackend[] {
+  return [config.reviewer, config.fixer, config.matcher, config.inspector].flatMap((agent) =>
+    agent?.backend === undefined ? [] : [agent.backend],
+  )
+}
+
+/**
+ * The one backend a parsed config resolves to: the single non-`undefined`
+ * per-role value, else the pre-change default. Callers read this instead of
+ * re-deriving it, so every spawn of the run agrees on one answer.
+ */
+export function effectiveBackend(config: {
+  reviewer: { backend?: AgentBackend }
+  fixer: { backend?: AgentBackend }
+  matcher: { backend?: AgentBackend }
+  inspector?: { backend?: AgentBackend }
+}): AgentBackend {
+  return namedBackends(config)[0] ?? 'opencode'
+}
+
+/**
+ * Refuses per-role backend disagreement at load, before any subprocess starts.
+ * The refinement runs after the enum has vetted each value individually.
+ */
+export const ReviewLoopConfigSchema = ReviewLoopConfigShape.superRefine((config, ctx) => {
+  const unique = [...new Set(namedBackends(config))]
+  if (unique.length > 1) {
+    ctx.addIssue({
+      code: 'custom',
+      path: ['backend'],
+      message: `Invalid config: one backend per run — every role that names a backend must agree (found ${unique.join(', ')}).`,
+    })
+  }
+})
+
 export interface ReviewLoopConfig extends z.infer<typeof ReviewLoopConfigSchema> {
   repoRoot: string
   workDir: string
+  /** The one effective backend every role of this run spawns (D1). */
+  backend: AgentBackend
+  /**
+   * The claude route's run-wide context, assembled once in `runCli` after the
+   * resolver answers and joined with the run-scoped config-dir root (D4), and
+   * ridden on the resolved config to every spawn. Absent on the opencode route.
+   */
+  claude?: ClaudeRunContext
 }
 
 export interface ConfigLoadInput {
@@ -79,6 +178,7 @@ export async function loadReviewLoopConfig(input: ConfigLoadInput): Promise<Revi
 
   return {
     ...parsed,
+    backend: effectiveBackend(parsed),
     repoRoot,
     workDir,
   }

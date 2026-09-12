@@ -58,6 +58,39 @@ describe('types', () => {
     expect(options.chatUserId).toBe('user-123')
   })
 
+  it('should accept isBotAdmin true with platformInstanceId', () => {
+    const options: MakeToolsOptions = {
+      storageContextId: 'user-123',
+      chatUserId: 'user-123',
+      isBotAdmin: true,
+      platformInstanceId: 'pi-1',
+    }
+
+    expect(options.isBotAdmin).toBe(true)
+    expect(options.platformInstanceId).toBe('pi-1')
+  })
+
+  it('should accept isBotAdmin false', () => {
+    const options: MakeToolsOptions = {
+      storageContextId: 'user-123',
+      chatUserId: 'user-123',
+      isBotAdmin: false,
+    }
+
+    expect(options.isBotAdmin).toBe(false)
+    expect(options.platformInstanceId).toBeUndefined()
+  })
+
+  it('should allow omitting isBotAdmin and platformInstanceId', () => {
+    const options: MakeToolsOptions = {
+      storageContextId: 'user-123',
+      chatUserId: 'user-123',
+    }
+
+    expect(options.isBotAdmin).toBeUndefined()
+    expect(options.platformInstanceId).toBeUndefined()
+  })
+
   it('should export ContextType type', () => {
     const dm: ContextType = 'dm'
     const group: ContextType = 'group'

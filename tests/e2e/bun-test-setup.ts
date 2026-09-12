@@ -22,7 +22,7 @@ let hooksRegistered = false
 
 async function approveAndActivateProviderPlugins(): Promise<void> {
   initDb()
-  const { plugins: discoveredPlugins } = discoverPlugins('plugins')
+  const { plugins: discoveredPlugins } = await discoverPlugins('plugins')
   syncRegistryFromDb(discoveredPlugins)
   const kaneoEntry = pluginRegistry.getEntry('task-provider-kaneo')
   if (kaneoEntry !== undefined) {

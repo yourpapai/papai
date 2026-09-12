@@ -25,7 +25,17 @@ export function seedDefaultLlmProviderFromEnv(): void {
   if (apiKey === undefined || apiKey === '') return
   if (baseUrl === undefined || baseUrl === '') return
   if (mainModel === undefined || mainModel === '') return
-  const provider = createLlmProvider({ label: 'Default (env)', providerType: 'custom', baseUrl, apiKey }, 'env')
+  const provider = createLlmProvider(
+    {
+      label: 'Default (env)',
+      providerType: 'custom',
+      baseUrl,
+      apiKey,
+      baseProvider: process.env['LLM_BASE_PROVIDER']?.trim() ?? null,
+      baseModel: process.env['LLM_BASE_MODEL']?.trim() ?? null,
+    },
+    'env',
+  )
   const smallModel = process.env['SMALL_MODEL']?.trim()
   const embeddingModel = process.env['EMBEDDING_MODEL']?.trim()
   setAdminRoleBindings(

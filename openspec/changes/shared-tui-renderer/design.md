@@ -89,7 +89,7 @@ For the new workspace to be test-first gated like `review-loop`/`sdd-runner`, ex
 
 ### D7 — `tui-renderer` package shape
 
-`package.json`: `name: "tui-renderer"`, `private: true`, `type: "module"`, `exports: { ".": "./src/index.ts" }`, **no runtime `dependencies`** (the primitives are pure TypeScript with no imports outside `node:path`-free logic), `devDependencies` mirroring siblings (`@typescript/native-preview`, `typescript`). `tsconfig.json` extends `../tsconfig.json` with `types: ["bun"]`, `include: ["src/**/*.ts"]`. Scripts follow the sibling pattern (`test`, `typecheck`, `lint`, `format`, `format:check`), all `cd ..`-ing to repo root, and root `package.json` gains `tui-renderer:test`/`:typecheck`/`:lint`/`:format:check` aliases plus a slot in `check:verbose` (`package.json:99`).
+`package.json`: `name: "tui-renderer"`, `private: true`, `type: "module"`, `exports: { ".": "./src/index.ts" }`, **no runtime `dependencies`** (the primitives are pure TypeScript with no imports outside `node:path`-free logic), `devDependencies` mirroring siblings (`typescript`). `tsconfig.json` extends `../tsconfig.json` with `types: ["bun"]`, `include: ["src/**/*.ts"]`. Scripts follow the sibling pattern (`test`, `typecheck`, `lint`, `format`, `format:check`), all `cd ..`-ing to repo root, and root `package.json` gains `tui-renderer:test`/`:typecheck`/`:lint`/`:format:check` aliases plus a slot in `check:verbose` (`package.json:99`).
 
 ## Risks / Trade-offs
 

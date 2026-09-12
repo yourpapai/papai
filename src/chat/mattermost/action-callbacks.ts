@@ -6,7 +6,10 @@
 import { z } from 'zod'
 
 import { getThreadScopedStorageContextId } from '../../bot.js'
+import { t } from '../../i18n/index.js'
 import { logger } from '../../logger.js'
+import { getContextLanguage } from '../../utils/config-language.js'
+import { getConfigContextIdFromStorageContextId } from '../scoped-context.js'
 import type { ContextType, IncomingInteraction, ReplyFn } from '../types.js'
 import { getMattermostActionSigningSecret } from './action-secret.js'
 import { verifyMattermostActionContext, type VerifiedMattermostActionContext } from './action-signing.js'
@@ -178,7 +181,12 @@ export async function dispatchMattermostProviderAction(
   }
   const { reply, getResponse } = buildActionReply()
   if (deps.interactionHandler === null) {
-    await reply.text('Action is no longer available.')
+    await reply.text(
+      t(
+        'interactions.staleAction',
+        getContextLanguage(getConfigContextIdFromStorageContextId(incoming.storageContextId)),
+      ),
+    )
     return getResponse()
   }
   await deps.interactionHandler(incoming, reply)

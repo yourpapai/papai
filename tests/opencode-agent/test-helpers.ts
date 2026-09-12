@@ -3,14 +3,16 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
+import type { TranscriptRow } from '../../opencode-agent/src/activity-detail.js'
 import type { IssueComment } from '../../opencode-agent/src/blocks.js'
 import type { CheckRunner, CheckSpec } from '../../opencode-agent/src/check-loop.js'
 import type { CiGroups } from '../../opencode-agent/src/ci-groups.js'
-import { DEFAULT_CHECKS } from '../../opencode-agent/src/config-values.js'
 import type { PipelineConfig } from '../../opencode-agent/src/config.js'
 import type { CommitOutcome } from '../../opencode-agent/src/git-commit.js'
 import type { Salvage } from '../../opencode-agent/src/git-commit.js'
 import type { Git, PushOptions } from '../../opencode-agent/src/git.js'
+import type { MergeOutcome } from '../../opencode-agent/src/git.js'
+import type { RefCheckRun, RunJob } from '../../opencode-agent/src/github-actions.js'
 import type { LabelApi } from '../../opencode-agent/src/github-labels.js'
 import type {
   PullRequestApi,
@@ -38,6 +40,7 @@ import type {
 } from '../../opencode-agent/src/openspec-driver.js'
 import type { IssueContext } from '../../opencode-agent/src/phase-context.js'
 import type { PhaseDeps, RunReview } from '../../opencode-agent/src/phase-context.js'
+import type { ModelsDevDb } from '../../opencode-agent/src/pricing.js'
 import type { ReplyBuffer } from '../../opencode-agent/src/reply-buffer.js'
 import { noopReplyBuffer } from '../../opencode-agent/src/reply-buffer.js'
 import type { ReviewRunResult } from '../../opencode-agent/src/review-runner.js'
@@ -77,22 +80,26 @@ export const stubConfig = (repoRoot = '/repo'): PipelineConfig => ({
   owner: 'acme',
   repo: 'widgets',
   githubToken: 'token',
+  backend: 'opencode',
+  claudeCredential: null,
+  claudeEnv: null,
   selfLoginOverride: 'agent-bot',
   selfWorkflowName: 'OpenCode Issue Agent',
-  openai: { apiKey: 'sk-test', baseUrl: 'https://api.openai.com/v1', model: 'gpt-5' },
+  openai: { apiKey: 'sk-test', baseUrl: 'https://api.openai.com/v1', model: 'gpt-5', provider: 'openai' },
   commitAuthorName: 'agent',
   commitAuthorEmail: 'agent@example.com',
   checkCommand: 'bun test',
   reviewCommand: ['bun', 'run', 'review-loop/src/cli.ts'],
-  checks: DEFAULT_CHECKS,
   reviewMaxRounds: 2,
   reviewPoolSize: 1,
   agentTimeoutMs: 1000,
+  stallTimeoutMs: 300_000,
   jobDeadlineMs: null,
   teardownReserveMs: 180_000,
   wrapUpMs: 120_000,
   ciFixMaxRounds: 2,
   commitRepairMaxRounds: 3,
+  syncRepairMaxRounds: 3,
   maxCiAttempts: 2,
   maxAttempts: 3,
   maxReviewAttempts: 2,
@@ -138,6 +145,22 @@ export interface StubIo {
    * `openspec/changes/`. A test seeds it to drive capture down the adopt path.
    */
   existingChanges: string[]
+  /**
+   * Jobs the fake `listRunJobs` answers with. A test seeds them to drive a
+   * CI-fix round at a particular red run; the default empty list is the
+   * needs-human "no failed job could be found" shape.
+   */
+  runJobs: RunJob[]
+  /** Log text the fake `jobLog` returns, keyed by job id; absent ids answer ''. */
+  jobLogs: Record<number, string>
+  /**
+   * Check runs the fake `listCheckRunsForRef` answers with, and the refs it was
+   * asked for, in order — a command-bought CI-fix round reads these.
+   */
+  refCheckRuns: RefCheckRun[]
+  refReads: string[]
+  /** Rows written to the fake encrypted transcript, in order. */
+  transcriptRows: TranscriptRow[]
 }
 
 export interface StubPhaseDepsOptions {
@@ -155,6 +178,10 @@ export interface StubPhaseDepsOptions {
   selfLogin?: string
   /** The repoRoot the fake config reports. */
   repoRoot?: string
+  /** Pre-seeded `listRunJobs` answer (default: no jobs). */
+  runJobs?: readonly RunJob[]
+  /** Pre-seeded `jobLog` answers, keyed by job id. */
+  jobLogs?: Record<number, string>
 }
 
 const emptyInstructions = (): InstructionsResult => ({
@@ -193,6 +220,11 @@ export const stubPhaseDeps = (options: StubPhaseDepsOptions = {}): { deps: Phase
     reads: [],
     readContents: {},
     existingChanges: [],
+    runJobs: [...(options.runJobs ?? [])],
+    jobLogs: { ...(options.jobLogs ?? {}) },
+    refCheckRuns: [],
+    refReads: [],
+    transcriptRows: [],
   }
   const replies = options.replies ?? []
   const login = options.selfLogin ?? 'agent-bot'
@@ -204,6 +236,7 @@ export const stubPhaseDeps = (options: StubPhaseDepsOptions = {}): { deps: Phase
       return Promise.resolve({ text: replies.shift() ?? '', sessionId: 's' })
     },
     tokensUsed: (): Promise<number> => Promise.resolve(0),
+    spend: () => Promise.resolve({ usd: null, source: 'none' as const, windows: [] }),
     abort: (): Promise<boolean> => Promise.resolve(true),
     close: (): Promise<void> => Promise.resolve(),
   }
@@ -214,8 +247,14 @@ export const stubPhaseDeps = (options: StubPhaseDepsOptions = {}): { deps: Phase
       io.openspecCalls.push('listChangeNames')
       return Promise.resolve([...io.existingChanges])
     },
-    newChange: (changeName: string, schema: string): Promise<{ changeName: string }> => {
-      io.openspecCalls.push(`newChange:${changeName}:${schema}`)
+    newChange: (
+      changeName: string,
+      schema: string,
+      newChangeOptions?: { skipSpecs?: boolean },
+    ): Promise<{ changeName: string }> => {
+      io.openspecCalls.push(
+        `newChange:${changeName}:${schema}${newChangeOptions?.skipSpecs === true ? ':skip-specs' : ''}`,
+      )
       return Promise.resolve({ changeName })
     },
     status: (changeName: string): Promise<StatusResult> => {
@@ -279,6 +318,14 @@ export const stubPhaseDeps = (options: StubPhaseDepsOptions = {}): { deps: Phase
     getIssue: (issueNumber: number): Promise<IssueContext> =>
       Promise.resolve({ number: issueNumber, title: '', body: '' }),
     getAuthenticatedLogin: (): Promise<string> => Promise.resolve(login),
+    getUser: (loginArg: string): Promise<{ login: string; id: number }> =>
+      Promise.resolve({ login: loginArg, id: 123 }),
+    listRunJobs: (_runId: number): Promise<readonly RunJob[]> => Promise.resolve([...io.runJobs]),
+    jobLog: (jobId: number): Promise<string> => Promise.resolve(io.jobLogs[jobId] ?? ''),
+    listCheckRunsForRef: (ref: string): Promise<readonly RefCheckRun[]> => {
+      io.refReads.push(ref)
+      return Promise.resolve([...io.refCheckRuns])
+    },
     ...reactionApi,
     ...labelApi,
     ...pullRequestApi,
@@ -305,6 +352,10 @@ export const stubPhaseDeps = (options: StubPhaseDepsOptions = {}): { deps: Phase
       io.gitCalls.push(`salvage:${message.split('\n')[0]}`)
       return Promise.resolve({ kind: 'clean' })
     },
+    reconcile: (branch: string): Promise<void> => {
+      io.gitCalls.push(`reconcile:${branch}`)
+      return Promise.resolve()
+    },
     push: (branch: string, _options?: PushOptions): Promise<void> => {
       io.gitCalls.push(`push:${branch}`)
       return Promise.resolve()
@@ -314,8 +365,24 @@ export const stubPhaseDeps = (options: StubPhaseDepsOptions = {}): { deps: Phase
       io.gitCalls.push(`changedSince:${sha}`)
       return Promise.resolve([])
     },
+    diffSince: (sha: string, paths: readonly string[]): Promise<string> => {
+      io.gitCalls.push(`diffSince:${sha}:${paths.join(',')}`)
+      return Promise.resolve('')
+    },
     revertPaths: (sha: string, paths: readonly string[]): Promise<void> => {
       io.gitCalls.push(`revertPaths:${sha}:${paths.join(',')}`)
+      return Promise.resolve()
+    },
+    mergeBase: (base: string): Promise<MergeOutcome> => {
+      io.gitCalls.push(`mergeBase:${base}`)
+      return Promise.resolve({ kind: 'up-to-date' })
+    },
+    completeMerge: (message: string): Promise<void> => {
+      io.gitCalls.push(`completeMerge:${message.split('\n')[0]}`)
+      return Promise.resolve()
+    },
+    abortMerge: (): Promise<void> => {
+      io.gitCalls.push('abortMerge')
       return Promise.resolve()
     },
     headSha: (): Promise<string> => {
@@ -339,11 +406,17 @@ export const stubPhaseDeps = (options: StubPhaseDepsOptions = {}): { deps: Phase
 
   const deps: PhaseDeps = {
     github,
+    transcript: {
+      write: (row): void => {
+        io.transcriptRows.push(row)
+      },
+    },
     git,
     runCheck,
     runReview,
     agent: (): Promise<OpenCodeAgent> => Promise.resolve(agent),
     tokensUsed: (): Promise<number> => Promise.resolve(0),
+    spend: () => Promise.resolve({ usd: null, source: 'none' as const, windows: [] }),
     skills: (): Promise<SkillDocument[]> => Promise.resolve([...(options.skills ?? [])]),
     writeFile: (filePath: string, content: string): Promise<void> => {
       io.writes.push({ path: filePath, content })
@@ -366,3 +439,14 @@ export const stubPhaseDeps = (options: StubPhaseDepsOptions = {}): { deps: Phase
 
   return { deps, io }
 }
+
+/**
+ * A model catalogue with nothing in it, injected wherever a test drives `runCli`.
+ *
+ * The boot path reads models.dev to learn its model's context window, and
+ * `tests/opencode-agent/` must not touch the network. Empty rather than seeded:
+ * these suites assert on the pipeline's behaviour, not on model metadata, and an
+ * empty database is the tier that emits nothing — exactly the config this
+ * pipeline produced before the lookup existed.
+ */
+export const emptyCatalogue = (): Promise<ModelsDevDb> => Promise.resolve({})

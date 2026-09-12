@@ -93,12 +93,46 @@ describe('test-resolver', () => {
       expect(isGateableImplFile('scripts/foo.ts', projectRoot)).toBe(false)
     })
 
-    test('returns true for review-loop/src/cli.ts', () => {
+    test('returns true for plugins/task-provider-kaneo/classify-error.ts', () => {
+      expect(isGateableImplFile('plugins/task-provider-kaneo/classify-error.ts', projectRoot)).toBe(true)
+    })
+
+    test('returns false for plugin test files', () => {
+      expect(isGateableImplFile('plugins/task-provider-kaneo/classify-error.test.ts', projectRoot)).toBe(false)
+    })
+
+    // review-loop/src/ is gated on this branch. master's narrow-mutation-gate-scope
+    // narrowed to product code in a history that never had the runner workspace; the
+    // merge keeps the superset.
+    test('returns true for review-loop/src/cli.ts (workspace hook gates apply)', () => {
       expect(isGateableImplFile('review-loop/src/cli.ts', projectRoot)).toBe(true)
     })
 
     test('returns false for review-loop/src/cli.test.ts', () => {
       expect(isGateableImplFile('review-loop/src/cli.test.ts', projectRoot)).toBe(false)
+    })
+
+    test('returns true for opencode-agent/src/config.ts', () => {
+      expect(isGateableImplFile('opencode-agent/src/config.ts', projectRoot)).toBe(true)
+    })
+
+    test('returns true for nested opencode-agent/src/phases/triage.ts', () => {
+      expect(isGateableImplFile('opencode-agent/src/phases/triage.ts', projectRoot)).toBe(true)
+    })
+
+    test('returns false for opencode-agent/src/index.ts (barrel entrypoint stays unmeasured)', () => {
+      expect(isGateableImplFile('opencode-agent/src/index.ts', projectRoot)).toBe(false)
+    })
+
+    test('returns false for workspace non-source paths (docs, workflow config, non-src scripts)', () => {
+      expect(isGateableImplFile('opencode-agent/docs/remaining-findings-evaluation.md', projectRoot)).toBe(false)
+      expect(isGateableImplFile('opencode-agent/tsconfig.json', projectRoot)).toBe(false)
+      expect(isGateableImplFile('opencode-agent/scripts/verify-skills.ts', projectRoot)).toBe(false)
+    })
+
+    test('returns false for tests/opencode-agent files', () => {
+      expect(isGateableImplFile('tests/opencode-agent/config.test.ts', projectRoot)).toBe(false)
+      expect(isGateableImplFile('tests/opencode-agent/fake-git.ts', projectRoot)).toBe(false)
     })
   })
 
@@ -125,6 +159,12 @@ describe('test-resolver', () => {
 
     test('review-loop/src/cli.ts -> tests/review-loop/cli.test.ts', () => {
       expect(suggestTestPath('review-loop/src/cli.ts')).toBe('tests/review-loop/cli.test.ts')
+    })
+
+    test('opencode-agent/src/phases/implement-steps.ts -> tests/opencode-agent/implement-steps.test.ts (flat across the src/ subtree)', () => {
+      expect(suggestTestPath('opencode-agent/src/phases/implement-steps.ts')).toBe(
+        path.join('tests', 'opencode-agent', 'implement-steps.test.ts'),
+      )
     })
   })
 
@@ -228,6 +268,47 @@ describe('test-resolver', () => {
 
       expect(result).toBe(testFile)
     })
+
+    test('finds flat parallel test for opencode-agent/src/phases/implement-steps.ts at tests/opencode-agent/implement-steps.test.ts', () => {
+      const testsDir = path.join(tmpDir, 'tests', 'opencode-agent')
+      fs.mkdirSync(testsDir, { recursive: true })
+      const testFile = path.join(testsDir, 'implement-steps.test.ts')
+      fs.writeFileSync(testFile, '')
+
+      const implFile = path.join(tmpDir, 'opencode-agent', 'src', 'phases', 'implement-steps.ts')
+      const result = findTestFile(implFile, tmpDir)
+
+      expect(result).toBe(testFile)
+    })
+
+    test('prefers the flat parallel test over the colocated one for opencode-agent sources', () => {
+      const testsDir = path.join(tmpDir, 'tests', 'opencode-agent')
+      fs.mkdirSync(testsDir, { recursive: true })
+      const flatTest = path.join(testsDir, 'foo.test.ts')
+      fs.writeFileSync(flatTest, '')
+
+      const phasesDir = path.join(tmpDir, 'opencode-agent', 'src', 'phases')
+      fs.mkdirSync(phasesDir, { recursive: true })
+      fs.writeFileSync(path.join(phasesDir, 'foo.ts'), '')
+      const colocatedTest = path.join(phasesDir, 'foo.test.ts')
+      fs.writeFileSync(colocatedTest, '')
+
+      const result = findTestFile(path.join(phasesDir, 'foo.ts'), tmpDir)
+
+      expect(result).toBe(flatTest)
+    })
+
+    test('falls back to colocated test for opencode-agent sources when no flat test exists', () => {
+      const phasesDir = path.join(tmpDir, 'opencode-agent', 'src', 'phases')
+      fs.mkdirSync(phasesDir, { recursive: true })
+      fs.writeFileSync(path.join(phasesDir, 'bar.ts'), '')
+      const colocatedTest = path.join(phasesDir, 'bar.test.ts')
+      fs.writeFileSync(colocatedTest, '')
+
+      const result = findTestFile(path.join(phasesDir, 'bar.ts'), tmpDir)
+
+      expect(result).toBe(colocatedTest)
+    })
   })
 
   describe('resolveImplPath', () => {
@@ -253,6 +334,74 @@ describe('test-resolver', () => {
 
     test('tests/review-loop/cli.test.ts -> review-loop/src/cli.ts', () => {
       expect(resolveImplPath('tests/review-loop/cli.test.ts')).toBe(path.join('review-loop', 'src', 'cli.ts'))
+    })
+
+    describe('workspace subtree back-resolution (existence-checked)', () => {
+      let tmpDir: string
+
+      beforeEach(() => {
+        tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'test-resolver-'))
+      })
+
+      afterEach(() => {
+        fs.rmSync(tmpDir, { recursive: true, force: true })
+      })
+
+      test('tests/opencode-agent/implement-steps.test.ts resolves the unique namesake under the src/ subtree', () => {
+        const implFile = path.join(tmpDir, 'opencode-agent', 'src', 'phases', 'implement-steps.ts')
+        fs.mkdirSync(path.dirname(implFile), { recursive: true })
+        fs.writeFileSync(implFile, '')
+
+        const result = resolveImplPath(path.join('tests', 'opencode-agent', 'implement-steps.test.ts'), tmpDir)
+
+        expect(result).toBe(path.join('opencode-agent', 'src', 'phases', 'implement-steps.ts'))
+      })
+
+      test('tests/opencode-agent/phases.test.ts resolves no counterpart (no namesake under src/)', () => {
+        const implFile = path.join(tmpDir, 'opencode-agent', 'src', 'config.ts')
+        fs.mkdirSync(path.dirname(implFile), { recursive: true })
+        fs.writeFileSync(implFile, '')
+
+        const result = resolveImplPath(path.join('tests', 'opencode-agent', 'phases.test.ts'), tmpDir)
+
+        expect(result).toBeNull()
+      })
+    })
+  })
+
+  // Gateability and mappability are separate questions. `bun run test:affected` and the mutation
+  // score fingerprint resolve tests for workspaces the gate does not measure, so narrowing
+  // isGateableImplFile must never narrow the mappers. Pinned together here so an edit that
+  // "finishes the job" by deleting the review-loop or opencode-agent branches fails on intent,
+  // not just on a scattered assertion. See openspec/changes/narrow-mutation-gate-scope design.md D2.
+  describe('non-gateable workspaces stay mappable', () => {
+    test('review-loop/src/cli.ts stays gateable and still maps to its test and back', () => {
+      expect(isGateableImplFile('review-loop/src/cli.ts', '/project')).toBe(true)
+      expect(suggestTestPath('review-loop/src/cli.ts')).toBe('tests/review-loop/cli.test.ts')
+      expect(resolveImplPath('tests/review-loop/cli.test.ts')).toBe(path.join('review-loop', 'src', 'cli.ts'))
+    })
+
+    test('opencode-agent/src/phases/implement-steps.ts stays gateable and still maps to its flat test and back', () => {
+      expect(isGateableImplFile('opencode-agent/src/phases/implement-steps.ts', '/project')).toBe(true)
+      expect(suggestTestPath('opencode-agent/src/phases/implement-steps.ts')).toBe(
+        'tests/opencode-agent/implement-steps.test.ts',
+      )
+      const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'test-resolver-'))
+      try {
+        const implFile = path.join(tmpDir, 'opencode-agent', 'src', 'phases', 'implement-steps.ts')
+        fs.mkdirSync(path.dirname(implFile), { recursive: true })
+        fs.writeFileSync(implFile, '')
+        expect(resolveImplPath(path.join('tests', 'opencode-agent', 'implement-steps.test.ts'), tmpDir)).toBe(
+          path.join('opencode-agent', 'src', 'phases', 'implement-steps.ts'),
+        )
+      } finally {
+        fs.rmSync(tmpDir, { recursive: true, force: true })
+      }
+    })
+
+    test('scripts/build-client.ts is not gateable yet still maps back from its test', () => {
+      expect(isGateableImplFile('scripts/build-client.ts', '/project')).toBe(false)
+      expect(resolveImplPath('tests/scripts/build-client.test.ts')).toBe(path.join('scripts', 'build-client.ts'))
     })
   })
 })

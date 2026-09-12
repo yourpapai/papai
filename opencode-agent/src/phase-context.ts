@@ -3,6 +3,7 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
+import type { RunSpend } from './agent-session.js'
 import type { IssueComment } from './blocks.js'
 import type { CheckRunner } from './check-loop.js'
 import type { CiGroups } from './ci-groups.js'
@@ -14,6 +15,7 @@ import type { Logger } from './logger.js'
 import type { SkillDocument } from './obra-skills.js'
 import type { OpenCodeAgent } from './opencode-adapter.js'
 import type { OpenSpecDriver } from './openspec-driver.js'
+import type { TranscriptSink } from './progress.js'
 import type { ReplyBuffer } from './reply-buffer.js'
 import type { ReviewRunResult } from './review-runner.js'
 import type { TriggerEvent } from './trigger-events.js'
@@ -56,6 +58,8 @@ export interface PhaseDeps {
    * would cost a great deal.
    */
   tokensUsed: () => Promise<number>
+  /** What this job spent, and its provider's standing. Reporting only — see {@link RunSpend}. */
+  spend: () => Promise<RunSpend>
   skills: (phase: Phase) => Promise<SkillDocument[]>
   /**
    * Writes composed artifact content to a resolved path under the change folder
@@ -105,6 +109,13 @@ export interface PhaseDeps {
    */
   now: () => number
   /**
+   * The encrypted transcript, when the run has a key — the designated place
+   * for content the public Actions log must not carry. Optional the way the
+   * run itself is: a run without `AGENT_LOG_KEY` has nowhere to write, and a
+   * phase that folds content degrades to silence there, not to a throw.
+   */
+  transcript?: TranscriptSink
+  /**
    * The Actions log's collapsible sections, as an injected boundary like every
    * other.
    *
@@ -138,10 +149,27 @@ export interface PhaseInput {
  */
 export interface MachineInput extends PhaseInput {
   answer: boolean
+  /**
+   * Set when the trigger is the `/sync` side operation. The cascade runs the
+   * sync handler instead of a phase, ahead of both budget stops — see
+   * `phases/sync.ts` for why `/sync` owns its own ceilings.
+   */
+  sync?: boolean
   /** Whether this run has already written a state block to the thread. */
   posted: boolean
   /** Tokens this issue had spent before this job started. */
   carriedTokens: number
+  /**
+   * Dollars this issue had cost before this job started, and whether any of that
+   * earlier spend was unpriceable.
+   *
+   * Captured once from the restored block, exactly as `carriedTokens` is and for
+   * the same reason: a job's session total is already cumulative across the
+   * phases it cascades through, so adding it per phase would count the earlier
+   * phases again.
+   */
+  carriedUsd: number
+  carriedUnpriced: boolean
 }
 
 /**

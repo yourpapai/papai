@@ -5,20 +5,16 @@
 
 import { observeActiveFeatureUsed } from '../analytics/feature-observer.js'
 import type { ReplyFn, StatusHandle } from '../chat/types.js'
+import { t } from '../i18n/index.js'
+import type { Locale } from '../i18n/index.js'
 import { logger } from '../logger.js'
-import { createStatusEngine, THINKING } from './status-engine.js'
+import { createStatusEngine } from './status-engine.js'
 import type { StatusEngine } from './status-engine.js'
 import { formatToolStatus } from './tool-status-labels.js'
 
 const log = logger.child({ scope: 'live-status:reporter' })
 
-/**
- * Placeholder shown once the model's tool phase ends, held in place while the final answer is
- * prepared/verified and until the first reply message is actually sent — closes the visible gap
- * between deleting the tool status and posting the reply.
- */
-export const PREPARING_RESPONSE = '💬 Preparing response…'
-/** A tool label is held at least this long before reverting to "Thinking…", to avoid flicker on fast tools. */
+/** A tool label is held at least this long before reverting to the idle text, to avoid flicker on fast tools. */
 const DEFAULT_MIN_LABEL_MS = 1000
 
 /** Owns a single ephemeral status message for one turn. All methods are best-effort and never throw. */
@@ -42,7 +38,9 @@ export type LiveStatusReporter = {
 export type LiveStatusReporterOptions = {
   /** When false, the reporter is fully inert — no status message is ever created. Defaults to true. */
   enabled?: boolean
-  /** Minimum time (ms) a tool label stays visible before reverting to "Thinking…". Defaults to 1000. */
+  /** Locale for the thinking text and tool labels; defaults to `en`. Resolved once per reporter. */
+  locale?: Locale
+  /** Minimum time (ms) a tool label stays visible before reverting to the idle text. Defaults to 1000. */
   minLabelMs?: number
   /** Injectable monotonic clock; defaults to {@link Date.now}. Exists so tests need no real timers. */
   now?: () => number
@@ -159,6 +157,7 @@ const startStatus = async (
   engine: StatusEngine,
   recorder: AnalyticsRecorder,
   clock: () => number,
+  thinkingText: string,
 ): Promise<void> => {
   if (!enabled) {
     recorder.emitOpportunity(false, 'disabled')
@@ -169,7 +168,7 @@ const startStatus = async (
     recorder.emitOpportunity(false, 'platform_unsupported')
     return
   }
-  const created = await reply.createStatus(THINKING).catch(() => undefined)
+  const created = await reply.createStatus(thinkingText).catch(() => undefined)
   if (created === undefined) {
     observeActiveFeatureUsed({ feature: 'live_status', operation: 'create', outcome: 'failure' })
     recorder.recordLifecycle('create', 'failed')
@@ -227,24 +226,27 @@ const dismissStatus = async (
 
 export function createLiveStatusReporter(reply: ReplyFn, options?: LiveStatusReporterOptions): LiveStatusReporter {
   const enabled = options?.enabled !== false
+  const locale = options?.locale ?? 'en'
   const clock = options?.now ?? ((): number => Date.now())
   const recorder = createAnalyticsRecorder(options?.analytics, clock, options?.turnStartedAtMs ?? clock())
   const state: MutableReporterState = { handle: undefined, frozen: false, createdAtMs: undefined }
+  const thinkingText = t('liveStatus.thinking', locale)
   const engine = createStatusEngine({
     emit: (text): void => {
       if (state.frozen || state.handle === undefined) return
       recorder.recordUpdate(state.handle.update(text))
     },
     isActive: (): boolean => state.handle !== undefined,
+    idleText: thinkingText,
     minLabelMs: options?.minLabelMs ?? DEFAULT_MIN_LABEL_MS,
     now: clock,
     schedule: options?.schedule ?? defaultSchedule,
   })
 
   return {
-    start: () => startStatus(reply, enabled, state, engine, recorder, clock),
+    start: () => startStatus(reply, enabled, state, engine, recorder, clock, thinkingText),
     onToolStart: (event): void => {
-      engine.onToolStart(formatToolStatus(event.toolName, event.input))
+      engine.onToolStart(formatToolStatus(event.toolName, event.input, locale))
     },
     onToolFinish: (): void => {
       engine.onToolFinish()

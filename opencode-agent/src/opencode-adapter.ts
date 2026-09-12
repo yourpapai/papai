@@ -13,57 +13,23 @@ import type { OpenAiSettings } from './openai-config.js'
 import { connectSdk } from './opencode-connect.js'
 import { createProgressTracker } from './progress.js'
 import type { ProgressTracker, TranscriptSink } from './progress.js'
+import { resolveRunCost } from './run-spend.js'
 import { buildBody, decodeAbort, decodeReply, parseModelRef } from './sdk-contract.js'
 import type { SessionUsage } from './sdk-contract.js'
-import { requireAnswer, runTurn } from './turn-run.js'
+import { requireAnswer } from './turn-answer.js'
+import { runTurn } from './turn-run.js'
 import type { TurnBounds, TurnConnection } from './turn-run.js'
 
 export type { ModelRef, SdkPromptBody } from './sdk-contract.js'
 export { parseModelRef } from './sdk-contract.js'
 import { errorMessage } from './types.js'
 
-export interface AgentPromptRequest {
-  prompt: string
-  system?: string
-  /** OpenCode agent profile (`build`, `plan`, …). */
-  agent?: string
-  /** Per-call tool allow/deny overrides passed straight through to the SDK. */
-  tools?: Record<string, boolean>
-}
-
-export interface AgentPromptResult {
-  text: string
-  sessionId: string
-}
-
-/** A live OpenCode session bound to one workspace directory. */
-export interface OpenCodeAgent {
-  readonly sessionId: string
-  prompt(request: AgentPromptRequest): Promise<AgentPromptResult>
-  /**
-   * Tokens this session has consumed. Zero when the server cannot say — a
-   * budget is a guardrail on the work, not part of it, so a shape it fails to
-   * recognise must not turn every phase into a failure.
-   */
-  tokensUsed(): Promise<number>
-  /**
-   * Stops whatever the model is running, and says whether the server took it.
-   *
-   * The one boundary in this pipeline that is best-effort **and** reports.
-   * Measured against a live server: an abort kills the tool child and leaves the
-   * server up, while `close()` — a bare SIGTERM to one pid on POSIX — kills the
-   * server and leaves the tool child running, reparented to init. So this is the
-   * stop and `close()` is the leak, and the two are not each other's fallback.
-   *
-   * A refused abort must not become the run's failure — the stop it belongs to is
-   * already out of time and cannot afford a second thing to go wrong — but unlike
-   * the feedback channels it cannot swallow the answer either: the salvage stages
-   * a working tree, and staging one whose writer may still be running is the only
-   * thing that path must never do. Hence `boolean` rather than `void`.
-   */
-  abort(): Promise<boolean>
-  close(): Promise<void>
-}
+// The seam interface itself lives in `agent-session.ts` since the claude
+// backend arrived behind it; re-exported under the name every existing import
+// already uses, so the extraction changed no caller.
+export type { AgentPromptRequest, AgentPromptResult } from './agent-session.js'
+export type { AgentSession as OpenCodeAgent } from './agent-session.js'
+import type { AgentSession, RunSpend } from './agent-session.js'
 
 /**
  * Minimal slice of the SDK surface the adapter drives.
@@ -119,9 +85,16 @@ export interface OpenCodeAgentOptions extends TurnBounds {
  * checked-out workspace. The server binds loopback only and dies with the job,
  * which is exactly the lifetime an ephemeral Actions runner gives us.
  */
-export const createOpenCodeAgent = async (options: OpenCodeAgentOptions): Promise<OpenCodeAgent> => {
+export const createOpenCodeAgent = async (options: OpenCodeAgentOptions): Promise<AgentSession> => {
   const model = parseModelRef(modelRef(options.openai))
-  const connect = options.connect ?? ((): Promise<OpenCodeConnection> => connectSdk(options.directory, options.openai))
+  // Which catalogue row a run resolved decides whether the model has a context
+  // window at all — `limit.context` 0 makes `isOverflow` return `false` and
+  // switches auto-compaction off with no other symptom — and nothing downstream
+  // can see it. Names only, never the key or the endpoint: a CI log is
+  // world-readable on a public repository.
+  options.log.debug({ ...model }, 'Resolved the model reference OpenCode will look up')
+  const connect =
+    options.connect ?? ((): Promise<OpenCodeConnection> => connectSdk(options.directory, options.openai, options.log))
   const connection = await connect()
 
   let sessionId: string
@@ -144,16 +117,8 @@ export const createOpenCodeAgent = async (options: OpenCodeAgentOptions): Promis
       requireAnswer(text, tracker, options)
       return { text, sessionId }
     },
-    tokensUsed: async (): Promise<number> => {
-      const usage = await connection.usage(sessionId).catch(() => null)
-      if (usage === null) {
-        options.log.warn({ sessionId }, 'The server did not report session usage; the token budget cannot see this run')
-        return 0
-      }
-
-      options.log.debug({ sessionId, tokens: usage.tokens, cost: usage.cost }, 'Session usage')
-      return usage.tokens
-    },
+    tokensUsed: () => readTokensUsed(connection, sessionId, options.log),
+    spend: () => readSpend(connection, sessionId, options),
     abort: () => abortSession(connection, sessionId, options.log),
     close: async (): Promise<void> => {
       // Reporting first. Closing the server does not, by itself, end the stream
@@ -163,6 +128,72 @@ export const createOpenCodeAgent = async (options: OpenCodeAgentOptions): Promis
       await connection.close()
     },
   }
+}
+
+/**
+ * What the run cost, on the route with no subscription window to report.
+ *
+ * `windows` is always empty here and that is a statement rather than a gap:
+ * OpenCode talks to an arbitrary OpenAI-compatible endpoint, which has no Claude
+ * rate-limit standing to carry. Empty means "nothing to say", which is what the
+ * renderer reads it as — never "no limits".
+ *
+ * Beside {@link readTokensUsed} and extracted for the same reason: it turns
+ * every way the read can go wrong into an answer the caller can use. The two
+ * differ in what "wrong" costs — the budget degrades to `0` and warns, because a
+ * ceiling must still return a number; this degrades to `null`, because a cost
+ * report may say it does not know.
+ */
+const readSpend = async (
+  connection: OpenCodeConnection,
+  sessionId: string,
+  options: OpenCodeAgentOptions,
+): Promise<RunSpend> => {
+  const usage = await connection.usage(sessionId).catch(() => null)
+  if (usage === null) {
+    options.log.warn({ sessionId }, 'The server did not report session usage; this run reports unpriced')
+    return { usd: null, source: 'none', windows: [] }
+  }
+
+  const cost = await resolveRunCost(
+    {
+      backendUsd: usage.cost,
+      buckets: {
+        input: usage.input,
+        output: usage.output,
+        reasoning: usage.reasoning,
+        ...(usage.cacheRead === undefined ? {} : { cacheRead: usage.cacheRead }),
+        ...(usage.cacheWrite === undefined ? {} : { cacheWrite: usage.cacheWrite }),
+      },
+      settings: options.openai,
+    },
+    { log: options.log },
+  )
+  return { ...cost, windows: [] }
+}
+
+/**
+ * What the session has spent, with a server that will not say treated as `0`.
+ *
+ * Beside {@link abortSession} and extracted for the same reason: it turns every
+ * way the read can go wrong into an answer the caller can use, rather than a
+ * rejection the budget would have to interpret. `0` is deliberately not a lie
+ * the caller can detect — the `warn` is where that shows, because a token budget
+ * that cannot see a run is a ceiling that has quietly stopped bounding it.
+ */
+const readTokensUsed = async (
+  connection: OpenCodeConnection,
+  sessionId: string,
+  log: OpenCodeAgentOptions['log'],
+): Promise<number> => {
+  const usage = await connection.usage(sessionId).catch(() => null)
+  if (usage === null) {
+    log.warn({ sessionId }, 'The server did not report session usage; the token budget cannot see this run')
+    return 0
+  }
+
+  log.debug({ sessionId, tokens: usage.tokens, cost: usage.cost }, 'Session usage')
+  return usage.tokens
 }
 
 /**

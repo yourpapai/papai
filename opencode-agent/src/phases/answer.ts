@@ -3,6 +3,7 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
+import { branchNameFor } from '../git.js'
 import { composeSystemPrompt } from '../obra-skills.js'
 import type { PhaseHandler, PhaseInput, PhaseOutcome } from '../phase-context.js'
 import { ANSWER_INSTRUCTIONS, buildAnswerPrompt } from '../prompts.js'
@@ -64,6 +65,11 @@ const questionText = (input: PhaseInput): string => {
 const artifactUnderReview = async (input: PhaseInput): Promise<string | null> => {
   const { deps, state } = input
   if (state.changeName === null) return null
+  // Before the first read of the folder, like every handler that reads one:
+  // this job starts on the base branch and `openspec/changes/<name>/` is only
+  // on `agent/issue-<n>`, so asking the driver first buys "Change not found"
+  // for every `/ask` and question-classified comment past capture (issue #331).
+  await deps.git.ensureBranch(branchNameFor(state.issueId), await deps.baseBranch())
   const artifactId = state.phase === 'PLAN_REVIEW' ? 'tasks' : 'proposal'
   const path = (await deps.openspec.instructions(artifactId, state.changeName)).resolvedOutputPath
   return deps.readFile(path)

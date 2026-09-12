@@ -3,6 +3,7 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
+import type { RunSpend } from './agent-session.js'
 import { renderAnswerOverBudget, renderOverBudget } from './budget-notices.js'
 import type { PipelineConfig } from './config.js'
 import type { MachineInput, PhaseDeps } from './phase-context.js'
@@ -45,10 +46,36 @@ export const totalTokens = async (deps: PhaseDeps, carried: number): Promise<num
  */
 export const withinBudget = (spent: number, config: PipelineConfig): boolean => spent < config.maxTokens
 
-/** The single field a state block records spend in, however the run ended. */
-const spendPatch = (spent: number, patch: Partial<AgentState>): Partial<AgentState> => ({
+/**
+ * Everything a state block records spend in, however the run ended.
+ *
+ * All three fields together, in one place, for the reason {@link recordSpend}
+ * gives below: written separately they silently disagreed, and the ceiling went
+ * blind exactly where it was built to bite. The money half joins them rather
+ * than getting a patch of its own so the same fix covers it by construction.
+ *
+ * The cost accumulates the way the tokens do — carried plus this job's — and an
+ * **unpriced** job adds nothing while flipping the flag. That makes the total a
+ * floor rather than a wrong number: `$12.40` with the flag set means "at least
+ * $12.40", and without it means "$12.40". The flag is sticky because an unpriced
+ * turn cannot be un-spent by a later priced one.
+ */
+const spendPatch = (
+  spent: number,
+  cost: RunSpend,
+  carried: { usd: number; unpriced: boolean },
+  patch: Partial<AgentState>,
+): Partial<AgentState> => ({
   ...patch,
   tokensSpent: spent,
+  usdSpent: carried.usd + (cost.usd ?? 0),
+  usdUnpriced: carried.unpriced || cost.usd === null,
+})
+
+/** The carried money half of a `MachineInput`, in the shape {@link spendPatch} takes. */
+const carriedCost = (input: MachineInput): { usd: number; unpriced: boolean } => ({
+  usd: input.carriedUsd,
+  unpriced: input.carriedUnpriced,
 })
 
 /**
@@ -68,7 +95,7 @@ const spendPatch = (spent: number, patch: Partial<AgentState>): Partial<AgentSta
  * block beside it cannot quote different totals.
  */
 export const recordSpend = async (input: MachineInput, patch: Partial<AgentState> = {}): Promise<Partial<AgentState>> =>
-  spendPatch(await totalTokens(input.deps, input.carriedTokens), patch)
+  spendPatch(await totalTokens(input.deps, input.carriedTokens), await input.deps.spend(), carriedCost(input), patch)
 
 /**
  * Stops a run that has spent its token budget, or `null` when it may carry on.
@@ -137,7 +164,11 @@ export const stopIfOverBudget = async (input: MachineInput): Promise<RunResult |
 const parkOverBudget = async (input: MachineInput, spent: number, reason: string): Promise<RunResult> => {
   const { state, deps, thread } = input
 
-  const parked = transition(state, 'FAILED', spendPatch(spent, { attempts: state.attempts, lastError: reason }))
+  const parked = transition(
+    state,
+    'FAILED',
+    spendPatch(spent, await deps.spend(), carriedCost(input), { attempts: state.attempts, lastError: reason }),
+  )
   await postAndAppend(thread, input, renderOverBudget(spent, deps.config.maxTokens, state.phase), parked)
 
   return { status: 'failed', reason, state: parked, reported: true }
@@ -163,7 +194,7 @@ const parkOverBudget = async (input: MachineInput, spent: number, reason: string
  */
 const answerOverBudget = async (input: MachineInput, spent: number, reason: string): Promise<RunResult> => {
   const { state, deps, thread } = input
-  const carried = { ...state, ...spendPatch(spent, {}) }
+  const carried = { ...state, ...spendPatch(spent, await deps.spend(), carriedCost(input), {}) }
 
   await postAnswer(thread, input, renderAnswerOverBudget(spent, deps.config.maxTokens, state.phase), carried)
 

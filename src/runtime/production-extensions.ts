@@ -109,14 +109,14 @@ async function activateAndFinalizePlugins(
   }
 }
 
-export function startProductionExtensions(
+export async function startProductionExtensions(
   router: ChatRouter,
   state: ProductionExtensionState,
   log: ProductionExtensionLogger,
   options: ActivatePluginsOptions = {},
 ): Promise<readonly string[]> {
   loadActivePlatforms(router, state, log)
-  const { plugins, errors, directoryMissing } = discoverPlugins('plugins')
+  const { plugins, errors, directoryMissing } = await discoverPlugins('plugins')
   if (errors.length > 0) log.warn({ errors: errors.map((error) => error.reason) }, 'Some plugins failed discovery')
   const guard = evaluateStartupGuard({
     directoryMissing,

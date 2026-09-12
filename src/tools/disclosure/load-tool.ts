@@ -20,10 +20,14 @@ export function makeLoadToolTool(session: DisclosureSession, contextId: string):
       names: z.array(z.string().min(1)).min(1).describe('Tool names from search_tools results to activate'),
     }),
     execute: ({ names }) => {
+      const activeBefore = new Set(session.activeToolNames())
       const { loaded, unknown } = session.markLoaded(names)
+      const activated = loaded.filter((name) => !activeBefore.has(name))
       const nowActive = session.activeToolNames().length
       emitUser('disclosure:load', contextId, { loadedCount: loaded.length, unknownCount: unknown.length, nowActive })
-      log.debug({ contextId, loadedCount: loaded.length, unknownCount: unknown.length, nowActive }, 'load_tool served')
+      if (activated.length > 0) {
+        log.debug({ contextId, activated, unknownCount: unknown.length, nowActive }, 'load_tool activated tools')
+      }
       const result = { loaded, unknown, nowActive }
       if (unknown.length === 0) return result
       return {

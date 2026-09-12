@@ -5,7 +5,11 @@
 
 import { beforeEach, describe, expect, test } from 'bun:test'
 
+import { toScopedContextId, toScopedThreadContextId } from '../../src/chat/scoped-context.js'
+import { getDrizzleDb } from '../../src/db/drizzle.js'
+import { alertPrompts, taskInstances } from '../../src/db/schema.js'
 import {
+  cancelActiveAlertsPinnedToInstance,
   cancelAlertPrompt,
   createAlertPrompt,
   describeCondition,
@@ -13,10 +17,11 @@ import {
   getAlertPrompt,
   getEligibleAlertPrompts,
   listAlertPrompts,
+  updateAlertActivityState,
   updateAlertMatchState,
-  updateAlertMatchedTaskIds,
   updateAlertPrompt,
 } from '../../src/deferred-prompts/alerts.js'
+import { extractWatchedTaskIds, isPureWatchCondition } from '../../src/deferred-prompts/condition-eval.js'
 import type { AlertCondition } from '../../src/deferred-prompts/types.js'
 import type { Task } from '../../src/providers/types.js'
 import { mockLogger, setupTestDb } from '../utils/test-helpers.js'
@@ -161,6 +166,7 @@ describe('alert prompt CRUD', () => {
     expect(updated).not.toBeNull()
     expect(updated!.condition).toEqual(newCondition)
     expect(updated!.matchedTaskIds).toEqual([])
+    expect(updated!.lastTriggeredAt).toBeNull()
   })
 
   test('updateAlertPrompt preserves matched task ids when only prompt text changes', () => {
@@ -186,31 +192,6 @@ describe('alert prompt CRUD', () => {
   test('cancelAlertPrompt returns null for nonexistent id', () => {
     const result = cancelAlertPrompt('nonexistent', 'user1')
     expect(result).toBeNull()
-  })
-
-  test('updateAlertMatchedTaskIds updates match set without touching trigger time', () => {
-    const condition: AlertCondition = { field: 'task.status', op: 'eq', value: 'done' }
-    const created = createAlertPrompt('user1', 'Alert', condition)
-
-    updateAlertMatchedTaskIds(created.id, 'user1', ['task-1', 'task-2'])
-
-    const found = getAlertPrompt(created.id, 'user1')
-    expect(found).not.toBeNull()
-    expect(found!.matchedTaskIds).toEqual(['task-1', 'task-2'])
-    expect(found!.lastTriggeredAt).toBeNull()
-  })
-
-  test('updateAlertMatchState updates trigger time and match set together', () => {
-    const condition: AlertCondition = { field: 'task.status', op: 'eq', value: 'done' }
-    const created = createAlertPrompt('user1', 'Alert', condition)
-    const now = new Date().toISOString()
-
-    updateAlertMatchState(created.id, 'user1', now, ['task-1'])
-
-    const found = getAlertPrompt(created.id, 'user1')
-    expect(found).not.toBeNull()
-    expect(found!.lastTriggeredAt).toBe(now)
-    expect(found!.matchedTaskIds).toEqual(['task-1'])
   })
 
   test('getEligibleAlertPrompts returns alerts with no trigger history', () => {
@@ -254,6 +235,32 @@ describe('alert prompt CRUD', () => {
     const eligible = getEligibleAlertPrompts()
     expect(eligible).toHaveLength(1)
     expect(eligible[0]!.prompt).toBe('Past cooldown alert')
+  })
+})
+
+describe('alert activity cursor persistence', () => {
+  beforeEach(async () => {
+    await setupTestDb()
+  })
+
+  test('createAlertPrompt returns a null lastActivityCursor that round-trips through toAlertPrompt', () => {
+    const condition: AlertCondition = { field: 'task.status', op: 'eq', value: 'done' }
+    const created = createAlertPrompt('user1', 'Alert', condition)
+
+    expect(created.lastActivityCursor).toBeNull()
+    expect(getAlertPrompt(created.id, 'user1')?.lastActivityCursor).toBeNull()
+  })
+
+  test('condition update through updateAlertPrompt resets the cursor to null', () => {
+    const oldCondition: AlertCondition = { field: 'task.status', op: 'eq', value: 'done' }
+    const created = createAlertPrompt('user1', 'Alert', oldCondition)
+    updateAlertActivityState(created.id, 'user1', '2026-08-27T10:00:00.000Z', '2026-08-27T09:59:00.000Z')
+
+    const newCondition: AlertCondition = { field: 'task.priority', op: 'eq', value: 'high' }
+    const updated = updateAlertPrompt(created.id, 'user1', { condition: newCondition })
+
+    expect(updated?.lastActivityCursor).toBeNull()
+    expect(updated?.matchedTaskIds).toEqual([])
   })
 })
 
@@ -315,6 +322,118 @@ describe('alerts delivery target', () => {
     expect(alert.deliveryTarget.contextType).toBe('dm')
     expect(alert.deliveryTarget.contextId).toBe('user1')
     expect(alert.deliveryTarget.audience).toBe('personal')
+  })
+})
+
+// --- Task instance pinning tests ---
+
+describe('alert task instance pinning', () => {
+  beforeEach(async () => {
+    await setupTestDb()
+  })
+
+  const seedTaskInstance = (id: string): void => {
+    getDrizzleDb().insert(taskInstances).values({ id, type: 'kaneo', config: '{}', status: 'active' }).run()
+  }
+
+  const insertPinnedAlert = (
+    id: string,
+    userId: string,
+    taskInstanceId: string | null,
+    storageContextId?: string,
+  ): void => {
+    getDrizzleDb()
+      .insert(alertPrompts)
+      .values({
+        id,
+        createdByUserId: userId,
+        prompt: `prompt ${id}`,
+        condition: '{"field":"task.status","op":"eq","value":"done"}',
+        taskInstanceId,
+        ...(storageContextId === undefined
+          ? {}
+          : { deliveryContextId: storageContextId, deliveryContextType: 'group', audience: 'shared' }),
+      })
+      .run()
+  }
+
+  test('createAlertPrompt persists the pinned task instance id', () => {
+    seedTaskInstance('ti-a')
+    const condition: AlertCondition = { field: 'task.status', op: 'eq', value: 'done' }
+
+    const alert = createAlertPrompt('user1', 'Pinned alert', condition, 60, undefined, undefined, 'ti-a')
+
+    expect(alert.taskInstanceId).toBe('ti-a')
+    expect(getAlertPrompt(alert.id, 'user1')!.taskInstanceId).toBe('ti-a')
+  })
+
+  test('createAlertPrompt leaves the pin null when none is provided', () => {
+    const condition: AlertCondition = { field: 'task.status', op: 'eq', value: 'done' }
+
+    const alert = createAlertPrompt('user1', 'Unpinned alert', condition)
+
+    expect(alert.taskInstanceId).toBeNull()
+    expect(getAlertPrompt(alert.id, 'user1')!.taskInstanceId).toBeNull()
+  })
+
+  test('toAlertPrompt round-trips a stored task instance pin', () => {
+    seedTaskInstance('ti-a')
+    insertPinnedAlert('ap-pinned', 'user1', 'ti-a')
+
+    expect(getAlertPrompt('ap-pinned', 'user1')!.taskInstanceId).toBe('ti-a')
+  })
+
+  test('cancelActiveAlertsPinnedToInstance cancels active alerts pinned to the instance', () => {
+    seedTaskInstance('ti-a')
+    seedTaskInstance('ti-b')
+    insertPinnedAlert('ap-a', 'user1', 'ti-a')
+    insertPinnedAlert('ap-b', 'user1', 'ti-b')
+    insertPinnedAlert('ap-null', 'user1', null)
+
+    cancelActiveAlertsPinnedToInstance('ti-a')
+
+    expect(getAlertPrompt('ap-a', 'user1')!.status).toBe('cancelled')
+    expect(getAlertPrompt('ap-b', 'user1')!.status).toBe('active')
+    expect(getAlertPrompt('ap-null', 'user1')!.status).toBe('active')
+  })
+
+  test('cancelActiveAlertsPinnedToInstance scopes cancellation to the config context when provided', () => {
+    seedTaskInstance('ti-a')
+    const chanA = toScopedContextId({ platformInstanceId: 'pi-1', nativeContextId: 'chan-a' })
+    const chanAThread = toScopedThreadContextId({
+      platformInstanceId: 'pi-1',
+      nativeContextId: 'chan-a',
+      threadId: 't1',
+    })
+    const chanB = toScopedContextId({ platformInstanceId: 'pi-1', nativeContextId: 'chan-b' })
+    insertPinnedAlert('ap-a-main', 'user1', 'ti-a', chanA)
+    insertPinnedAlert('ap-a-thread', 'user2', 'ti-a', chanAThread)
+    insertPinnedAlert('ap-b', 'user1', 'ti-a', chanB)
+
+    cancelActiveAlertsPinnedToInstance('ti-a', chanA)
+
+    expect(getAlertPrompt('ap-a-main', 'user1')!.status).toBe('cancelled')
+    expect(getAlertPrompt('ap-a-thread', 'user2')!.status).toBe('cancelled')
+    expect(getAlertPrompt('ap-b', 'user1')!.status).toBe('active')
+  })
+
+  test('cancelActiveAlertsPinnedToInstance does not cross-match a context id differing only by case', () => {
+    seedTaskInstance('ti-a')
+    const chanA = toScopedContextId({ platformInstanceId: 'pi-1', nativeContextId: 'chan-a' })
+    const chanAThread = toScopedThreadContextId({
+      platformInstanceId: 'pi-1',
+      nativeContextId: 'chan-a',
+      threadId: 't1',
+    })
+    const firstLower = chanA.match(/[a-z]/u)!
+    const caseSibling = chanA.replace(firstLower[0], firstLower[0].toUpperCase())
+    insertPinnedAlert('ap-a-thread', 'user1', 'ti-a', chanAThread)
+    insertPinnedAlert('ap-sibling-thread', 'user2', 'ti-a', `${caseSibling}:thread:dEAw`)
+
+    cancelActiveAlertsPinnedToInstance('ti-a', chanA)
+
+    expect(getAlertPrompt('ap-a-thread', 'user1')!.status).toBe('cancelled')
+    expect(getAlertPrompt('ap-sibling-thread', 'user2')!.status).toBe('active')
   })
 })
 
@@ -518,6 +637,91 @@ describe('evaluateCondition', () => {
     const condition: AlertCondition = { field: 'task.labels', op: 'not_contains', value: 'bug' }
     const task = makeTask({ labels: [] })
     expect(evaluateCondition(condition, task, emptySnapshots)).toBe(true)
+  })
+
+  test('task.id eq matches exactly the task with the watched id and no other', () => {
+    const condition: AlertCondition = { field: 'task.id', op: 'eq', value: 'task-1' }
+    expect(evaluateCondition(condition, makeTask({ id: 'task-1' }), emptySnapshots)).toBe(true)
+    expect(evaluateCondition(condition, makeTask({ id: 'task-2' }), emptySnapshots)).toBe(false)
+  })
+})
+
+// --- Watch classification (task.id) tests ---
+
+describe('extractWatchedTaskIds', () => {
+  test('collects task.id eq values across nested and/or trees with dedupe', () => {
+    const condition: AlertCondition = {
+      and: [
+        { field: 'task.id', op: 'eq', value: 't1' },
+        {
+          or: [
+            { field: 'task.id', op: 'eq', value: 't2' },
+            { field: 'task.id', op: 'eq', value: 't1' },
+          ],
+        },
+      ],
+    }
+    expect(extractWatchedTaskIds(condition)).toEqual(['t1', 't2'])
+  })
+
+  test('returns empty for non-watch trees', () => {
+    const condition: AlertCondition = {
+      or: [
+        { field: 'task.status', op: 'eq', value: 'done' },
+        { field: 'task.dueDate', op: 'overdue' },
+      ],
+    }
+    expect(extractWatchedTaskIds(condition)).toEqual([])
+  })
+
+  test('collects only task.id leaves from a mixed tree', () => {
+    const condition: AlertCondition = {
+      and: [
+        { field: 'task.id', op: 'eq', value: 't1' },
+        { field: 'task.status', op: 'eq', value: 'done' },
+      ],
+    }
+    expect(extractWatchedTaskIds(condition)).toEqual(['t1'])
+  })
+})
+
+describe('isPureWatchCondition', () => {
+  test('true for a single task.id eq leaf', () => {
+    expect(isPureWatchCondition({ field: 'task.id', op: 'eq', value: 't1' })).toBe(true)
+  })
+
+  test('true for any all-task.id-eq tree', () => {
+    const condition: AlertCondition = {
+      or: [
+        { field: 'task.id', op: 'eq', value: 't1' },
+        {
+          and: [
+            { field: 'task.id', op: 'eq', value: 't2' },
+            { field: 'task.id', op: 'eq', value: 't3' },
+          ],
+        },
+      ],
+    }
+    expect(isPureWatchCondition(condition)).toBe(true)
+  })
+
+  test('false when a non-watch leaf appears', () => {
+    const condition: AlertCondition = {
+      and: [
+        { field: 'task.id', op: 'eq', value: 't1' },
+        { field: 'task.status', op: 'eq', value: 'done' },
+      ],
+    }
+    expect(isPureWatchCondition(condition)).toBe(false)
+  })
+
+  test('false for a tree without any task.id leaf', () => {
+    expect(isPureWatchCondition({ field: 'task.status', op: 'eq', value: 'done' })).toBe(false)
+  })
+
+  test('false when a task.id leaf uses a non-eq operator', () => {
+    const rogue = { field: 'task.id', op: 'neq', value: 't1' } as AlertCondition
+    expect(isPureWatchCondition(rogue)).toBe(false)
   })
 })
 

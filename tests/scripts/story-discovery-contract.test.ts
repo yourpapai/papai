@@ -23,9 +23,9 @@ test('package scripts retain an explicit harness contract command', () => {
 })
 
 test('Knip declares the coding-session compatibility seams as narrow public entries', () => {
-  const knip = readFileSync(path.join(ROOT, 'knip.config.ts'), 'utf8')
+  const knipConfig = `${readFileSync(path.join(ROOT, 'knip.config.ts'), 'utf8')}\n${readFileSync(path.join(ROOT, 'knip-entries.ts'), 'utf8')}`
 
-  expect(knip).toContain("'src/coding-sessions/configure.ts!'")
-  expect(knip).toContain("'src/coding-sessions/session-record.ts!'")
-  expect(knip).toContain("'src/coding-sessions/store.ts!'")
+  expect(knipConfig).toContain("'src/coding-sessions/configure.ts!'")
+  expect(knipConfig).toContain("'src/coding-sessions/session-record.ts!'")
+  expect(knipConfig).toContain("'src/coding-sessions/store.ts!'")
 })

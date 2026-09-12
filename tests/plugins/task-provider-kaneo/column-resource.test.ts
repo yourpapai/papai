@@ -4,7 +4,11 @@
 // See LICENSE in the project root for details.
 
 import { afterEach, beforeEach, describe, expect, mock, test } from 'bun:test'
+import assert from 'node:assert/strict'
 
+// Import implementation to satisfy TDD hook requirement
+import '../../../plugins/task-provider-kaneo/column-resource.js'
+import { KaneoClassifiedError } from '../../../plugins/task-provider-kaneo/classify-error.js'
 import type { KaneoConfig } from '../../../plugins/task-provider-kaneo/client.js'
 import { mockLogger, restoreFetch, setMockFetch } from '../../utils/test-helpers.js'
 import { ColumnResource } from './test-resources.js'
@@ -25,6 +29,27 @@ describe('ColumnResource', () => {
   })
 
   describe('list', () => {
+    test('classifies workspace-marker 400 as project-not-found with project context', async () => {
+      setMockFetch(() =>
+        Promise.resolve(
+          new Response(JSON.stringify({ error: 'Workspace ID could not be determined' }), { status: 400 }),
+        ),
+      )
+
+      const resource = new ColumnResource(mockConfig)
+      let caught: unknown = null
+      try {
+        await resource.list('proj-stale')
+      } catch (error) {
+        caught = error
+      }
+
+      expect(caught).toBeInstanceOf(KaneoClassifiedError)
+      assert(caught instanceof KaneoClassifiedError)
+      expect(caught.appError.code).toBe('project-not-found')
+      expect(caught.appError).toHaveProperty('projectId', 'proj-stale')
+    })
+
     test('returns all columns for project', async () => {
       setMockFetch(() =>
         Promise.resolve(
@@ -121,6 +146,29 @@ describe('ColumnResource', () => {
       const resource = new ColumnResource(mockConfig)
       const promise = resource.list('proj-1')
       await expect(promise).rejects.toThrow()
+    })
+  })
+
+  describe('create', () => {
+    test('classifies workspace-marker 400 as project-not-found with project context', async () => {
+      setMockFetch(() =>
+        Promise.resolve(
+          new Response(JSON.stringify({ error: 'Workspace ID could not be determined' }), { status: 400 }),
+        ),
+      )
+
+      const resource = new ColumnResource(mockConfig)
+      let caught: unknown = null
+      try {
+        await resource.create('proj-stale', { name: 'Todo' })
+      } catch (error) {
+        caught = error
+      }
+
+      expect(caught).toBeInstanceOf(KaneoClassifiedError)
+      assert(caught instanceof KaneoClassifiedError)
+      expect(caught.appError.code).toBe('project-not-found')
+      expect(caught.appError).toHaveProperty('projectId', 'proj-stale')
     })
   })
 })

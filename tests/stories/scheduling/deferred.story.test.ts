@@ -120,6 +120,16 @@ scenario('SCN-deferred-fire-alert: an overdue task fires a proactive alert', asy
   // dueDate entirely, which would make the 'overdue' condition never match.
   given.taskCapabilities(['projects.list'])
   const project = await world.tasks.createProject({ name: 'Board' })
+  given.alertPrompt(dm, {
+    prompt: 'Nudge me about overdue tasks',
+    condition: { field: 'task.dueDate', op: 'overdue' },
+  })
+  // Baseline-on-create (rule 6; #418 adopting the #401 bug-3 lane-b decision): a filter
+  // alert records its matched set on its first evaluation cycle and fires nothing — no
+  // backlog replay. The first poll baselines an empty match set; the overdue task created
+  // afterwards is the newly-matched edge the second poll delivers. This first poll must
+  // stay silent, which the not-yet-declared chat route enforces.
+  await when.alertPoll()
   await world.tasks.createTask({
     projectId: project.id,
     title: 'Overdue task',
@@ -139,10 +149,6 @@ scenario('SCN-deferred-fire-alert: an overdue task fires a proactive alert', asy
       ],
     }),
   )
-  given.alertPrompt(dm, {
-    prompt: 'Nudge me about overdue tasks',
-    condition: { field: 'task.dueDate', op: 'overdue' },
-  })
   await when.alertPoll()
   then.replyTo(alice).contains('overdue')
 })

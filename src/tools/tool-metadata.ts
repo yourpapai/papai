@@ -25,6 +25,7 @@ export const TOOL_DOMAINS = [
   'mcp',
   'plugin',
   'memory',
+  'diagnostics',
 ] as const
 
 export type ToolDomain = (typeof TOOL_DOMAINS)[number]
@@ -65,6 +66,7 @@ export const TOOL_METADATA: Readonly<Record<string, ToolClassification>> = {
   update_task: write('task', 'update'),
   search_tasks: read('task'),
   list_tasks: read('task'),
+  suggest_next_task: read('task'),
   get_task: read('task'),
   count_tasks: read('task'),
   delete_task: destructive('task'),
@@ -181,6 +183,16 @@ export const TOOL_METADATA: Readonly<Record<string, ToolClassification>> = {
   // outrank the dynamic plugin_ open-world fallback and stay guest-eligible.
   plugin_context_vault__list_agent_specs: read('plugin'),
   plugin_context_vault__get_agent_spec: read('plugin'),
+
+  run_diagnostics: read('diagnostics'),
+  read_recent_logs: read('diagnostics'),
+  read_llm_traces: read('diagnostics'),
+  read_recent_turns: read('diagnostics'),
+  read_recent_tool_failures: read('diagnostics'),
+  // Disposable proof-check surface: the runner creates real prompts and spends
+  // LLM tokens (write/create); the reader is a read over the capped JSONL store.
+  run_proof_check: write('diagnostics', 'create'),
+  read_proof_results: read('diagnostics'),
 }
 
 export function getToolMetadata(toolName: string): ToolClassification | undefined {

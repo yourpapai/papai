@@ -7,11 +7,12 @@ import { describe, expect, test } from 'bun:test'
 
 import { z } from 'zod'
 
+import { countedTokens } from '../../opencode-agent/src/agent-session.js'
 import { renderBlock } from '../../opencode-agent/src/blocks.js'
 import type { IssueComment } from '../../opencode-agent/src/blocks.js'
 import type { CheckFailure } from '../../opencode-agent/src/check-loop.js'
 import { resolveBaseBranch, resolveReviewCommand } from '../../opencode-agent/src/config-discovery.js'
-import { loadConfig, parseChecks } from '../../opencode-agent/src/config.js'
+import { loadConfig } from '../../opencode-agent/src/config.js'
 import type { Env } from '../../opencode-agent/src/config.js'
 import { withDeadline } from '../../opencode-agent/src/deadline.js'
 import {
@@ -31,10 +32,17 @@ import type { Logger } from '../../opencode-agent/src/logger.js'
 import { extractJsonObject, parseModelJson } from '../../opencode-agent/src/model-json.js'
 import { composeSystemPrompt, loadPhaseSkills, loadSkills, PHASE_SKILLS } from '../../opencode-agent/src/obra-skills.js'
 import type { ReadSkillFile } from '../../opencode-agent/src/obra-skills.js'
-import { buildOpencodeConfig, modelRef, opencodeConfigEnv } from '../../opencode-agent/src/openai-config.js'
+import {
+  buildOpencodeConfig,
+  modelRef,
+  NO_MODEL_OVERRIDES,
+  NO_MODEL_PROFILES,
+  opencodeConfigEnv,
+} from '../../opencode-agent/src/openai-config.js'
 import type { OpenAiSettings } from '../../opencode-agent/src/openai-config.js'
 import { createOpenCodeAgent, parseModelRef } from '../../opencode-agent/src/opencode-adapter.js'
 import type { OpenCodeAgent, OpenCodeConnection, SdkPromptBody } from '../../opencode-agent/src/opencode-adapter.js'
+import { sessionTreeUsage } from '../../opencode-agent/src/opencode-connect.js'
 import { mintEnvelope } from '../../opencode-agent/src/phases/envelope.js'
 import { renderThread, shareBudget } from '../../opencode-agent/src/prompt-budget.js'
 import { buildCiFixPrompt, createEnvelope } from '../../opencode-agent/src/prompts.js'
@@ -44,8 +52,10 @@ import {
   collectText,
   decodeAbort,
   decodeReply,
+  decodeSessionChildren,
   decodeSessionId,
   decodeSessionUsage,
+  sumSessionUsage,
 } from '../../opencode-agent/src/sdk-contract.js'
 import type { SessionUsage } from '../../opencode-agent/src/sdk-contract.js'
 import { redactSecrets, scrubSecrets } from '../../opencode-agent/src/secrets.js'
@@ -173,7 +183,15 @@ describe('the recorded SDK contract', () => {
   }
 
   test('reads a session’s running totals back from the envelope', () => {
-    expect(decodeSessionUsage(LIVE_SESSION_USAGE)).toEqual({ tokens: 3602, cost: 0.014425 })
+    expect(decodeSessionUsage(LIVE_SESSION_USAGE)).toEqual({
+      tokens: 3602,
+      cost: 0.014425,
+      input: 2468,
+      output: 1134,
+      reasoning: 0,
+      cacheRead: 0,
+      cacheWrite: 0,
+    })
   })
 
   test('counts reasoning tokens, which are spend like any other', () => {
@@ -194,7 +212,162 @@ describe('the recorded SDK contract', () => {
     // not know, which for an arbitrary configured endpoint is the ordinary case.
     const unpriced = { ...LIVE_SESSION_USAGE, data: { ...LIVE_SESSION_USAGE.data, cost: 0 } }
 
-    expect(decodeSessionUsage(unpriced)).toEqual({ tokens: 3602, cost: 0 })
+    expect(decodeSessionUsage(unpriced)).toEqual({
+      tokens: 3602,
+      cost: 0,
+      input: 2468,
+      output: 1134,
+      reasoning: 0,
+      cacheRead: 0,
+      cacheWrite: 0,
+    })
+  })
+
+  /**
+   * The per-bucket counts, beside the sum the budget reads.
+   *
+   * The sum cannot be repriced: cache reads and writes are charged at their own
+   * rates, and folding them into one number loses the split that pricing needs.
+   * So the decoder surfaces both — the scalar for the ceiling, the buckets for
+   * the cost ladder — from one read of one envelope.
+   */
+  test('surfaces the per-bucket counts alongside the summed total', () => {
+    const usage = {
+      ...LIVE_SESSION_USAGE,
+      data: {
+        ...LIVE_SESSION_USAGE.data,
+        tokens: { input: 100, output: 200, reasoning: 50, cache: { read: 900, write: 400 } },
+      },
+    }
+
+    expect(decodeSessionUsage(usage)).toEqual({
+      // 100 + 200 + 50 + 400: the write counts, the 900 reads do not.
+      tokens: 750,
+      cost: 0.014425,
+      input: 100,
+      output: 200,
+      reasoning: 50,
+      cacheRead: 900,
+      cacheWrite: 400,
+    })
+  })
+
+  test('a cache write counts against the ceiling — it is content arriving once', () => {
+    const written = (write: number): unknown => ({
+      ...LIVE_SESSION_USAGE,
+      data: { ...LIVE_SESSION_USAGE.data, tokens: { input: 10, output: 5, reasoning: 0, cache: { read: 0, write } } },
+    })
+
+    expect(decodeSessionUsage(written(0))?.tokens).toBe(15)
+    expect(decodeSessionUsage(written(1000))?.tokens).toBe(1015)
+  })
+
+  test('a cache read does not, however large', () => {
+    // The bucket that grows with the number of steps a turn takes rather than
+    // with the work it does. A ceiling over it stops a run for thinking.
+    const read = (value: number): unknown => ({
+      ...LIVE_SESSION_USAGE,
+      data: {
+        ...LIVE_SESSION_USAGE.data,
+        tokens: { input: 10, output: 5, reasoning: 0, cache: { read: value, write: 0 } },
+      },
+    })
+
+    expect(decodeSessionUsage(read(0))?.tokens).toBe(15)
+    expect(decodeSessionUsage(read(5_000_000))?.tokens).toBe(15)
+  })
+
+  test('an absent cache write still yields a figure, counting as zero', () => {
+    // The ceiling must return a number, so here "did not say" and "said none"
+    // are the same answer — the opposite of what the price does with the same
+    // envelope two cases below.
+    const usage = {
+      ...LIVE_SESSION_USAGE,
+      data: { ...LIVE_SESSION_USAGE.data, tokens: { input: 10, output: 5, reasoning: 0, cache: { read: 900 } } },
+    }
+    const decoded = decodeSessionUsage(usage)
+
+    expect(decoded?.tokens).toBe(15)
+    expect(decoded?.cacheWrite).toBeUndefined()
+  })
+
+  test('both routes answer the same question about the same buckets', () => {
+    // The drift this whole definition exists to end: one AGENT_MAX_TOKENS
+    // meaning two budgets depending on which backend was configured.
+    const buckets = { input: 12, output: 7, reasoning: 0, cacheWrite: 3400, cacheRead: 5600 }
+    const usage = {
+      ...LIVE_SESSION_USAGE,
+      data: {
+        ...LIVE_SESSION_USAGE.data,
+        tokens: {
+          input: buckets.input,
+          output: buckets.output,
+          reasoning: buckets.reasoning,
+          cache: { read: buckets.cacheRead, write: buckets.cacheWrite },
+        },
+      },
+    }
+
+    expect(decodeSessionUsage(usage)?.tokens).toBe(countedTokens(buckets))
+  })
+
+  /**
+   * Absent is not zero, and this is the one decoder here that must keep them
+   * apart. `reasoning` beside it carries `.default(0)` and is right to: it is a
+   * count the budget adds up, where a missing value and a zero spend the same.
+   * A cache bucket feeds the *price*, and there "the server reported none" and
+   * "the server did not say" are different answers — the second cannot be
+   * priced at all, and defaulting it to 0 would silently under-charge a
+   * cache-heavy run instead of reporting it unpriced.
+   */
+  test('a reported zero cache bucket decodes as zero', () => {
+    const usage = {
+      ...LIVE_SESSION_USAGE,
+      data: { ...LIVE_SESSION_USAGE.data, tokens: { input: 1, output: 1, reasoning: 0, cache: { read: 0, write: 0 } } },
+    }
+
+    expect(decodeSessionUsage(usage)).toMatchObject({ cacheRead: 0, cacheWrite: 0 })
+  })
+
+  test('an omitted cache bucket decodes as absent, not as zero', () => {
+    const usage = {
+      ...LIVE_SESSION_USAGE,
+      data: { ...LIVE_SESSION_USAGE.data, tokens: { input: 1, output: 1, reasoning: 0, cache: {} } },
+    }
+    const decoded = decodeSessionUsage(usage)
+
+    expect(decoded?.cacheRead).toBeUndefined()
+    expect(decoded?.cacheWrite).toBeUndefined()
+  })
+
+  test('an absent cache object leaves both buckets absent', () => {
+    const usage = {
+      ...LIVE_SESSION_USAGE,
+      data: { ...LIVE_SESSION_USAGE.data, tokens: { input: 1, output: 1, reasoning: 0 } },
+    }
+    const decoded = decodeSessionUsage(usage)
+
+    expect(decoded?.tokens).toBe(2)
+    expect(decoded?.cacheRead).toBeUndefined()
+    expect(decoded?.cacheWrite).toBeUndefined()
+  })
+
+  test('a cache bucket in an unrecognized shape degrades to absent rather than failing the read', () => {
+    // The `decodeSessionUsage` doctrine, one field in: a budget is a guardrail
+    // on the work, so a moved field costs that field and not the whole read.
+    const usage = {
+      ...LIVE_SESSION_USAGE,
+      data: {
+        ...LIVE_SESSION_USAGE.data,
+        tokens: { input: 1, output: 1, reasoning: 0, cache: { read: 'lots', write: 400 } },
+      },
+    }
+    const decoded = decodeSessionUsage(usage)
+
+    // The write it could read still counts; only the bucket that moved is lost.
+    expect(decoded?.tokens).toBe(402)
+    expect(decoded?.cacheRead).toBeUndefined()
+    expect(decoded?.cacheWrite).toBe(400)
   })
 
   test.each([
@@ -207,6 +380,95 @@ describe('the recorded SDK contract', () => {
     // part of it, and an SDK upgrade that moves these fields must not turn
     // every phase into a failure.
     expect(decodeSessionUsage(fetched)).toBeNull()
+  })
+
+  describe('the session children envelope', () => {
+    /**
+     * `GET /session/{id}/children` answers `200: Array<Session>` under the same
+     * `{ data, error }` envelope every other response above uses — the recorded
+     * convention applied to a list. The decoder reads only `id` from each
+     * entry: the walk it feeds needs addresses, nothing else.
+     */
+    test('reads only the id of each child entry', () => {
+      expect(
+        decodeSessionChildren({
+          data: [
+            { id: 'ses_child_1', title: 'first', directory: '/repo' },
+            { id: 'ses_child_2', parentID: 'ses_parent' },
+          ],
+          request: {},
+          response: {},
+        }),
+      ).toEqual(['ses_child_1', 'ses_child_2'])
+      expect(decodeSessionChildren({ data: [] })).toEqual([])
+    })
+
+    test('a child entry with no id is dropped, not fatal', () => {
+      expect(
+        decodeSessionChildren({
+          data: [{ id: 'ses_child_1' }, { title: 'the id moved' }, 'junk', null],
+          error: undefined,
+        }),
+      ).toEqual(['ses_child_1'])
+    })
+
+    test('a non-empty listing that vouches for no entry reports unrecognised, not an empty tree', () => {
+      // Every entry failing the `{ id }` schema is the shape drift the design
+      // names — the generated types trailing the server. Reading it as `[]`
+      // would tell the walk the subtree is absent with no degradation warning;
+      // `null` routes it through the walk's degrade-and-warn path instead.
+      expect(decodeSessionChildren({ data: [{ title: 'the id moved' }] })).toBeNull()
+    })
+
+    test.each([
+      [{ data: undefined, error: { message: 'no such session' } }],
+      [{ data: 'not an array' }],
+      [{}],
+      ['nope'],
+    ])('reports %p as unknown rather than throwing', (fetched) => {
+      // The `decodeSessionUsage` doctrine, one envelope over: the walk this
+      // feeds decorates the spend read, and an SDK that moved it must not fail
+      // the turn or the phase.
+      expect(decodeSessionChildren(fetched)).toBeNull()
+    })
+  })
+
+  describe('the session usage sum', () => {
+    test('adds tokens, cost and every bucket across sessions', () => {
+      // The tree's total is the sessions' own accounts, added — the same
+      // shape one `session.get` read answers, so the ceiling and the price
+      // read the summed tree exactly as they read a single session.
+      expect(
+        sumSessionUsage([
+          { tokens: 3602, cost: 0.014425, input: 2468, output: 1134, reasoning: 0, cacheRead: 900, cacheWrite: 400 },
+          { tokens: 350, cost: 0.002575, input: 100, output: 200, reasoning: 50, cacheRead: 30, cacheWrite: 20 },
+        ]),
+      ).toEqual({
+        tokens: 3952,
+        cost: 0.017,
+        input: 2568,
+        output: 1334,
+        reasoning: 50,
+        cacheRead: 930,
+        cacheWrite: 420,
+      })
+    })
+
+    test('a cache bucket any summand leaves absent stays absent on the sum', () => {
+      // Absent is not zero (the one rule `decodeSessionUsage` exists for): a
+      // summand that does not report a bucket makes the tree's bucket absent,
+      // so `run-spend` reports the tree unpriced rather than pricing the rest
+      // and under-charging a cache-heavy run.
+      const summed = sumSessionUsage([
+        { tokens: 300, cost: 0.01, input: 100, output: 150, reasoning: 50, cacheRead: 900, cacheWrite: 400 },
+        { tokens: 30, cost: 0.001, input: 10, output: 15, reasoning: 5 },
+      ])
+
+      expect(summed.tokens).toBe(330)
+      expect(summed.cost).toBe(0.011)
+      expect(summed.cacheRead).toBeUndefined()
+      expect(summed.cacheWrite).toBeUndefined()
+    })
   })
 
   /**
@@ -246,6 +508,398 @@ describe('the recorded SDK contract', () => {
     // wall-clock stop into "nothing pushed". The adapter catches it and reports
     // `false` anyway — with the contract named in the log rather than nowhere.
     expect(() => decodeAbort('true')).toThrow('Unexpected')
+  })
+})
+
+describe('the session tree usage walk', () => {
+  interface TreeClient {
+    session: {
+      get: (args: { path: { id: string } }) => Promise<unknown>
+      children: (args: { path: { id: string } }) => Promise<unknown>
+    }
+  }
+
+  /** A recorded `session.get` answer for one node of a stubbed tree. */
+  const usageEnvelope = (
+    id: string,
+    usage: {
+      input: number
+      output?: number
+      reasoning?: number
+      cacheRead?: number
+      cacheWrite?: number
+      cost: number
+    },
+  ): unknown => ({
+    data: {
+      id,
+      title: id,
+      tokens: {
+        input: usage.input,
+        output: usage.output ?? 0,
+        reasoning: usage.reasoning ?? 0,
+        cache: { read: usage.cacheRead ?? 0, write: usage.cacheWrite ?? 0 },
+      },
+      cost: usage.cost,
+    },
+    request: {},
+    response: {},
+  })
+
+  /** A recorded `session.children` answer: the ids of one node's children. */
+  const childrenEnvelope = (ids: readonly string[]): unknown => ({ data: ids.map((id) => ({ id })) })
+
+  /** A stubbed client over a tree: usage and children answers keyed by session id. */
+  const treeClient = (usage: ReadonlyMap<string, unknown>, children: ReadonlyMap<string, unknown>): TreeClient => ({
+    session: {
+      get: ({ path }) => Promise.resolve(usage.get(path.id) ?? { data: undefined }),
+      children: ({ path }) => Promise.resolve(children.get(path.id) ?? { data: [] }),
+    },
+  })
+
+  /**
+   * The same stubbed client with one session's children listing gone the given
+   * way — a throw, a hang, a foreign payload — for the degradation tests.
+   */
+  const breakingChildrenClient = (
+    usage: ReadonlyMap<string, unknown>,
+    children: ReadonlyMap<string, unknown>,
+    breakId: string,
+    instead: () => Promise<unknown>,
+  ): TreeClient => ({
+    session: {
+      get: ({ path }) => Promise.resolve(usage.get(path.id) ?? { data: undefined }),
+      children: ({ path }) =>
+        path.id === breakId ? instead() : Promise.resolve(children.get(path.id) ?? { data: [] }),
+    },
+  })
+
+  /**
+   * A client whose `session.get` answers the first read and hangs on every
+   * later one, with the children listing gone the given way — the wedged
+   * server the degraded re-read has to be bounded against. `reads` counts
+   * `session.get` calls, so a test can tell a re-read that was attempted from
+   * one that never happened.
+   */
+  const wedgedGetClient = (
+    usage: ReadonlyMap<string, unknown>,
+    children: () => Promise<unknown>,
+  ): { client: TreeClient; reads: () => number } => {
+    let gets = 0
+    return {
+      client: {
+        session: {
+          get: ({ path }) => {
+            gets += 1
+            return gets === 1 ? Promise.resolve(usage.get(path.id)) : new Promise<unknown>(() => {})
+          },
+          children,
+        },
+      },
+      reads: () => gets,
+    }
+  }
+
+  /** The parent's own account, exactly — what every degraded walk answers. */
+  const parentUsage = (): SessionUsage => ({
+    tokens: 4002,
+    cost: 0.125,
+    input: 2468,
+    output: 1134,
+    reasoning: 0,
+    cacheRead: 900,
+    cacheWrite: 400,
+  })
+
+  /** A chain of a given depth, every node one token and one quarter — the depth cap's fixture. */
+  const chainTree = (depth: number): { usage: Map<string, unknown>; children: Map<string, unknown> } => {
+    const usage = new Map<string, unknown>()
+    const children = new Map<string, unknown>()
+    for (let at = 0; at < depth; at += 1) {
+      const id = `ses_deep_${at}`
+      usage.set(id, usageEnvelope(id, { input: 1, cost: 0.25 }))
+      if (at < depth - 1) children.set(id, childrenEnvelope([`ses_deep_${at + 1}`]))
+    }
+    return { usage, children }
+  }
+
+  test('a parent with two children reports the summed tokens and cost', async () => {
+    const usage = new Map([
+      [
+        'ses_parent',
+        usageEnvelope('ses_parent', { input: 2468, output: 1134, cacheRead: 900, cacheWrite: 400, cost: 0.125 }),
+      ],
+      [
+        'ses_child_1',
+        usageEnvelope('ses_child_1', {
+          input: 100,
+          output: 200,
+          reasoning: 50,
+          cacheRead: 30,
+          cacheWrite: 20,
+          cost: 0.0625,
+        }),
+      ],
+      [
+        'ses_child_2',
+        usageEnvelope('ses_child_2', { input: 11, output: 100, cacheRead: 3, cacheWrite: 2, cost: 0.03125 }),
+      ],
+    ])
+    const children = new Map([['ses_parent', childrenEnvelope(['ses_child_1', 'ses_child_2'])]])
+
+    expect(await sessionTreeUsage(treeClient(usage, children), '/repo', 'ses_parent', silentLog)).toEqual({
+      tokens: 4485,
+      cost: 0.21875,
+      input: 2579,
+      output: 1434,
+      reasoning: 50,
+      cacheRead: 933,
+      cacheWrite: 422,
+    })
+  })
+
+  test('a grandchild is included in the sum', async () => {
+    const usage = new Map([
+      [
+        'ses_parent',
+        usageEnvelope('ses_parent', { input: 2468, output: 1134, cacheRead: 900, cacheWrite: 400, cost: 0.125 }),
+      ],
+      [
+        'ses_child_1',
+        usageEnvelope('ses_child_1', {
+          input: 100,
+          output: 200,
+          reasoning: 50,
+          cacheRead: 30,
+          cacheWrite: 20,
+          cost: 0.0625,
+        }),
+      ],
+      ['ses_grand', usageEnvelope('ses_grand', { input: 3, output: 4, cacheRead: 1, cost: 0.015625 })],
+    ])
+    const children = new Map([
+      ['ses_parent', childrenEnvelope(['ses_child_1'])],
+      ['ses_child_1', childrenEnvelope(['ses_grand'])],
+    ])
+
+    expect(await sessionTreeUsage(treeClient(usage, children), '/repo', 'ses_parent', silentLog)).toEqual({
+      tokens: 4379,
+      cost: 0.203125,
+      input: 2571,
+      output: 1338,
+      reasoning: 50,
+      cacheRead: 931,
+      cacheWrite: 420,
+    })
+  })
+
+  test('a cycle or a repeated id is counted once', async () => {
+    // The same three accounts as the two-children tree, wired into a cycle —
+    // the parent lists the same child twice, and that child lists the parent
+    // back — so the exact figure proves the duplicates added nothing.
+    const usage = new Map([
+      [
+        'ses_parent',
+        usageEnvelope('ses_parent', { input: 2468, output: 1134, cacheRead: 900, cacheWrite: 400, cost: 0.125 }),
+      ],
+      [
+        'ses_child_1',
+        usageEnvelope('ses_child_1', {
+          input: 100,
+          output: 200,
+          reasoning: 50,
+          cacheRead: 30,
+          cacheWrite: 20,
+          cost: 0.0625,
+        }),
+      ],
+      [
+        'ses_child_2',
+        usageEnvelope('ses_child_2', { input: 11, output: 100, cacheRead: 3, cacheWrite: 2, cost: 0.03125 }),
+      ],
+    ])
+    const children = new Map([
+      ['ses_parent', childrenEnvelope(['ses_child_1', 'ses_child_1', 'ses_child_2'])],
+      ['ses_child_1', childrenEnvelope(['ses_parent'])],
+    ])
+
+    expect(await sessionTreeUsage(treeClient(usage, children), '/repo', 'ses_parent', silentLog)).toEqual({
+      tokens: 4485,
+      cost: 0.21875,
+      input: 2579,
+      output: 1434,
+      reasoning: 50,
+      cacheRead: 933,
+      cacheWrite: 422,
+    })
+  })
+
+  test('the traversal stops at the depth cap, warning that the walk was truncated', async () => {
+    // A chain fifteen deep, every node costing 0.25 and one token: the walk
+    // reads the parent plus the first seven descendants — depths 0 through 7 —
+    // and stops, so the figure is exactly eight nodes' worth, never the chain's.
+    // The cap is the one stop that keeps the sessions it read rather than
+    // degrading — the sum cannot fall below the parent-only figure — but it
+    // says so, like every other read that ended short of the whole tree.
+    const warnings: string[] = []
+    const log: Logger = { ...silentLog, warn: (_meta, message): void => void warnings.push(message) }
+    const { usage, children } = chainTree(15)
+
+    expect(await sessionTreeUsage(treeClient(usage, children), '/repo', 'ses_deep_0', log)).toEqual({
+      tokens: 8,
+      cost: 2,
+      input: 8,
+      output: 0,
+      reasoning: 0,
+      cacheRead: 0,
+      cacheWrite: 0,
+    })
+    expect(warnings).toHaveLength(1)
+    expect(warnings[0]).toContain('cap')
+  })
+
+  test('the traversal stops at the node cap, warning that the walk was truncated', async () => {
+    // A star of forty children: the walk reads the parent and thirty-one of
+    // them — thirty-two sessions — and stops, so the figure is exactly
+    // thirty-two nodes' worth, never the star's forty-one. Truncated, and
+    // warning of it: the figure rides to the budget and the price ladder
+    // looking exact, so the log is where the incompleteness lives.
+    const warnings: string[] = []
+    const log: Logger = { ...silentLog, warn: (_meta, message): void => void warnings.push(message) }
+    const usage = new Map<string, unknown>([['ses_parent', usageEnvelope('ses_parent', { input: 1, cost: 0.25 })]])
+    const children = new Map<string, unknown>([
+      ['ses_parent', childrenEnvelope(Array.from({ length: 40 }, (_, at) => `ses_wide_${at}`))],
+    ])
+    for (let at = 0; at < 40; at += 1) {
+      usage.set(`ses_wide_${at}`, usageEnvelope(`ses_wide_${at}`, { input: 1, cost: 0.25 }))
+    }
+
+    expect(await sessionTreeUsage(treeClient(usage, children), '/repo', 'ses_parent', log)).toEqual({
+      tokens: 32,
+      cost: 8,
+      input: 32,
+      output: 0,
+      reasoning: 0,
+      cacheRead: 0,
+      cacheWrite: 0,
+    })
+    expect(warnings).toHaveLength(1)
+    expect(warnings[0]).toContain('cap')
+  })
+
+  test('a children call that throws degrades to the parent-only figure, warning but never failing', async () => {
+    const warnings: string[] = []
+    const log: Logger = { ...silentLog, warn: (_meta, message): void => void warnings.push(message) }
+
+    // The child's subtree cannot be read whole, so the walk reports the
+    // parent's own account — the figure the budget already knew — and says
+    // so. The walk decorates the spend read; it does not get to fail it.
+    const usage = new Map<string, unknown>([
+      [
+        'ses_parent',
+        usageEnvelope('ses_parent', { input: 2468, output: 1134, cacheRead: 900, cacheWrite: 400, cost: 0.125 }),
+      ],
+      ['ses_child_1', usageEnvelope('ses_child_1', { input: 100, output: 200, cost: 0.0625 })],
+    ])
+    const children = new Map<string, unknown>([['ses_parent', childrenEnvelope(['ses_child_1'])]])
+    const client = breakingChildrenClient(usage, children, 'ses_child_1', () =>
+      Promise.reject(new Error('the children listing broke')),
+    )
+
+    expect(await sessionTreeUsage(client, '/repo', 'ses_parent', log)).toEqual(parentUsage())
+    expect(warnings).toHaveLength(1)
+    expect(warnings[0]).toContain('tree')
+  })
+
+  test('a children call that never settles degrades at the walk deadline, parent-only', async () => {
+    const warnings: string[] = []
+    const log: Logger = { ...silentLog, warn: (_meta, message): void => void warnings.push(message) }
+
+    // The whole walk is bounded by one deadline: a server that answers the
+    // usage read but wedges on the tree costs the bound, not the run. The
+    // walk still resolves, degraded, and the run moves on.
+    const usage = new Map<string, unknown>([
+      [
+        'ses_parent',
+        usageEnvelope('ses_parent', { input: 2468, output: 1134, cacheRead: 900, cacheWrite: 400, cost: 0.125 }),
+      ],
+    ])
+    const client = breakingChildrenClient(usage, new Map(), 'ses_parent', () => new Promise<unknown>(() => {}))
+
+    expect(await sessionTreeUsage(client, '/repo', 'ses_parent', log)).toEqual(parentUsage())
+    expect(warnings).toHaveLength(1)
+    expect(warnings[0]).toContain('tree')
+  })
+
+  test('a children payload that decodes as unrecognised degrades to the parent-only figure', async () => {
+    const warnings: string[] = []
+    const log: Logger = { ...silentLog, warn: (_meta, message): void => void warnings.push(message) }
+
+    // Unrecognised is not empty: the walk cannot tell what it failed to read,
+    // so it cannot price the subtree without under-charging a run whose
+    // subagents spent — the parent's own account, and the warn.
+    const usage = new Map<string, unknown>([
+      [
+        'ses_parent',
+        usageEnvelope('ses_parent', { input: 2468, output: 1134, cacheRead: 900, cacheWrite: 400, cost: 0.125 }),
+      ],
+      ['ses_child_1', usageEnvelope('ses_child_1', { input: 100, output: 200, cost: 0.0625 })],
+    ])
+    const children = new Map<string, unknown>([['ses_parent', childrenEnvelope(['ses_child_1'])]])
+    const client = breakingChildrenClient(usage, children, 'ses_child_1', () =>
+      Promise.resolve({ data: 'not an array' }),
+    )
+
+    expect(await sessionTreeUsage(client, '/repo', 'ses_parent', log)).toEqual(parentUsage())
+    expect(warnings).toHaveLength(1)
+    expect(warnings[0]).toContain('tree')
+  })
+
+  test('a children listing whose every entry lost its id degrades to the parent-only figure, warning', async () => {
+    const warnings: string[] = []
+    const log: Logger = { ...silentLog, warn: (_meta, message): void => void warnings.push(message) }
+
+    // An array whose every entry fails the `{ id }` schema is not an empty
+    // tree: it is the same shape drift as a foreign payload, and the walk must
+    // say the subtree could not be read rather than publish the parent alone
+    // with the incompleteness undiscoverable from the run.
+    const usage = new Map<string, unknown>([
+      [
+        'ses_parent',
+        usageEnvelope('ses_parent', { input: 2468, output: 1134, cacheRead: 900, cacheWrite: 400, cost: 0.125 }),
+      ],
+      ['ses_child_1', usageEnvelope('ses_child_1', { input: 100, output: 200, cost: 0.0625 })],
+    ])
+    const children = new Map<string, unknown>([['ses_parent', childrenEnvelope(['ses_child_1'])]])
+    const client = breakingChildrenClient(usage, children, 'ses_child_1', () =>
+      Promise.resolve({ data: [{ title: 'the id moved' }] }),
+    )
+
+    expect(await sessionTreeUsage(client, '/repo', 'ses_parent', log)).toEqual(parentUsage())
+    expect(warnings).toHaveLength(1)
+    expect(warnings[0]).toContain('tree')
+  })
+
+  test('a degraded re-read that never settles is bounded too, answering absent', async () => {
+    // The wedge the walk deadline exists for does not end at the walk's own
+    // expiry: the degraded figure is a fresh read of the same server, so the
+    // catch's re-read carries a bound of its own. A hang is not a rejection,
+    // so only the deadline can end it — the walk expiring must hand the
+    // budget path an answer (absent, which its callers warn on), never the
+    // same wedged socket back.
+    const usage = new Map<string, unknown>([
+      [
+        'ses_parent',
+        usageEnvelope('ses_parent', { input: 2468, output: 1134, cacheRead: 900, cacheWrite: 400, cost: 0.125 }),
+      ],
+    ])
+    const warnings: string[] = []
+    const log: Logger = { ...silentLog, warn: (_meta, message): void => void warnings.push(message) }
+    const { client, reads } = wedgedGetClient(usage, () => Promise.reject(new Error('the children listing broke')))
+
+    expect(await sessionTreeUsage(client, '/repo', 'ses_parent', log)).toBeNull()
+    expect(reads()).toBe(2)
+    expect(warnings).toHaveLength(0)
   })
 })
 
@@ -319,7 +973,8 @@ const streamOf = (events: readonly unknown[], onDrained: () => void = (): void =
 const noEvents = (): Promise<AsyncIterable<unknown>> => Promise.resolve(streamOf([]))
 
 /** A session that has spent nothing, for the tests the budget is not about. */
-const noUsage = (): Promise<SessionUsage | null> => Promise.resolve({ tokens: 0, cost: 0 })
+const noUsage = (): Promise<SessionUsage | null> =>
+  Promise.resolve({ tokens: 0, cost: 0, input: 0, output: 0, reasoning: 0 })
 
 /** An abort nobody in this test is asking about, answering the recorded shape. */
 const noAbort = (): Promise<unknown> => Promise.resolve({ data: true })
@@ -344,11 +999,45 @@ describe('createOpenCodeAgent', () => {
     },
   })
 
+  /**
+   * Which catalogue row a run resolved is the one thing that says whether the
+   * model has a context window at all, and it is invisible from the outside: a
+   * `limit.context` of 0 switches auto-compaction off silently. So the run's own
+   * log names the reference it opened with, and never the credential.
+   */
+  test('names the resolved provider and model at debug, and no credential', async () => {
+    const debugs: Array<{ meta: unknown; message: string }> = []
+    const log: Logger = {
+      ...silentLog,
+      debug: (meta: unknown, message: string): void => void debugs.push({ meta, message }),
+    }
+
+    await createOpenCodeAgent({
+      directory: '/repo',
+      openai: {
+        apiKey: 'sk-secret',
+        baseUrl: 'https://gateway.test/v1',
+        model: 'claude-sonnet-4-6',
+        provider: 'anthropic',
+      },
+      sessionTitle: 'issue-1',
+      log,
+      connect: () => Promise.resolve(fakeConnection({ bodies: [], closed: 0 }, { data: { parts: [] } })),
+    })
+
+    expect(debugs).toContainEqual({
+      meta: { providerID: 'anthropic', modelID: 'claude-sonnet-4-6' },
+      message: 'Resolved the model reference OpenCode will look up',
+    })
+    expect(JSON.stringify(debugs)).not.toContain('sk-secret')
+    expect(JSON.stringify(debugs)).not.toContain('gateway.test')
+  })
+
   test('sends the model, system prompt and agent profile through', async () => {
     const sink = { bodies: [] as SdkPromptBody[], closed: 0 }
     const agent = await createOpenCodeAgent({
       directory: '/repo',
-      openai: { apiKey: 'sk-test', baseUrl: 'https://api.openai.com/v1', model: 'gpt-5' },
+      openai: { apiKey: 'sk-test', baseUrl: 'https://api.openai.com/v1', model: 'gpt-5', provider: 'openai' },
       sessionTitle: 'issue-1',
       log: silentLog,
       connect: () => Promise.resolve(fakeConnection(sink, { data: { parts: [{ type: 'text', text: 'done' }] } })),
@@ -381,7 +1070,7 @@ describe('createOpenCodeAgent', () => {
     }
     const agent = await createOpenCodeAgent({
       directory: '/repo',
-      openai: { apiKey: 'sk-test', baseUrl: 'https://api.openai.com/v1', model: 'm' },
+      openai: { apiKey: 'sk-test', baseUrl: 'https://api.openai.com/v1', model: 'm', provider: 'openai' },
       sessionTitle: 't',
       log: silentLog,
       connect: () => Promise.resolve(fakeConnection(sink, reply)),
@@ -394,7 +1083,7 @@ describe('createOpenCodeAgent', () => {
     const sink = { bodies: [] as SdkPromptBody[], closed: 0 }
     const agent = await createOpenCodeAgent({
       directory: '/repo',
-      openai: { apiKey: 'sk-test', baseUrl: 'https://api.openai.com/v1', model: 'm' },
+      openai: { apiKey: 'sk-test', baseUrl: 'https://api.openai.com/v1', model: 'm', provider: 'openai' },
       sessionTitle: 't',
       log: silentLog,
       connect: () => Promise.resolve(fakeConnection(sink, { data: undefined, error: { message: 'rate limited' } })),
@@ -408,7 +1097,7 @@ describe('createOpenCodeAgent', () => {
 
     const attempt = createOpenCodeAgent({
       directory: '/repo',
-      openai: { apiKey: 'sk-test', baseUrl: 'https://api.openai.com/v1', model: 'm' },
+      openai: { apiKey: 'sk-test', baseUrl: 'https://api.openai.com/v1', model: 'm', provider: 'openai' },
       sessionTitle: 't',
       log: silentLog,
       connect: () =>
@@ -434,7 +1123,7 @@ describe('createOpenCodeAgent', () => {
   const hangingAgent = (timeoutMs: number): Promise<OpenCodeAgent> =>
     createOpenCodeAgent({
       directory: '/repo',
-      openai: { apiKey: 'sk-test', baseUrl: 'https://api.openai.com/v1', model: 'm' },
+      openai: { apiKey: 'sk-test', baseUrl: 'https://api.openai.com/v1', model: 'm', provider: 'openai' },
       sessionTitle: 't',
       log: silentLog,
       timeoutMs,
@@ -463,7 +1152,7 @@ describe('createOpenCodeAgent', () => {
     })
     const agent = await createOpenCodeAgent({
       directory: '/repo',
-      openai: { apiKey: 'sk-test', baseUrl: 'https://api.openai.com/v1', model: 'm' },
+      openai: { apiKey: 'sk-test', baseUrl: 'https://api.openai.com/v1', model: 'm', provider: 'openai' },
       sessionTitle: 't',
       log: { ...silentLog, info: (_meta, message): void => void lines.push(message) },
       connect: () =>
@@ -492,7 +1181,7 @@ describe('createOpenCodeAgent', () => {
   test('reports what the session has spent, from the server', async () => {
     const agent = await createOpenCodeAgent({
       directory: '/repo',
-      openai: { apiKey: 'sk-test', baseUrl: 'https://api.openai.com/v1', model: 'm' },
+      openai: { apiKey: 'sk-test', baseUrl: 'https://api.openai.com/v1', model: 'm', provider: 'openai' },
       sessionTitle: 't',
       log: silentLog,
       connect: () =>
@@ -500,7 +1189,7 @@ describe('createOpenCodeAgent', () => {
           createSession: () => Promise.resolve('session-1'),
           sendPrompt: () => Promise.resolve({ data: { parts: [] } }),
           events: noEvents,
-          usage: () => Promise.resolve({ tokens: 3602, cost: 0.014 }),
+          usage: () => Promise.resolve({ tokens: 3602, cost: 0.014, input: 2468, output: 1134, reasoning: 0 }),
           abort: noAbort,
           alive: stillThere,
           close: () => Promise.resolve(),
@@ -508,6 +1197,67 @@ describe('createOpenCodeAgent', () => {
     })
 
     expect(await agent.tokensUsed()).toBe(3602)
+  })
+
+  /**
+   * The OpenCode route's `spend()`. `windows` is always empty here and that is a
+   * statement, not a gap: this backend talks to an arbitrary OpenAI-compatible
+   * endpoint, which has no Claude subscription window to report.
+   */
+  const spendingAgent = (
+    usage: () => Promise<SessionUsage | null>,
+    model = 'm',
+    provider = 'openai',
+  ): Promise<OpenCodeAgent> =>
+    createOpenCodeAgent({
+      directory: '/repo',
+      openai: { apiKey: 'sk-test', baseUrl: 'https://api.openai.com/v1', model, provider },
+      sessionTitle: 't',
+      log: silentLog,
+      connect: () =>
+        Promise.resolve({
+          createSession: () => Promise.resolve('session-1'),
+          sendPrompt: () => Promise.resolve({ data: { parts: [] } }),
+          events: noEvents,
+          usage,
+          abort: noAbort,
+          alive: stillThere,
+          close: () => Promise.resolve(),
+        }),
+    })
+
+  test('takes the server’s own cost figure when it reports one', async () => {
+    const agent = await spendingAgent(() =>
+      Promise.resolve({ tokens: 3602, cost: 0.014, input: 2468, output: 1134, reasoning: 0 }),
+    )
+
+    expect(await agent.spend()).toEqual({ usd: 0.014, source: 'backend', windows: [] })
+  })
+
+  test('a model the server cannot price is unpriced rather than free', async () => {
+    // The incident `types.ts` records: OpenCode reports a literal 0 for a model
+    // its catalogue does not know, and the ladder must not pin that as a figure.
+    const agent = await spendingAgent(
+      () => Promise.resolve({ tokens: 3602, cost: 0, input: 2468, output: 1134, reasoning: 0 }),
+      'a-model-no-catalogue-has-heard-of',
+      'self-hosted',
+    )
+
+    expect(await agent.spend()).toEqual({ usd: null, source: 'none', windows: [] })
+  })
+
+  test('a session the server will not report on is unpriced, and does not fail the phase', async () => {
+    const agent = await spendingAgent(() => Promise.resolve(null))
+
+    expect(await agent.spend()).toEqual({ usd: null, source: 'none', windows: [] })
+  })
+
+  test('this route never reports a rate-limit window, whatever it spent', async () => {
+    const agent = await spendingAgent(() =>
+      Promise.resolve({ tokens: 10, cost: 0.5, input: 5, output: 5, reasoning: 0 }),
+    )
+
+    expect((await agent.spend()).windows).toEqual([])
   })
 
   test.each([
@@ -519,7 +1269,7 @@ describe('createOpenCodeAgent', () => {
     const warnings: string[] = []
     const agent = await createOpenCodeAgent({
       directory: '/repo',
-      openai: { apiKey: 'sk-test', baseUrl: 'https://api.openai.com/v1', model: 'm' },
+      openai: { apiKey: 'sk-test', baseUrl: 'https://api.openai.com/v1', model: 'm', provider: 'openai' },
       sessionTitle: 't',
       log: { ...silentLog, warn: (_meta, message): void => void warnings.push(message) },
       connect: () =>
@@ -543,7 +1293,7 @@ describe('createOpenCodeAgent', () => {
     // Reporting must not be able to fail the work it reports on.
     const agent = await createOpenCodeAgent({
       directory: '/repo',
-      openai: { apiKey: 'sk-test', baseUrl: 'https://api.openai.com/v1', model: 'm' },
+      openai: { apiKey: 'sk-test', baseUrl: 'https://api.openai.com/v1', model: 'm', provider: 'openai' },
       sessionTitle: 't',
       log: silentLog,
       connect: () =>
@@ -589,7 +1339,7 @@ describe('createOpenCodeAgent', () => {
 
     return createOpenCodeAgent({
       directory: '/repo',
-      openai: { apiKey: 'sk-test', baseUrl: 'https://api.openai.com/v1', model: 'm' },
+      openai: { apiKey: 'sk-test', baseUrl: 'https://api.openai.com/v1', model: 'm', provider: 'openai' },
       sessionTitle: 't',
       log: silentLog,
       connect: () =>
@@ -673,7 +1423,7 @@ describe('createOpenCodeAgent', () => {
   ): Promise<OpenCodeAgent> =>
     createOpenCodeAgent({
       directory: '/repo',
-      openai: { apiKey: 'sk-test', baseUrl: 'https://api.openai.com/v1', model: 'm' },
+      openai: { apiKey: 'sk-test', baseUrl: 'https://api.openai.com/v1', model: 'm', provider: 'openai' },
       sessionTitle: 't',
       log: silentLog,
       connect: () =>
@@ -699,7 +1449,10 @@ describe('createOpenCodeAgent', () => {
     const rejection = await agent.prompt({ prompt: 'go' }).catch((error: unknown) => error)
 
     expect(isServerGone(rejection)).toBe(true)
-    expect(errorMessage(rejection)).toContain('OpenCode server')
+    // Backend-neutral since the claude route shares this failure path: the
+    // dead process is named as the model backend this job spawned, with the
+    // route's own spelling as the example rather than the claim.
+    expect(errorMessage(rejection)).toContain('model backend process this job spawned')
     // The transport's own words are kept: they are the only evidence of *how* it went.
     expect(errorMessage(rejection)).toContain('The socket connection was closed unexpectedly')
   })
@@ -745,7 +1498,7 @@ describe('createOpenCodeAgent', () => {
   const abortingAgent = (answer: () => Promise<unknown>, log = silentLog): Promise<OpenCodeAgent> =>
     createOpenCodeAgent({
       directory: '/repo',
-      openai: { apiKey: 'sk-test', baseUrl: 'https://api.openai.com/v1', model: 'm' },
+      openai: { apiKey: 'sk-test', baseUrl: 'https://api.openai.com/v1', model: 'm', provider: 'openai' },
       sessionTitle: 't',
       log,
       connect: () =>
@@ -805,7 +1558,7 @@ describe('createOpenCodeAgent', () => {
   test('a zero timeout means no bound, not an instant failure', async () => {
     const agent = await createOpenCodeAgent({
       directory: '/repo',
-      openai: { apiKey: 'sk-test', baseUrl: 'https://api.openai.com/v1', model: 'm' },
+      openai: { apiKey: 'sk-test', baseUrl: 'https://api.openai.com/v1', model: 'm', provider: 'openai' },
       sessionTitle: 't',
       log: silentLog,
       timeoutMs: 0,
@@ -1083,7 +1836,7 @@ const inlinedConfig = (settings: OpenAiSettings): unknown =>
   JSON.parse(opencodeConfigEnv(settings)['OPENCODE_CONFIG_CONTENT'] ?? '{}')
 
 describe('openai-config', () => {
-  const settings = { apiKey: 'sk-secret', baseUrl: 'https://gateway.test/v1', model: 'gpt-5' }
+  const settings = { apiKey: 'sk-secret', baseUrl: 'https://gateway.test/v1', model: 'gpt-5', provider: 'openai' }
 
   test('pins provider, endpoint and model in one config', () => {
     const config = buildOpencodeConfig(settings)
@@ -1092,6 +1845,9 @@ describe('openai-config', () => {
     expect(config.provider?.['openai']?.options).toEqual({
       apiKey: 'sk-secret',
       baseURL: 'https://gateway.test/v1',
+      // Unconditional: a provider that ignores the field is unaffected, and a
+      // long phase otherwise pays full input price every turn.
+      setCacheKey: true,
     })
     expect(config.provider?.['openai']?.models).toHaveProperty('gpt-5')
   })
@@ -1482,6 +2238,13 @@ describe('config', () => {
       apiKey: 'sk-test',
       baseUrl: 'https://api.openai.com/v1',
       model: 'gpt-5',
+      // `LLM_PROVIDER` is unset here, and its default is the id this pipeline
+      // hardcoded before the knob existed.
+      provider: 'openai',
+      // Nothing declared by hand, which is what lets the catalogue answer.
+      overrides: NO_MODEL_OVERRIDES,
+      // And no profile configured, so every profile keeps the main model.
+      profiles: NO_MODEL_PROFILES,
     })
   })
 
@@ -1582,6 +2345,7 @@ describe('config', () => {
     ['AGENT_MAX_CI_ATTEMPTS', '21'],
     ['AGENT_CI_FIX_MAX_ROUNDS', '0'],
     ['AGENT_COMMIT_REPAIR_MAX_ROUNDS', '0'],
+    ['AGENT_SYNC_REPAIR_MAX_ROUNDS', '0'],
     // A hint threshold of zero recommends `/review` on every delivery, which is
     // the same as not having a threshold at all.
     ['AGENT_REVIEW_HINT_LINES', '0'],
@@ -1629,6 +2393,7 @@ describe('config', () => {
     ['AGENT_TIMEOUT_MS', 'agentTimeoutMs'],
     ['AGENT_CI_FIX_MAX_ROUNDS', 'ciFixMaxRounds'],
     ['AGENT_COMMIT_REPAIR_MAX_ROUNDS', 'commitRepairMaxRounds'],
+    ['AGENT_SYNC_REPAIR_MAX_ROUNDS', 'syncRepairMaxRounds'],
     ['AGENT_MAX_CI_ATTEMPTS', 'maxCiAttempts'],
     ['AGENT_MAX_ATTEMPTS', 'maxAttempts'],
     ['AGENT_MAX_TOKENS', 'maxTokens'],
@@ -1798,18 +2563,6 @@ describe('config', () => {
     // the reconcile, which removes any it cannot account for.
     expect(loadConfig({ ...baseEnv, AGENT_LABEL_PREFIX: '   ' }, '/repo').labelPrefix).toBe('agent:')
   })
-
-  test('parseChecks falls back to the defaults', () => {
-    expect(parseChecks(undefined).map((check) => check.name)).toEqual(['lint', 'typecheck', 'test'])
-  })
-
-  test('parseChecks reads a custom check list', () => {
-    expect(parseChecks('[{"name":"unit","argv":["npm","test"]}]')).toEqual([{ name: 'unit', argv: ['npm', 'test'] }])
-  })
-
-  test.each(['not json', '[]', '[{"name":"unit"}]'])('parseChecks rejects %p', (raw) => {
-    expect(() => parseChecks(raw)).toThrow('AGENT_CHECKS')
-  })
 })
 
 describe('resolveReviewCommand', () => {
@@ -1962,6 +2715,19 @@ const PR_JSON = { number: 3, html_url: 'https://example.test/pull/3' }
 
 const jsonResponse = (payload: unknown): Response =>
   new Response(JSON.stringify(payload), { status: 200, headers: { 'content-type': 'application/json' } })
+
+/**
+ * A response whose `url` is readable, the way a real transport's always is.
+ *
+ * Octokit's pagination walks `new URL(response.url)` for the object-shaped
+ * pages the Actions jobs endpoint answers with, and `new Response(...)` leaves
+ * `url` an empty string — a recorder that forgets this dies inside the plugin
+ * rather than in the code under test.
+ */
+const withUrl = (response: Response, url: string): Response => {
+  Object.defineProperty(response, 'url', { value: url })
+  return response
+}
 
 /** `[what the adapter should report, the API's `state`, its `merged_at`]`. */
 const PR_STATE_CASES: readonly (readonly [PullRequestState, string, string | null])[] = [
@@ -2306,6 +3072,230 @@ describe('createOctokitApi', () => {
       body: 'Closes #42',
     })
   })
+
+  // Recorded from a live `listJobsForWorkflowRun` answer (yourpapai/papai run
+  // 32652877782, job 97227096004): every field below is one the adapter reads,
+  // and none added by inspection — the sdk-contract doctrine, applied at the
+  // HTTP boundary too.
+  const RUN_JOBS_JSON = {
+    total_count: 2,
+    jobs: [
+      {
+        id: 97227081604,
+        name: 'Resolve the issue this run belongs to',
+        status: 'completed',
+        conclusion: 'success',
+        steps: [
+          { name: 'Set up job', number: 1, status: 'completed', conclusion: 'success' },
+          { name: 'Complete job', number: 2, status: 'completed', conclusion: 'skipped' },
+        ],
+      },
+      {
+        id: 97227096004,
+        name: 'Run agent pipeline',
+        status: 'completed',
+        conclusion: 'failure',
+        steps: [
+          { name: 'Set up job', number: 1, status: 'completed', conclusion: 'success' },
+          { name: 'Run the agent pipeline', number: 11, status: 'completed', conclusion: 'failure' },
+        ],
+      },
+    ],
+  }
+
+  /**
+   * A recorder for the Actions endpoints, where the pages answer object-shaped
+   * (`{ total_count, jobs }`) and pagination reads `response.url` — which
+   * `withUrl` supplies, since the fetch stub otherwise leaves it empty.
+   */
+  const actionsRecordingApi = (
+    captured: CapturedRequest[],
+    payload: unknown,
+    secrets: readonly string[] = [],
+  ): GitHubApi =>
+    createOctokitApi({
+      token: 'tok',
+      owner: 'acme',
+      repo: 'widgets',
+      secrets,
+      fetch: (url, init) => {
+        captured.push({ url, method: init?.method ?? 'GET', body: parseBody(init?.body) })
+        return Promise.resolve(
+          withUrl(jsonResponse(payload), 'https://api.github.test/repos/acme/widgets/actions/runs/32652877782/jobs'),
+        )
+      },
+      log: silentOctokitLog(),
+    })
+
+  test('lists a run’s jobs with their per-step conclusions', async () => {
+    const captured: CapturedRequest[] = []
+
+    const jobs = await actionsRecordingApi(captured, RUN_JOBS_JSON).listRunJobs(32652877782)
+
+    expect(captured[0]?.method).toBe('GET')
+    expect(captured[0]?.url).toContain('/repos/acme/widgets/actions/runs/32652877782/jobs')
+    // Paginated: a matrix build answers with more jobs than one page carries,
+    // and a diagnosis that never saw the failed job cannot name what broke.
+    expect(captured[0]?.url).toContain('per_page=100')
+    expect(jobs).toHaveLength(2)
+    expect(jobs[1]).toEqual({
+      id: 97227096004,
+      name: 'Run agent pipeline',
+      conclusion: 'failure',
+      steps: [
+        { name: 'Set up job', conclusion: 'success' },
+        { name: 'Run the agent pipeline', conclusion: 'failure' },
+      ],
+    })
+  })
+
+  test('treats an absent conclusion as null, not as a passing one', async () => {
+    // A cancelled or in-flight job carries `conclusion: null`; `success` is the
+    // one conclusion the caller filters on, so a default of that string here
+    // would make an unfinished job look finished.
+    const payload = { total_count: 1, jobs: [{ id: 1, name: 'Build', conclusion: null, steps: [] }] }
+
+    const jobs = await actionsRecordingApi([], payload).listRunJobs(1482)
+
+    expect(jobs[0]?.conclusion).toBeNull()
+  })
+
+  /** A recorder whose transport answers plain text — the log endpoint's shape. */
+  const logRecordingApi = (captured: CapturedRequest[], logText: string, secrets: readonly string[]): GitHubApi =>
+    createOctokitApi({
+      token: 'tok',
+      owner: 'acme',
+      repo: 'widgets',
+      secrets,
+      fetch: (url, init) => {
+        captured.push({ url, method: init?.method ?? 'GET', body: parseBody(init?.body) })
+        return Promise.resolve(new Response(logText, { status: 200, headers: { 'content-type': 'text/plain' } }))
+      },
+      log: silentOctokitLog(),
+    })
+
+  test('downloads a job’s log as text, redacted at the boundary', async () => {
+    // The log endpoint answers plain text, not JSON: `downloadJobLogsForWorkflowRun`
+    // follows a redirect to the log blob and hands back its body as a string.
+    // Recorded shape; the redaction is the same rule every free-text read obeys —
+    // a CI log can quote a credential back at the reader.
+    const captured: CapturedRequest[] = []
+    const logText = `2026-08-23T16:44:06.3Z error: script "test:mutate:changed" exited with code 1.\ntoken=${LEAKED}`
+
+    const log = await logRecordingApi(captured, logText, [LEAKED]).jobLog(97227096004)
+
+    expect(captured[0]?.url).toContain('/repos/acme/widgets/actions/jobs/97227096004/logs')
+    expect(log).toContain('exited with code 1')
+    expect(log).not.toContain(LEAKED)
+    expect(log).toContain('[redacted]')
+  })
+
+  // Recorded from a live `checks.listForRef` answer for an `agent/issue-<n>`
+  // head: every field below is one the adapter reads, none added by inspection.
+  const REF_CHECK_RUNS_JSON = {
+    total_count: 2,
+    check_runs: [
+      {
+        id: 29266900446,
+        name: 'CI',
+        status: 'completed',
+        conclusion: 'failure',
+        output: { title: 'Unhandled error', summary: 'Mutation ratchet regression: gate.ts 0.8447 < 0.8600' },
+      },
+      {
+        id: 29266900501,
+        name: 'Workflow Lint',
+        status: 'completed',
+        conclusion: 'timed_out',
+        output: { title: '', summary: 'The action has timed out after 30m0s' },
+      },
+    ],
+  }
+
+  /** A recorder for the Checks endpoint, whose pages answer object-shaped too. */
+  const checksRecordingApi = (
+    captured: CapturedRequest[],
+    payload: unknown,
+    secrets: readonly string[] = [],
+  ): GitHubApi =>
+    createOctokitApi({
+      token: 'tok',
+      owner: 'acme',
+      repo: 'widgets',
+      secrets,
+      fetch: (url, init) => {
+        captured.push({ url, method: init?.method ?? 'GET', body: parseBody(init?.body) })
+        return Promise.resolve(
+          withUrl(
+            jsonResponse(payload),
+            'https://api.github.test/repos/acme/widgets/commits/agent/issue-42/check-runs',
+          ),
+        )
+      },
+      log: silentOctokitLog(),
+    })
+
+  test('lists the head’s check runs with name, conclusion and output summary', async () => {
+    const captured: CapturedRequest[] = []
+
+    const runs = await checksRecordingApi(captured, REF_CHECK_RUNS_JSON).listCheckRunsForRef('agent/issue-42')
+
+    expect(captured[0]?.method).toBe('GET')
+    // The ref is URL-encoded by the transport (a branch name carries a slash),
+    // recorded rather than guessed: `agent%2Fissue-42`.
+    expect(captured[0]?.url).toContain('/repos/acme/widgets/commits/agent%2Fissue-42/check-runs')
+    // Paginated like every other list: a head whose checks span more than one
+    // page must not hide its failing tail.
+    expect(captured[0]?.url).toContain('per_page=100')
+    expect(runs).toEqual([
+      {
+        id: 29266900446,
+        name: 'CI',
+        conclusion: 'failure',
+        summary: 'Mutation ratchet regression: gate.ts 0.8447 < 0.8600',
+      },
+      {
+        id: 29266900501,
+        name: 'Workflow Lint',
+        conclusion: 'timed_out',
+        summary: 'The action has timed out after 30m0s',
+      },
+    ])
+  })
+
+  test('skips a row it cannot name and keeps an absent conclusion null', async () => {
+    // The jobs doctrine, applied to the sibling endpoint: a check run with no
+    // name is not one a diagnosis can quote, and a conclusion of `null` is an
+    // unfinished check — `success` is the one conclusion the caller filters on,
+    // so defaulting to it would make an unfinished check look finished.
+    const payload = {
+      total_count: 3,
+      check_runs: [
+        { conclusion: 'failure', output: { summary: 'nameless' } },
+        { id: 29266900502, name: 'Still running', status: 'in_progress', conclusion: null, output: {} },
+      ],
+    }
+
+    const runs = await checksRecordingApi([], payload).listCheckRunsForRef('agent/issue-42')
+
+    expect(runs).toEqual([{ id: 29266900502, name: 'Still running', conclusion: null, summary: '' }])
+  })
+
+  test('passes the output summary through redaction at the boundary, like every free-text read', async () => {
+    // A check run's summary is free text a workflow's own step wrote, and a
+    // failing step quotes whatever it printed — credentials included.
+    const payload = {
+      total_count: 1,
+      check_runs: [
+        { id: 29266900446, name: 'CI', conclusion: 'failure', output: { summary: `failed; token=${LEAKED}` } },
+      ],
+    }
+
+    const runs = await checksRecordingApi([], payload, [LEAKED]).listCheckRunsForRef('agent/issue-42')
+
+    expect(runs[0]?.summary).toContain('[redacted]')
+    expect(runs[0]?.summary).not.toContain(LEAKED)
+  })
 })
 
 describe('logger', () => {
@@ -2412,6 +3402,8 @@ describe('logger', () => {
 
 interface GitCapture {
   calls: string[][]
+  /** The env each call was handed, in call order — where the git identity rides. */
+  envs: (Record<string, string> | undefined)[]
   run: CommandRunner
 }
 
@@ -2422,9 +3414,11 @@ interface GitCapture {
  */
 const captureGit = (exitCodes: Record<string, number> = {}, stdouts: Record<string, string> = {}): GitCapture => {
   const calls: string[][] = []
+  const envs: (Record<string, string> | undefined)[] = []
 
-  const run: CommandRunner = (argv) => {
+  const run: CommandRunner = (argv, options) => {
     calls.push([...argv])
+    envs.push(options.env)
     const key = argv.join(' ')
     return Promise.resolve({
       command: key,
@@ -2434,7 +3428,7 @@ const captureGit = (exitCodes: Record<string, number> = {}, stdouts: Record<stri
     })
   }
 
-  return { calls, run }
+  return { calls, envs, run }
 }
 
 const gitOptions = (run: CommandRunner, overrides: Partial<GitOptions> = {}): GitOptions => ({
@@ -2487,14 +3481,20 @@ describe('createGit', () => {
     expect(calls.filter((call) => call[1] === 'status')).toHaveLength(1)
   })
 
-  test('stamps the configured identity on the commit', async () => {
-    const { calls, run } = captureGit({}, DIRTY_TREE)
+  test('stamps the configured identity on the git child env, never on the commit argv', async () => {
+    // The identity env outranks any `-c user.*` config, so the commit command
+    // carries no stamp of its own — `makeRunners` decides the identity once,
+    // for every git child.
+    const { calls, envs, run } = captureGit({}, DIRTY_TREE)
 
     expect(await createGit(gitOptions(run)).commitAll('msg')).not.toBeNull()
     const commit = calls.find((call) => call.includes('commit'))
-    expect(commit).toContain('user.name=agent')
-    expect(commit).toContain('user.email=agent@example.com')
-    expect(commit).toContain('msg')
+    expect(commit).toEqual(['git', 'commit', '-m', 'msg'])
+    const env = envs[0]
+    expect(env?.['GIT_AUTHOR_NAME']).toBe('agent')
+    expect(env?.['GIT_AUTHOR_EMAIL']).toBe('agent@example.com')
+    expect(env?.['GIT_COMMITTER_NAME']).toBe('agent')
+    expect(env?.['GIT_COMMITTER_EMAIL']).toBe('agent@example.com')
   })
 
   test('pushes with an upstream so a retry can fast-forward', async () => {
@@ -2534,5 +3534,101 @@ describe('createGit', () => {
     const { run } = captureGit({ 'git push -u origin agent/issue-1': 128 })
 
     await expect(createGit(gitOptions(run)).push('agent/issue-1')).rejects.toThrow('no upstream')
+  })
+})
+
+/**
+ * Run 32374999214 (PR #313): a maintainer pushed merge `1f7ce71b` to
+ * `agent/issue-305` while the review loop ran, and every later pipeline push
+ * was rejected non-fast-forward — because the branch had been fetched exactly
+ * once, at `ensureBranch`, hours earlier. A push now reconciles first: fetch
+ * the branch, and when the remote tip has commits local HEAD does not contain,
+ * merge it (never rebase, never force) and push the merged result.
+ */
+describe('createGit · the reconciling push', () => {
+  const REMOTE = 'refs/remotes/origin/agent/issue-1'
+  const FETCH = `git fetch origin +refs/heads/agent/issue-1:${REMOTE}`
+  const ANCESTOR = `git merge-base --is-ancestor ${REMOTE} HEAD`
+  const MERGE = ['git', 'merge', '--no-edit', REMOTE]
+
+  test('merges a remote branch that advanced mid-run, then pushes (no --force)', async () => {
+    // `merge-base` answers by exit code: 0 is ancestor, 1 is not. Here the
+    // remote carries the maintainer's commits, so local HEAD diverges.
+    const { calls, run } = captureGit({ [ANCESTOR]: 1 })
+
+    await createGit(gitOptions(run)).push('agent/issue-1')
+
+    expect(calls).toContainEqual(MERGE)
+    expect(calls).toContainEqual(['git', 'push', '-u', 'origin', 'agent/issue-1'])
+    expect(calls.some((call) => call.includes('--force'))).toBe(false)
+  })
+
+  test('pushes plainly when the remote tip is already an ancestor', async () => {
+    const { calls, run } = captureGit()
+
+    await createGit(gitOptions(run)).push('agent/issue-1')
+
+    expect(calls).toContainEqual(['git', 'fetch', 'origin', `+refs/heads/agent/issue-1:${REMOTE}`])
+    expect(calls).toContainEqual([...ANCESTOR.split(' ')])
+    expect(calls.some((call) => call.includes('merge'))).toBe(false)
+  })
+
+  test('treats a fetch that finds no remote branch as the first push, not an error', async () => {
+    const { calls, run } = captureGit({ [FETCH]: 1 })
+
+    await createGit(gitOptions(run)).push('agent/issue-1')
+
+    expect(calls).toContainEqual(['git', 'push', '-u', 'origin', 'agent/issue-1'])
+    expect(calls.some((call) => call.includes('merge-base'))).toBe(false)
+  })
+
+  test('rides the runners\u2019 identity env on the reconciling merge, as on every git child', async () => {
+    // A hosted runner has no user.name anywhere, and a merge makes a commit:
+    // without the identity the merge dies on committer identity and the push
+    // fails with an error about a config file, not about the branch. The
+    // identity is the env `makeRunners` stamps on every call — never a `-c`
+    // argument, which an ambient GIT_COMMITTER_* would outrank anyway.
+    const { calls, envs, run } = captureGit({ [ANCESTOR]: 1 })
+
+    await createGit(gitOptions(run)).push('agent/issue-1')
+
+    expect(calls).toContainEqual(MERGE)
+    const env = envs[0]
+    expect(env?.['GIT_COMMITTER_NAME']).toBe('agent')
+    expect(env?.['GIT_COMMITTER_EMAIL']).toBe('agent@example.com')
+  })
+
+  test('reconciling a conflict aborts the merge and names the conflicted paths', async () => {
+    const { calls, run } = captureGit(
+      { [ANCESTOR]: 1, [MERGE.join(' ')]: 1 },
+      {
+        [MERGE.join(' ')]: 'Auto-merging src/a.ts\nCONFLICT (content): Merge conflict in src/a.ts\n',
+        'git diff --name-only --diff-filter=U': 'src/a.ts\nsrc/b.ts\n',
+      },
+    )
+
+    await expect(createGit(gitOptions(run)).push('agent/issue-1')).rejects.toThrow('src/a.ts')
+    await expect(createGit(gitOptions(run)).push('agent/issue-1')).rejects.toThrow('src/b.ts')
+    expect(calls).toContainEqual(['git', 'merge', '--abort'])
+    // The push itself never ran: a mid-merge push is not a thing to attempt.
+    expect(calls.some((call) => call[1] === 'push')).toBe(false)
+  })
+
+  test('a merge that fails without conflicting is aborted too, then reported', async () => {
+    const { calls, run } = captureGit({ [ANCESTOR]: 1, [MERGE.join(' ')]: 128 })
+
+    await expect(createGit(gitOptions(run)).push('agent/issue-1')).rejects.toThrow('no upstream')
+    expect(calls).toContainEqual(['git', 'merge', '--abort'])
+  })
+
+  test('leaves the base branch push alone: only agent branches reconcile', async () => {
+    // ARCHIVE pushes the base branch, whose sharing rules are a different
+    // decision; its push stays the plain one it has always been.
+    const { calls, run } = captureGit()
+
+    await createGit(gitOptions(run)).push('master')
+
+    expect(calls).toContainEqual(['git', 'push', '-u', 'origin', 'master'])
+    expect(calls.some((call) => call[1] === 'fetch')).toBe(false)
   })
 })

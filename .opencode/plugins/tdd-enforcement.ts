@@ -8,11 +8,10 @@ import type { Hooks, Plugin } from '@opencode-ai/plugin'
 import { blockGitCheckoutDiscard } from '../../.hooks/git/checks/block-git-checkout-discard.mjs'
 import { blockGitStash } from '../../.hooks/git/checks/block-git-stash.mjs'
 import { checkFull } from '../../.hooks/tdd/checks/check-full.mjs'
-import { enforceTdd } from '../../.hooks/tdd/checks/enforce-tdd.mjs'
 import { enforceWritePolicy } from '../../.hooks/tdd/checks/enforce-write-policy.mjs'
+import { getTddNudge } from '../../.hooks/tdd/checks/tdd-nudge.mjs'
 import { trackTestWrite } from '../../.hooks/tdd/checks/track-test-write.mjs'
 import { verifyTestImport } from '../../.hooks/tdd/checks/verify-test-import.mjs'
-import { verifyTestsPass } from '../../.hooks/tdd/checks/verify-tests-pass.mjs'
 import { getSessionsDir } from '../../.hooks/tdd/paths.mjs'
 import { SessionState } from '../../.hooks/tdd/session-state.mjs'
 
@@ -118,11 +117,6 @@ const handleToolExecuteBefore = (directory: string, input: ToolBeforeInput, outp
     throw new Error(writePolicyResult.reason)
   }
 
-  const tddResult = enforceTdd(ctx)
-  if (tddResult) {
-    throw new Error(tddResult.reason)
-  }
-
   const state = new SessionState(input.sessionID, getSessionsDir(directory))
   state.setNeedsRecheck(true)
 }
@@ -156,12 +150,10 @@ const handleToolExecuteAfter = (
     return
   }
 
-  // The edited file's companion test, run now rather than discovered minutes later in a
-  // full-suite run. This plugin notifies where the Claude/Codex hooks block, so the
-  // failure reaches the session as a message and the agent decides what to do with it.
-  void verifyTestsPass(ctx).then((testsResult) => {
-    if (testsResult) notifySession(client, input.sessionID, testsResult.reason)
-  })
+  const nudgeResult = getTddNudge(ctx)
+  if (nudgeResult) {
+    notifySession(client, input.sessionID, nudgeResult.reason)
+  }
 }
 
 const handleSessionIdle = (

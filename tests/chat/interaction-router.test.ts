@@ -9,9 +9,10 @@ import { routeInteraction } from '../../src/chat/interaction-router.js'
 import { askPermissionViaChat } from '../../src/chat/permission-prompt.js'
 import { resetPermissionPromptForTesting } from '../../src/chat/permission-prompt.testing.js'
 import type { AuthorizationResult, IncomingInteraction, ReplyFn } from '../../src/chat/types.js'
+import { setConfigValue } from '../../src/config.js'
 import { registerEditPrompt } from '../../src/message-edit/edit-prompt-store.js'
 import { resetEditPromptStoreForTesting } from '../../src/message-edit/edit-prompt-store.testing.js'
-import { createMockReply } from '../utils/test-helpers.js'
+import { createMockReply, mockLogger, setupTestDb } from '../utils/test-helpers.js'
 
 const auth = (allowed: boolean, storageContextId = 'tg:u1'): AuthorizationResult => ({
   allowed,
@@ -63,7 +64,9 @@ async function createPendingPermissionId(contextId = 'tg:u1'): Promise<string> {
 }
 
 describe('routeInteraction (post-retirement)', () => {
-  beforeEach(() => {
+  beforeEach(async () => {
+    mockLogger()
+    await setupTestDb()
     resetPermissionPromptForTesting()
     resetEditPromptStoreForTesting()
   })
@@ -74,7 +77,7 @@ describe('routeInteraction (post-retirement)', () => {
 
   test('rejects an unauthorized interaction', async () => {
     const { reply, getReplies } = createMockReply()
-    const handled = await routeInteraction(interaction('anything'), reply, auth(false))
+    const handled = await routeInteraction(interaction('anything'), reply, { ...auth(false), reason: 'dm_not_allowed' })
     expect(handled).toBe(true)
     expect(getReplies()[0]).toContain('not authorized')
   })
@@ -136,6 +139,39 @@ describe('routeInteraction (post-retirement)', () => {
 
     expect(handled).toBe(true)
     expect(getReplies()[0]).toContain('Action is no longer available')
+  })
+
+  test('renders the stale-action reply in the context language', async () => {
+    setConfigValue('tg:u1', 'language', 'ru')
+    const { reply, getReplies } = createMockReply()
+
+    const handled = await routeInteraction(interaction('perm:a:missing1'), reply, auth(true))
+
+    expect(handled).toBe(true)
+    expect(getReplies()[0]).toBe('Действие больше недоступно.')
+  })
+
+  test('renders the decision confirmation in the context language', async () => {
+    setConfigValue('tg:u1', 'language', 'ru')
+    const id = await createPendingPermissionId()
+    const replacements: string[] = []
+    const { reply } = createMockReply()
+    reply.replaceText = (content: string): Promise<void> => {
+      replacements.push(content)
+      return Promise.resolve()
+    }
+
+    const handled = await routeInteraction(
+      {
+        ...interaction(`perm:a:${id}`),
+        sourceMessageText: undefined,
+      },
+      reply,
+      auth(true),
+    )
+
+    expect(handled).toBe(true)
+    expect(replacements).toEqual(['Разрешено: delete_task ✅'])
   })
 
   test('does not resolve permission callbacks from another context', async () => {

@@ -137,4 +137,88 @@ describe('AiOutputSection', () => {
     expect(target.querySelector('.ui-page-header__title')?.textContent).toContain('AI output')
     void unmount(component)
   })
+
+  test('renders the reasoning effort select with its hint line', async () => {
+    setMockFetch(() =>
+      Promise.resolve(
+        json({
+          contextId: 'user:1',
+          fields: [
+            {
+              key: 'ai_reasoning_effort',
+              storageKey: 'ai_reasoning_effort',
+              label: 'Reasoning effort',
+              required: false,
+              sensitive: false,
+              kind: 'ai-output',
+              control: 'select',
+              options: [
+                { value: '', label: 'Provider default' },
+                { value: 'low', label: 'low' },
+                { value: 'high', label: 'high' },
+              ],
+              hasValue: false,
+              value: '',
+            },
+          ],
+        }),
+      ),
+    )
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(AiOutputSection, { target, props: { contextId: 'user:1' } })
+    await drain()
+
+    expect(target.querySelector('[data-testid="cfg-row-ai_reasoning_effort"]')).not.toBeNull()
+    const hint = target.querySelector('#cfg-hint-ai_reasoning_effort')
+    expect(hint).not.toBeNull()
+    expect(hint?.textContent).toContain('active model')
+    // the unset value displays the first option (Provider default)
+    const defaultBtn = target.querySelector<HTMLButtonElement>('[data-testid="cfg-seg-ai_reasoning_effort-"]')!
+    expect(defaultBtn.getAttribute('aria-checked')).toBe('true')
+    void unmount(component)
+  })
+
+  test('displays Provider default for a stored value outside the options without rewriting it', async () => {
+    let fetches = 0
+    setMockFetch(() => {
+      fetches += 1
+      return Promise.resolve(
+        json({
+          contextId: 'user:1',
+          fields: [
+            {
+              key: 'ai_reasoning_effort',
+              storageKey: 'ai_reasoning_effort',
+              label: 'Reasoning effort',
+              required: false,
+              sensitive: false,
+              kind: 'ai-output',
+              control: 'select',
+              options: [
+                { value: '', label: 'Provider default' },
+                { value: 'low', label: 'low' },
+                { value: 'high', label: 'high' },
+              ],
+              hasValue: true,
+              value: 'xhigh',
+            },
+          ],
+        }),
+      )
+    })
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(AiOutputSection, { target, props: { contextId: 'user:1' } })
+    await drain()
+
+    // the stale stored value is not among the options: the control shows the first option
+    const defaultBtn = target.querySelector<HTMLButtonElement>('[data-testid="cfg-seg-ai_reasoning_effort-"]')!
+    expect(defaultBtn.getAttribute('aria-checked')).toBe('true')
+    const lowBtn = target.querySelector<HTMLButtonElement>('[data-testid="cfg-seg-ai_reasoning_effort-low"]')!
+    expect(lowBtn.getAttribute('aria-checked')).toBe('false')
+    // display-only fallback: the load performs no write-back
+    expect(fetches).toBe(1)
+    void unmount(component)
+  })
 })

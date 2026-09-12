@@ -33,7 +33,7 @@ scenario(
     const alice = given.user('alice')
     const dm = given.dm(alice)
     const contextId = world.scopedStorageContextId(dm)
-    const vaultPlugin = discoverPlugins('plugins').plugins.find((p) => p.manifest.id === 'context-vault')
+    const vaultPlugin = (await discoverPlugins('plugins')).plugins.find((p) => p.manifest.id === 'context-vault')
     if (vaultPlugin === undefined) throw new Error('Expected discovered plugin context-vault')
     given.plugin(vaultPlugin)
     setPluginEnabledForContext('context-vault', contextId, true)

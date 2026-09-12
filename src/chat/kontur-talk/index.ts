@@ -27,8 +27,6 @@ import { createKonturTalkReplyFn } from './reply-helpers.js'
 import type { KonturTalkUpdate } from './schema.js'
 import { KonturTalkGetUpdatesResponseSchema, KonturTalkSendMessageResponseSchema } from './schema.js'
 
-const BASE_URL = 'https://chat.ktalk.ru/_matrix/client/strangler/api/v1'
-
 const log = logger.child({ scope: 'chat:kontur-talk' })
 
 const delay = (ms: number): Promise<void> =>
@@ -49,6 +47,7 @@ export class KonturTalkChatProvider implements ChatProvider {
 
   private readonly jwtToken: string
   private readonly platformInstanceId: string
+  private readonly apiBaseUrl: string
   private readonly commands = new Map<string, CommandHandler>()
   private messageHandler: ((msg: IncomingMessage, reply: ReplyFn) => Promise<void>) | null = null
   private botUserId: string | null = null
@@ -58,6 +57,7 @@ export class KonturTalkChatProvider implements ChatProvider {
     const resolved = resolveKonturTalkConfig(config)
     this.jwtToken = resolved.jwtToken
     this.platformInstanceId = resolved.platformInstanceId
+    this.apiBaseUrl = resolved.apiBaseUrl
   }
 
   getBotUserId(): string | null {
@@ -94,7 +94,7 @@ export class KonturTalkChatProvider implements ChatProvider {
     if (typeof payload !== 'object' || payload === null) {
       throw new Error('Invalid JWT token: invalid payload format')
     }
-    const sub: unknown = Reflect.get(payload, 'sub')
+    const sub: unknown = 'sub' in payload ? payload.sub : undefined
     if (typeof sub !== 'string' || sub.trim() === '') {
       throw new Error('Invalid JWT token: missing sub claim')
     }
@@ -102,7 +102,7 @@ export class KonturTalkChatProvider implements ChatProvider {
   }
 
   private buildUrl(endpoint: string): string {
-    return `${BASE_URL}/bot/${this.jwtToken}${endpoint}`
+    return `${this.apiBaseUrl}/bot/${this.jwtToken}${endpoint}`
   }
 
   async apiFetch(method: string, endpoint: string, body?: unknown): Promise<unknown> {

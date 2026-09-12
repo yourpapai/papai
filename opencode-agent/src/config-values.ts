@@ -7,9 +7,20 @@ import type { DiffLimits } from './diff-guard.js'
 
 /** Raised when the environment cannot produce a runnable configuration. */
 export class ConfigError extends Error {
-  constructor(message: string) {
+  /**
+   * Machine-readable tag for the startup failures an operator tells apart by
+   * cause, absent on the ones a message alone describes.
+   *
+   * The credential-exclusivity guard is why it exists: its failures must be
+   * distinguishable from other startup failures by code, because the remedy
+   * differs — unset one variable versus fix a workflow forwarding gate.
+   */
+  readonly code: string | undefined
+
+  constructor(message: string, code?: string) {
     super(message)
     this.name = 'ConfigError'
+    this.code = code
   }
 }
 
@@ -90,8 +101,10 @@ export const POOL_RANGE: IntRange = { min: 1, max: 16 }
  *
  * A review worker is not one `opencode run` — it is that plus a full
  * `AGENT_CHECK_COMMAND`, and this repository's is `bun check:full`, which fans
- * lint, typecheck, knip, format and the whole test suite out *in parallel* on
- * its own. Two of those on one 4-vCPU runner is the OOM `scripts/check.sh`
+ * lint (whose tsgolint type-check pass replaced the dropped standalone
+ * typecheck leg — openspec/changes/dedupe-lint-typecheck), knip, format and
+ * the whole test suite out *in parallel* on its own. Two of those on one
+ * 4-vCPU runner is the OOM `scripts/check.sh`
  * already documents for `bun test --parallel`, and it does not merely fail the
  * gate: it takes the runner with it. Runs 31704544065 and 31745493737 both
  * ended with the VM gone mid-review — exit 143 and "the runner has received a
@@ -230,19 +243,57 @@ const parseBounded = (key: string, trimmed: string, range: IntRange): number => 
   return parsed
 }
 
-// `AGENT_CHECKS` is re-exported rather than moved out of reach: `config.ts` and
-// the suites name this module for the vocabulary, and a moved export would be a
-// rename dressed up as a file split. See `check-spec.ts` for why it left.
-export { DEFAULT_CHECKS, parseChecks } from './check-spec.js'
+/**
+ * Reads the mid-turn provider-stall window (`AGENT_STALL_TIMEOUT_MS`), where
+ * `0` is the one value below the range that means something.
+ *
+ * Every other knob in this file treats a non-positive number as unusable,
+ * because for them a small value is a ceiling that fires on ordinary work.
+ * This one's small values are *more* eager, not less, and its off switch has
+ * to be reachable: an operator investigating the provider needs to run the
+ * old behaviour — the whole-turn deadline as the only turn bound — and
+ * refusing `0` would leave them no way to say so. So `0` disables explicitly,
+ * and everything else is range-checked as usual through {@link parseBounded}.
+ */
+export const stallTimeoutMs = (env: Env, key: string, fallback: number, range: IntRange): number => {
+  const raw = optionalOrNull(env, key)
+  if (raw === null) return fallback
+  if (raw === '0') return 0
+  return parseBounded(key, raw, range)
+}
+
+export { parseMcpServers } from './mcp-servers.js'
+// The claude route's custom child-environment knob, re-exported like `parseMcpServers`
+export { parseClaudeEnv } from './claude-env-knob.js'
+
+// The backend-selection reads (AGENT_BACKEND and the claude route's credential
+// demands), split off for the same reason and reachable from here for the same
+// one: `config-clock-values.ts` holds the job-clock knobs, and this block is
+// about which backend a job runs on rather than how one scalar is read.
+export {
+  backendSelection,
+  claudeCredential,
+  CLAUDE_CREDENTIALS_CODE,
+  LLM_CREDENTIALS_CODE,
+  refuseGatewayKeyOnClaude,
+} from './config-backend-values.js'
+export type { BackendSelection, ClaudeCredential } from './config-backend-values.js'
 
 // The job-clock knobs, re-exported for the same reason and left out of reach for
 // none: they moved to `config-clock-values.ts` because their prose outgrew this
 // file, not because callers should start naming a second module for them.
+// The model-metadata knobs, split off for the same reason and reachable from
+// here for the same one: they are about somebody else's server rather than about
+// this pipeline's budgets, and their prose outgrew this file.
+export { boolOrNull, CONTEXT_RANGE, effortTier, OUTPUT_RANGE, providerId } from './config-model-values.js'
+
 export {
+  DEFAULT_STALL_TIMEOUT_MS,
   DEFAULT_TURN_TIMEOUT_MS,
   EPOCH_MS_RANGE,
   JOB_MINUTES_RANGE,
   RESERVE_RANGE,
+  STALL_RANGE,
   TIMEOUT_RANGE,
   WRAP_UP_RANGE,
 } from './config-clock-values.js'

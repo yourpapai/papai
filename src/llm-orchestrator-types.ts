@@ -21,7 +21,7 @@ export type LlmOrchestratorDeps = {
   // so tests can supply a canned result without type-suppression or assertion escape hatches.
   generateText: (options: Parameters<typeof generateText>[0]) => ReturnType<typeof generateText>
   stepCountIs: typeof isStepCount
-  buildModel: (config: EffectiveLlmConfig) => LanguageModel
+  buildModel: (config: EffectiveLlmConfig, reasoningEffort?: string | null) => LanguageModel
   resolve: (contextId: string) => Promise<TaskProvider | null> | TaskProvider | null
   maybeAutoProvision: (
     reply: ReplyFn,

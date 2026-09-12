@@ -111,7 +111,7 @@ export class TaskResource {
       return task
     } catch (error) {
       this.log.error({ error: error instanceof Error ? error.message : String(error) }, 'Failed to create task')
-      throw classifyKaneoError(error)
+      throw classifyKaneoError(error, { projectId: params.projectId })
     }
   }
 
@@ -136,6 +136,7 @@ export class TaskResource {
         status: task.status,
         priority: task.priority,
         dueDate: task.dueDate ?? null,
+        createdAt: task.createdAt,
       }))
       // Denormalize status from column slug to normalized slug for each task
       for (const task of tasks) {

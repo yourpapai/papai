@@ -15,6 +15,7 @@ import {
   logMessageExtraction,
   type MinimalContext,
 } from '../../../src/chat/telegram/message-extraction.js'
+import { logger, logMultistream } from '../../../src/logger.js'
 import { mockLogger, mockMessageCache } from '../../utils/test-helpers.js'
 
 describe('message-extraction', () => {
@@ -123,7 +124,7 @@ describe('message-extraction', () => {
       const ctx: MinimalContext = {
         message: {
           message_id: 100,
-          reply_to_message: { message_id: 50, text: 'original message' },
+          reply_to_message: { message_id: 50, from: { id: 77 }, text: 'original message' },
           quote: { text: 'quoted text' },
         },
       }
@@ -131,6 +132,7 @@ describe('message-extraction', () => {
       expect(result).toEqual({
         messageIdStr: '100',
         replyToMessageIdStr: '50',
+        replyToAuthorIdStr: '77',
         replyToMessageText: 'original message',
         quoteText: 'quoted text',
       })
@@ -142,6 +144,7 @@ describe('message-extraction', () => {
       expect(result).toEqual({
         messageIdStr: undefined,
         replyToMessageIdStr: undefined,
+        replyToAuthorIdStr: undefined,
         replyToMessageText: undefined,
         quoteText: undefined,
       })
@@ -151,8 +154,55 @@ describe('message-extraction', () => {
   describe('logMessageExtraction', () => {
     test('does not throw when called', () => {
       expect(() => {
-        logMessageExtraction(123, 'ctx456', 'msg789', 'reply321', 'original text', 'quoted text')
+        logMessageExtraction(123, 'ctx456', 'msg789', 'reply321', 'original text', 'quoted text', '777')
       }).not.toThrow()
     })
+  })
+})
+
+describe('logMessageExtraction log attribution', () => {
+  // No mockLogger here: the module-bound child logger is the real pino instance,
+  // so attribution is asserted against actual egress (mirrors reply-context-helpers.test.ts).
+  test('attributes reply/quote previews to the parent author, not the replying user', () => {
+    const logLines: string[] = []
+    logMultistream.add({ level: 'debug', stream: { write: (chunk: string): void => void logLines.push(chunk) } })
+    logger.level = 'debug'
+    try {
+      logMessageExtraction(42, 'ctx-1', '100', '50', 'secret parent text', 'secret quote', '77')
+    } finally {
+      logger.level = 'silent'
+    }
+    const entry = logLines.find((line) => line.includes('"msg":"Extracting Telegram message with reply/quote data"'))
+    expect(entry, 'expected an extraction debug log entry').toBeDefined()
+    expect(entry).toContain('"chatUserId":"77"')
+    expect(entry).not.toContain('"chatUserId":"42"')
+  })
+
+  test('keeps the sender attribution when no parent text is carried', () => {
+    const logLines: string[] = []
+    logMultistream.add({ level: 'debug', stream: { write: (chunk: string): void => void logLines.push(chunk) } })
+    logger.level = 'debug'
+    try {
+      logMessageExtraction(42, 'ctx-1', '100', '50', undefined, undefined, '77')
+    } finally {
+      logger.level = 'silent'
+    }
+    const entry = logLines.find((line) => line.includes('"msg":"Extracting Telegram message with reply/quote data"'))
+    expect(entry, 'expected an extraction debug log entry').toBeDefined()
+    expect(entry).toContain('"chatUserId":"42"')
+  })
+
+  test('leaves chatUserId unset when parent text has no known author', () => {
+    const logLines: string[] = []
+    logMultistream.add({ level: 'debug', stream: { write: (chunk: string): void => void logLines.push(chunk) } })
+    logger.level = 'debug'
+    try {
+      logMessageExtraction(42, 'ctx-1', '100', '50', 'secret parent text', undefined, undefined)
+    } finally {
+      logger.level = 'silent'
+    }
+    const entry = logLines.find((line) => line.includes('"msg":"Extracting Telegram message with reply/quote data"'))
+    expect(entry, 'expected an extraction debug log entry').toBeDefined()
+    expect(entry).not.toContain('"chatUserId"')
   })
 })

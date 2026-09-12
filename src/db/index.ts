@@ -89,6 +89,12 @@ import { migration075AnalyticsMaterializations } from './migrations/075_analytic
 import { migration076ContextVault } from './migrations/076_context_vault.js'
 import { migration077ContextVaultFileArtifacts } from './migrations/077_context_vault_file_artifacts.js'
 import { migration078RepairEpochAggregateSourceCounters } from './migrations/078_repair_epoch_aggregate_source_counters.js'
+import { migration079ToolCallDurationNormalize } from './migrations/079_tool_call_duration_normalize.js'
+import { migration080ReleaseAnnouncementBodies } from './migrations/080_release_announcement_bodies.js'
+import { migration081AlertTaskInstancePin } from './migrations/081_alert_task_instance_pin.js'
+import { migration082AlertActivityCursor } from './migrations/082_alert_activity_cursor.js'
+import { migration083LlmProviderBaseRefs } from './migrations/083_llm_provider_base_refs.js'
+import { migration084LlmProviderModelHints } from './migrations/084_llm_provider_model_hints.js'
 
 const getDbPath = (): string => {
   const dbPath = process.env['DB_PATH']
@@ -202,6 +208,12 @@ export const MIGRATIONS: readonly Migration[] = [
   migration076ContextVault,
   migration077ContextVaultFileArtifacts,
   migration078RepairEpochAggregateSourceCounters,
+  migration079ToolCallDurationNormalize,
+  migration080ReleaseAnnouncementBodies,
+  migration081AlertTaskInstancePin,
+  migration082AlertActivityCursor,
+  migration083LlmProviderBaseRefs,
+  migration084LlmProviderModelHints,
 ]
 
 export const initDb = (): void => {

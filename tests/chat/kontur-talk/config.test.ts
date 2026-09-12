@@ -14,6 +14,45 @@ describe('resolveKonturTalkConfig', () => {
     expect(config.platformInstanceId).toBe('custom-id')
   })
 
+  test('preserves an explicit API base URL for a platform fake', () => {
+    expect(
+      resolveKonturTalkConfig({
+        jwtToken: 'header.eyJzdWIiOiJib3QifQ.signature',
+        platformInstanceId: 'kontur-platform',
+        apiBaseUrl: 'http://127.0.0.1:43123/api/v1',
+      }).apiBaseUrl,
+    ).toBe('http://127.0.0.1:43123/api/v1')
+  })
+
+  test('uses the production API base URL by default', () => {
+    expect(
+      resolveKonturTalkConfig({
+        jwtToken: 'header.eyJzdWIiOiJib3QifQ.signature',
+        platformInstanceId: 'kontur-platform',
+      }).apiBaseUrl,
+    ).toBe('https://chat.ktalk.ru/_matrix/client/strangler/api/v1')
+  })
+
+  test('normalizes a trailing slash from an API base URL override', () => {
+    expect(
+      resolveKonturTalkConfig({
+        jwtToken: 'header.eyJzdWIiOiJib3QifQ.signature',
+        platformInstanceId: 'kontur-platform',
+        apiBaseUrl: 'http://127.0.0.1:43123/api/v1/',
+      }).apiBaseUrl,
+    ).toBe('http://127.0.0.1:43123/api/v1')
+  })
+
+  test('throws when an API base URL override is blank', () => {
+    expect(() =>
+      resolveKonturTalkConfig({
+        jwtToken: 'header.eyJzdWIiOiJib3QifQ.signature',
+        platformInstanceId: 'kontur-platform',
+        apiBaseUrl: '  ',
+      }),
+    ).toThrow('apiBaseUrl must not be empty')
+  })
+
   test('throws when jwtToken is whitespace', () => {
     expect(() => resolveKonturTalkConfig({ jwtToken: '  ', platformInstanceId: 'custom-id' })).toThrow(
       /KONTUR_TALK_JWT_TOKEN/iu,

@@ -4,14 +4,15 @@
 // See LICENSE in the project root for details.
 
 import type { AuthorizationResult, ReplyFn } from './chat/types.js'
+import { t } from './i18n/index.js'
+import { getContextLanguage } from './utils/config-language.js'
 
 export function getUnauthorizedReplyText(auth: AuthorizationResult, groupId: string): string | null {
-  if (auth.reason === 'group_not_allowed')
-    return `This group (${groupId}) is not authorized to use this bot. Ask the bot admin to authorize it in the settings web UI — they can open it with \`/config\` in a DM.`
-  if (auth.reason === 'group_member_not_allowed')
-    return "You're not authorized to use this bot in this group. Ask a group admin to add you in the settings web UI — they can open it with `/config` in a DM."
-  if (auth.reason === 'dm_not_allowed') return 'You are not authorized to use this bot.'
-  if (auth.reason === 'user_blocked') return 'You are not authorized to use this bot.'
+  const locale = getContextLanguage(auth.configContextId ?? auth.storageContextId)
+  if (auth.reason === 'group_not_allowed') return t('auth.groupNotAllowed', locale, { groupId })
+  if (auth.reason === 'group_member_not_allowed') return t('auth.groupMemberNotAllowed', locale)
+  if (auth.reason === 'dm_not_allowed') return t('auth.dmNotAllowed', locale)
+  if (auth.reason === 'user_blocked') return t('auth.userBlocked', locale)
   return null
 }
 

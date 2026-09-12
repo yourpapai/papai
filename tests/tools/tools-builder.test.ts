@@ -12,6 +12,7 @@ import {
   toScopedThreadContextId,
 } from '../../src/chat/scoped-context.js'
 import type { IncomingFile } from '../../src/chat/types.js'
+import { ACTIVITY_NO_INSTANCE_ERROR, ACTIVITY_UNAVAILABLE_ERROR } from '../../src/deferred-prompts/activity-gating.js'
 import { createAlertPrompt, listAlertPrompts } from '../../src/deferred-prompts/alerts.js'
 import { getIdentityMapping } from '../../src/identity/mapping.js'
 import { listInstructions } from '../../src/instructions.js'
@@ -1066,6 +1067,7 @@ const SCOPE_CONDITIONAL_TOOL_NAMES = [
   'update_task',
   'search_tasks',
   'list_tasks',
+  'suggest_next_task',
   'get_task',
   'delete_task',
   'count_tasks',
@@ -1269,6 +1271,16 @@ describe('provider request scope closure', () => {
     expect(out).toEqual([])
   })
 
+  it('keeps the alert tools out of the guest read-only toolset', () => {
+    const provider = createMockProvider()
+    const descriptors = buildTools(provider, 'user-123', 'group-123', 'normal', 'group')
+
+    expect(Object.keys(descriptors)).toContain('create_alert')
+    const guest = applyGuestReadOnlyFilter(descriptors)
+    expect(Object.keys(guest)).not.toContain('create_alert')
+    expect(Object.keys(guest)).not.toContain('update_reminder')
+  })
+
   it('preserves compaction and disclosure behavior through the finalize pass', async () => {
     const provider = createMockProvider({
       listTasks: mock(() =>
@@ -1299,5 +1311,41 @@ describe('provider request scope closure', () => {
       { toolCallId: 'call-load', messages: [], context: scope },
     )
     expect(loadOut).toMatchObject({ loaded: ['search_tasks'], unknown: [] })
+  })
+})
+
+describe('buildTools — create_alert activity capability flag', () => {
+  const activityCondition = { prompt: 'Notify me', condition: { kind: 'activity', taskId: 'task-1' } }
+
+  beforeEach(async () => {
+    mockLogger()
+    await setupTestDb()
+  })
+
+  it('enables activity alerts when the provider exposes activities.read and getTaskHistory', async () => {
+    const tools = buildTools(createMockProvider(), 'user-123', 'user-123', 'normal')
+    const execute = getToolExecutor(tools['create_alert'])
+    const result = await execute(activityCondition)
+    expect(result).toEqual({ error: ACTIVITY_NO_INSTANCE_ERROR })
+  })
+
+  it('disables activity alerts when the activities.read capability is missing', async () => {
+    const provider = createMockProvider({
+      capabilities: new Set(
+        [...createMockProvider().capabilities].filter((capability) => capability !== 'activities.read'),
+      ),
+    })
+    const tools = buildTools(provider, 'user-123', 'user-123', 'normal')
+    const execute = getToolExecutor(tools['create_alert'])
+    const result = await execute(activityCondition)
+    expect(result).toEqual({ error: ACTIVITY_UNAVAILABLE_ERROR })
+  })
+
+  it('disables activity alerts when the provider has no getTaskHistory', async () => {
+    const provider = createMockProvider({ getTaskHistory: undefined })
+    const tools = buildTools(provider, 'user-123', 'user-123', 'normal')
+    const execute = getToolExecutor(tools['create_alert'])
+    const result = await execute(activityCondition)
+    expect(result).toEqual({ error: ACTIVITY_UNAVAILABLE_ERROR })
   })
 })

@@ -21,24 +21,15 @@ const config: StorybookConfig = {
   addons: ['@storybook/addon-svelte-csf', '@storybook/addon-a11y', 'msw-storybook-addon'],
   staticDirs: ['../public'],
   typescript: { check: false },
-  // @storybook/svelte-vite does NOT inject vite-plugin-svelte — it expects the
-  // project's Vite config to provide it, and this repo has no root vite.config
-  // (production builds via Bun). So we add svelte() here (with vitePreprocess
-  // for `lang="ts"`). The plugin is imported dynamically to defer loading the
-  // ESM-only module until viteFinal runs.
-  //
-  // Plugin ordering: vite-plugin-svelte v6 split preprocess and compile into
-  // separate plugins (the compile step is a "normal"-enforce transform).
-  // @storybook/addon-svelte-csf's transform expects to see compiled JS, so the
-  // svelte plugins must be registered BEFORE storybook's. mergeConfig appends
-  // override plugins to the existing list, so we splice svelte() into the
-  // incoming viteConfig.plugins ahead of the merge. Also widen the fs allowlist
-  // so components can import transitively from ../src (zod schemas).
-  viteFinal: async (viteConfig) => {
-    const { svelte, vitePreprocess } = await import('@sveltejs/vite-plugin-svelte')
-    const sveltePlugins = svelte({ preprocess: vitePreprocess() })
-    const incoming = Array.isArray(viteConfig.plugins) ? viteConfig.plugins : []
-    viteConfig.plugins = [...sveltePlugins, ...incoming]
+  // The root vite.config.ts now registers @sveltejs/vite-plugin-svelte (with
+  // vitePreprocess for `lang="ts"`), and @storybook/builder-vite loads it, so
+  // no splice is needed here — registering svelte() again double-compiles the
+  // stories and breaks the build. The root config's plugins also load ahead
+  // of storybook's own, which keeps @storybook/addon-svelte-csf's transform
+  // seeing compiled JS (vite-plugin-svelte v6 splits preprocess/compile into
+  // separate plugins). Widen the fs allowlist so components can import
+  // transitively from ../src (zod schemas).
+  viteFinal: (viteConfig) => {
     return mergeConfig(viteConfig, {
       resolve: {
         alias: {

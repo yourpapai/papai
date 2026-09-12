@@ -8,6 +8,8 @@ import { z } from 'zod'
 export const PriceEntrySchema = z.object({
   input: z.number().nonnegative(),
   output: z.number().nonnegative(),
+  cacheRead: z.number().nonnegative().optional(),
+  cacheWrite: z.number().nonnegative().optional(),
 })
 export const PricingTableSchema = z.record(z.string(), PriceEntrySchema)
 export type PriceEntry = z.infer<typeof PriceEntrySchema>
@@ -27,6 +29,18 @@ export function matchPrice(pricing: PricingTable, model: string): PriceEntry | u
   return undefined
 }
 
-export function estimateCostUsd(price: PriceEntry, input: number, output: number): number {
-  return (input / 1_000_000) * price.input + (output / 1_000_000) * price.output
+export interface CacheTokenUsage {
+  cachedRead: number
+  cachedWrite: number
+}
+
+export function estimateCostUsd(
+  price: PriceEntry,
+  input: number,
+  output: number,
+  cache: CacheTokenUsage = { cachedRead: 0, cachedWrite: 0 },
+): number {
+  const cacheReadCost = (cache.cachedRead / 1_000_000) * (price.cacheRead ?? 0)
+  const cacheWriteCost = (cache.cachedWrite / 1_000_000) * (price.cacheWrite ?? 0)
+  return (input / 1_000_000) * price.input + (output / 1_000_000) * price.output + cacheReadCost + cacheWriteCost
 }

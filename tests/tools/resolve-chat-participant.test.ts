@@ -100,6 +100,19 @@ describe('makeResolveChatParticipantTool', () => {
     await execute({ query: 'alice' })
     expect(receivedContextId).toBe(CONTEXT_ID)
   })
+
+  test('passes chatUserId to resolver', async () => {
+    let receivedChatUserId: string | undefined
+    const resolver: ChatParticipantResolver = (_ctx, _q, _limit, chatUserId) => {
+      receivedChatUserId = chatUserId
+      return Promise.resolve([])
+    }
+    const tool = makeResolveChatParticipantTool(resolver, CONTEXT_ID, 'u-actor')
+    const execute = getToolExecutor(tool)
+
+    await execute({ query: 'alice' })
+    expect(receivedChatUserId).toBe('u-actor')
+  })
 })
 
 describe('tool gating via buildTools', () => {

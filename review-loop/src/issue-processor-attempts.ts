@@ -10,9 +10,10 @@ import { runInspectorOrTreatAsRejection } from './issue-inspector.js'
 import { recordNeedsHuman, recordVerify, type LedgerIssueRecord } from './issue-ledger.js'
 import type { IssueProcessorDeps } from './issue-processor.js'
 import { FixerResultSchema, type FixerResult } from './issue-schema.js'
+import { emitBuildComplete, emitFixComplete } from './loop-trace.js'
+import { emitDecision } from './progress-log.js'
+import { buildFixPrompt, buildRetryFixPrompt, buildRetryFixWithInspectorFeedbackPrompt } from './prompt-templates.js'
 import {
-  emitBuildComplete,
-  emitFixComplete,
   exposureKind,
   tallyDecision,
   tallyExposure,
@@ -20,9 +21,7 @@ import {
   tallyPhaseMs,
   tallyUsage,
   type RoundCollector,
-} from './loop-trace.js'
-import { emitDecision } from './progress-log.js'
-import { buildFixPrompt, buildRetryFixPrompt, buildRetryFixWithInspectorFeedbackPrompt } from './prompt-templates.js'
+} from './round-collector.js'
 import { workerOutputPath } from './run-state.js'
 import type { Worker } from './worker-pool.js'
 
@@ -56,6 +55,9 @@ export function runFixerRaw(
   return runAgent({
     spawn: deps.spawn,
     model: deps.config.fixer.model,
+    effort: deps.config.fixer.effort,
+    backend: deps.config.backend,
+    claude: deps.config.claude,
     cwd: worker.worktreePath,
     prompt,
     outputPath: workerOutputPath(deps.runState.runDir, worker.id, 'result.json'),
@@ -135,7 +137,9 @@ export async function runBuildAttempt(
   collector: RoundCollector,
 ): Promise<BuildStepResult> {
   const buildStart = Date.now()
-  const buildResult = await runBuildWithLogging(deps.exec, deps.log, worker.worktreePath)
+  const buildResult = await runBuildWithLogging(deps.exec, deps.log, worker.worktreePath, {
+    credentialValue: deps.config.claude?.credentialValue,
+  })
   tallyPhaseMs(collector, 'build', Date.now() - buildStart)
   emitBuildComplete(deps.trace, round, record.id, buildResult.passed, attempt, Date.now() - buildStart)
 

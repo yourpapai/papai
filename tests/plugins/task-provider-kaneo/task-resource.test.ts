@@ -4,10 +4,13 @@
 // See LICENSE in the project root for details.
 
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
+import assert from 'node:assert/strict'
 
 // Import implementation to satisfy TDD hook requirement
 import '../../../plugins/task-provider-kaneo/task-resource.js'
+import { KaneoClassifiedError } from '../../../plugins/task-provider-kaneo/classify-error.js'
 import type { KaneoConfig } from '../../../plugins/task-provider-kaneo/client.js'
+import { KaneoApiError } from '../../../plugins/task-provider-kaneo/errors.js'
 import type { TaskStatusDeps } from '../../../plugins/task-provider-kaneo/task-status.js'
 import { createMockColumn, createMockTask, mockLogger, restoreFetch, setMockFetch } from '../../utils/test-helpers.js'
 import { TaskResource } from './test-resources.js'
@@ -84,6 +87,33 @@ describe('TaskResource', () => {
   })
 
   describe('create', () => {
+    test('classifies a stale-project 400 from column validation as project-not-found', async () => {
+      statusDeps = {
+        listColumns: (): Promise<Array<{ id: string; name: string }>> =>
+          Promise.reject(
+            new KaneoApiError(
+              'Kaneo API GET request failed with status 400',
+              400,
+              { error: 'Workspace ID could not be determined' },
+              'project',
+            ),
+          ),
+      }
+
+      const resource = new TaskResource(mockConfig, statusDeps)
+      let caught: unknown = null
+      try {
+        await resource.create({ projectId: 'sutuhvgbp2rczkh16u68ckqd', title: 'Test Task' })
+      } catch (error) {
+        caught = error
+      }
+
+      expect(caught).toBeInstanceOf(KaneoClassifiedError)
+      assert(caught instanceof KaneoClassifiedError)
+      expect(caught.appError.code).toBe('project-not-found')
+      expect(caught.appError).toHaveProperty('projectId', 'sutuhvgbp2rczkh16u68ckqd')
+    })
+
     test('creates task with required fields', async () => {
       setMockFetch(() =>
         Promise.resolve(

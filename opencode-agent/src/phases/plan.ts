@@ -128,8 +128,13 @@ const draftNext = async (
   const next = readyArtifact(status.artifacts)
   if (next === null) return
 
+  // Design D3 (opencode-agent-skip-specs-depth): the CLI reports a skipped
+  // artifact as `skipped`, and a skipped dependency counts as satisfied (probe
+  // 1.1), so the loop needs no special case — the flag only tells the drafter's
+  // prompt why the `specs` artifact never arrives.
+  const skipSpecs = status.artifacts['specs'] === 'skipped'
   const instruction = await input.deps.openspec.instructions(next, changeName)
-  await composeAndValidate(input, instruction, null, feedback)
+  await composeAndValidate(input, instruction, null, feedback, skipSpecs)
   const refreshed = await input.deps.openspec.status(changeName)
   return draftNext(input, changeName, refreshed, feedback, depth + 1)
 }
@@ -163,8 +168,9 @@ const composeAndValidate = async (
   instruction: InstructionsResult,
   complaint: string | null,
   feedback: string | null,
+  skipSpecs: boolean,
 ): Promise<void> => {
-  const composed = await composeArtifact(input, instruction, complaint, feedback)
+  const composed = await composeArtifact(input, instruction, complaint, feedback, skipSpecs)
   const problem = composed.ok ? await writeAndValidate(input, composed.files) : composed.complaint
   if (problem === null) return
 
@@ -172,7 +178,7 @@ const composeAndValidate = async (
     // Second attempt still rejected: that rejection is the failure reason.
     throw new Error(`the drafter's second attempt was rejected: ${problem}`)
   }
-  await composeAndValidate(input, instruction, problem, feedback)
+  await composeAndValidate(input, instruction, problem, feedback, skipSpecs)
 }
 
 /**

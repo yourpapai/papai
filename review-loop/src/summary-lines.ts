@@ -32,7 +32,8 @@ export function buildTimingLine(metrics: readonly RoundMetric[], wallMs: number)
   const parts = PHASE_KEYS.filter((k) => phaseMs[k] > 0).map((k) => `${k} ${msToSeconds(phaseMs[k])}`)
   const breakdown = parts.length === 0 ? 'no phase timing recorded' : parts.join(', ')
   const usage = aggregateUsage(metrics)
-  const tokens = `in ${formatCount(usage.inputTokens)} / out ${formatCount(usage.outputTokens)} / reasoning ${formatCount(usage.reasoningTokens)}`
+  const cachedPart = usage.cachedReadTokens > 0 ? ` / cached ${formatCount(usage.cachedReadTokens)}` : ''
+  const tokens = `in ${formatCount(usage.inputTokens)}${cachedPart} / out ${formatCount(usage.outputTokens)} / reasoning ${formatCount(usage.reasoningTokens)}`
   const cost = usage.costUsd > 0 ? `Cost: $${usage.costUsd.toFixed(3)} (${tokens})` : `Tokens: ${tokens}`
   return `Duration: ${formatDuration(wallMs)} wall · phases ${formatDuration(totalMs)} (${breakdown}) · ${cost}`
 }
@@ -44,6 +45,17 @@ export function buildInspectorLine(metrics: readonly RoundMetric[], inspect: boo
   const rejected = metrics.reduce((s, m) => s + m.inspector.rejected, 0)
   const rate = `${((100 * rejected) / runs).toFixed(1)}%`
   return `Inspector: ${runs} runs, ${rejected} rejected (${rate} reject rate)`
+}
+
+/**
+ * Deferred findings are not a verdict on the code, only on the clock: they were
+ * never dispatched, stay `discovered`, and a later round sees them again. Said
+ * only when something was actually held back.
+ */
+export function buildDeferredLine(metrics: readonly RoundMetric[]): string | null {
+  const deferred = metrics.reduce((s, m) => s + m.deferred, 0)
+  if (deferred === 0) return null
+  return `Deferred: ${deferred} (budget short; re-considered next round)`
 }
 
 /**

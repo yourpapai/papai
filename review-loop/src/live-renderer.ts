@@ -143,6 +143,8 @@ export class LiveRenderer implements ProgressReporter {
     this.usageTotals.input += delta.input
     this.usageTotals.output += delta.output
     this.usageTotals.reasoning += delta.reasoning
+    this.usageTotals.cacheRead = (this.usageTotals.cacheRead ?? 0) + (delta.cacheRead ?? 0)
+    this.usageTotals.cacheWrite = (this.usageTotals.cacheWrite ?? 0) + (delta.cacheWrite ?? 0)
     this.usageTotals.cost += delta.cost
     this.stats?.addUsage(delta.label ?? 'agent', delta)
   }
@@ -194,8 +196,12 @@ export class LiveRenderer implements ProgressReporter {
     if (this.counts.rejected > 0) segments.push(`${this.counts.rejected} rejected`)
     if (this.counts.needsHuman > 0) segments.push(`${this.counts.needsHuman} needs human`)
     if (segments.length > 0) parts.push(`issues: ${segments.join(` ${MIDDLE_DOT} `)}`)
-    if (this.usageTotals.input > 0 || this.usageTotals.output > 0) {
-      parts.push(`in ${formatTokenCount(this.usageTotals.input)} / out ${formatTokenCount(this.usageTotals.output)}`)
+    const cachedRead = this.usageTotals.cacheRead ?? 0
+    if (this.usageTotals.input > 0 || this.usageTotals.output > 0 || cachedRead > 0) {
+      const cachedPart = cachedRead > 0 ? ` ${MIDDLE_DOT} cached ${formatTokenCount(cachedRead)}` : ''
+      parts.push(
+        `in ${formatTokenCount(this.usageTotals.input)}${cachedPart} / out ${formatTokenCount(this.usageTotals.output)}`,
+      )
     }
     const snap = this.stats?.snapshot()
     if (snap !== undefined) {

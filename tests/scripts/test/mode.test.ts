@@ -12,12 +12,22 @@ interface ModeCase {
   readonly explicit: 'parallel' | 'serial' | null
   readonly env: Record<string, string | undefined>
   readonly cores: number
+  /** 1-minute load average; defaults to 0 (idle) for cases that predate it. */
+  readonly load1?: number
   readonly expected: 'parallel' | 'serial'
+  /** Expected `loadDemoted`; defaults to false. */
+  readonly demoted?: boolean
 }
 
 const MODE_CASES: readonly ModeCase[] = [
   // explicit override wins over every other signal
-  { label: 'explicit serial beats a 16-core box', explicit: 'serial', env: {}, cores: 16, expected: 'serial' },
+  {
+    label: 'explicit serial beats a 16-core box',
+    explicit: 'serial',
+    env: {},
+    cores: 16,
+    expected: 'serial',
+  },
   {
     label: 'explicit parallel beats CI',
     explicit: 'parallel',
@@ -32,16 +42,52 @@ const MODE_CASES: readonly ModeCase[] = [
     cores: 1,
     expected: 'parallel',
   },
-  { label: 'explicit serial beats CI=false', explicit: 'serial', env: { CI: 'false' }, cores: 32, expected: 'serial' },
+  {
+    label: 'explicit serial beats CI=false',
+    explicit: 'serial',
+    env: { CI: 'false' },
+    cores: 32,
+    expected: 'serial',
+  },
 
   // CI truthy forces serial regardless of cores
-  { label: "CI='true' forces serial", explicit: null, env: { CI: 'true' }, cores: 32, expected: 'serial' },
-  { label: "CI='1' forces serial", explicit: null, env: { CI: '1' }, cores: 8, expected: 'serial' },
-  { label: "CI='0' is still truthy-present", explicit: null, env: { CI: '0' }, cores: 16, expected: 'serial' },
+  {
+    label: "CI='true' forces serial",
+    explicit: null,
+    env: { CI: 'true' },
+    cores: 32,
+    expected: 'serial',
+  },
+  {
+    label: "CI='1' forces serial",
+    explicit: null,
+    env: { CI: '1' },
+    cores: 8,
+    expected: 'serial',
+  },
+  {
+    label: "CI='0' is still truthy-present",
+    explicit: null,
+    env: { CI: '0' },
+    cores: 16,
+    expected: 'serial',
+  },
 
   // CI present but not truthy falls through to the core count
-  { label: "CI='' falls through, 16 cores", explicit: null, env: { CI: '' }, cores: 16, expected: 'parallel' },
-  { label: "CI='' falls through, 4 cores", explicit: null, env: { CI: '' }, cores: 4, expected: 'serial' },
+  {
+    label: "CI='' falls through, 16 cores",
+    explicit: null,
+    env: { CI: '' },
+    cores: 16,
+    expected: 'parallel',
+  },
+  {
+    label: "CI='' falls through, 4 cores",
+    explicit: null,
+    env: { CI: '' },
+    cores: 4,
+    expected: 'serial',
+  },
   {
     label: "CI='false' falls through, 12 cores",
     explicit: null,
@@ -49,7 +95,13 @@ const MODE_CASES: readonly ModeCase[] = [
     cores: 12,
     expected: 'parallel',
   },
-  { label: "CI='false' falls through, 2 cores", explicit: null, env: { CI: 'false' }, cores: 2, expected: 'serial' },
+  {
+    label: "CI='false' falls through, 2 cores",
+    explicit: null,
+    env: { CI: 'false' },
+    cores: 2,
+    expected: 'serial',
+  },
   {
     label: 'CI undefined falls through, 8 cores',
     explicit: null,
@@ -59,23 +111,145 @@ const MODE_CASES: readonly ModeCase[] = [
   },
 
   // core threshold is >= 8
-  { label: '7 cores is serial', explicit: null, env: {}, cores: 7, expected: 'serial' },
-  { label: '8 cores is parallel', explicit: null, env: {}, cores: 8, expected: 'parallel' },
-  { label: '9 cores is parallel', explicit: null, env: {}, cores: 9, expected: 'parallel' },
-  { label: '4 vCPU container is serial', explicit: null, env: {}, cores: 4, expected: 'serial' },
-  { label: '0 cores (unknown) is serial', explicit: null, env: {}, cores: 0, expected: 'serial' },
+  {
+    label: '7 cores is serial',
+    explicit: null,
+    env: {},
+    cores: 7,
+    expected: 'serial',
+  },
+  {
+    label: '8 cores is parallel',
+    explicit: null,
+    env: {},
+    cores: 8,
+    expected: 'parallel',
+  },
+  {
+    label: '9 cores is parallel',
+    explicit: null,
+    env: {},
+    cores: 9,
+    expected: 'parallel',
+  },
+  {
+    label: '4 vCPU container is serial',
+    explicit: null,
+    env: {},
+    cores: 4,
+    expected: 'serial',
+  },
+  {
+    label: '0 cores (unknown) is serial',
+    explicit: null,
+    env: {},
+    cores: 0,
+    expected: 'serial',
+  },
+
+  // load demotion: 1-minute load >= 0.75 x cores on a many-core host demotes to serial
+  {
+    label: 'loaded many-core host (load1 >= 0.75 x cores) demotes to serial',
+    explicit: null,
+    env: {},
+    cores: 16,
+    load1: 16,
+    expected: 'serial',
+    demoted: true,
+  },
+  {
+    label: 'explicit --parallel under load stays parallel and is not demoted',
+    explicit: 'parallel',
+    env: {},
+    cores: 16,
+    load1: 16,
+    expected: 'parallel',
+  },
+  {
+    label: 'explicit --serial under load is serial but not load-demoted',
+    explicit: 'serial',
+    env: {},
+    cores: 16,
+    load1: 16,
+    expected: 'serial',
+  },
+  {
+    label: 'truthy CI under load is serial from CI, not a load demotion',
+    explicit: null,
+    env: { CI: 'true' },
+    cores: 16,
+    load1: 16,
+    expected: 'serial',
+  },
+  {
+    label: 'idle many-core host stays parallel',
+    explicit: null,
+    env: {},
+    cores: 16,
+    load1: 0,
+    expected: 'parallel',
+  },
+  {
+    label: 'few-core host under load is serial from the core count, not demoted',
+    explicit: null,
+    env: {},
+    cores: 4,
+    load1: 4,
+    expected: 'serial',
+  },
+  {
+    label: 'loadavg 0 with many cores (Windows shape) stays parallel',
+    explicit: null,
+    env: {},
+    cores: 16,
+    load1: 0,
+    expected: 'parallel',
+  },
+  {
+    label: 'load exactly at the 0.75 x cores boundary demotes to serial',
+    explicit: null,
+    env: {},
+    cores: 8,
+    load1: 6,
+    expected: 'serial',
+    demoted: true,
+  },
+  {
+    label: 'load under the 0.75 x cores boundary on a many-core host stays parallel',
+    explicit: null,
+    env: {},
+    cores: 16,
+    load1: 8,
+    expected: 'parallel',
+  },
 ]
 
+/** Defaults applied once, outside the tests: an idle load and no demotion. */
+const PLAN_CASES: readonly (ModeCase & { load1: number; demoted: boolean })[] = MODE_CASES.map((testCase) => ({
+  ...testCase,
+  load1: testCase.load1 ?? 0,
+  demoted: testCase.demoted ?? false,
+}))
+
 describe('selectMode', () => {
-  for (const testCase of MODE_CASES) {
+  for (const testCase of PLAN_CASES) {
     test(testCase.label, () => {
-      expect(selectMode(testCase.explicit, testCase.env, testCase.cores)).toBe(testCase.expected)
+      expect(selectMode(testCase.explicit, testCase.env, testCase.cores, testCase.load1)).toEqual({
+        mode: testCase.expected,
+        loadDemoted: testCase.demoted,
+      })
     })
   }
 
   test('ignores unrelated environment variables', () => {
-    expect(selectMode(null, { CI_NAME: 'github', NODE_ENV: 'test' }, 16)).toBe('parallel')
-    expect(selectMode(null, { CI_NAME: 'github', NODE_ENV: 'test' }, 4)).toBe('serial')
+    expect(selectMode(null, { CI_NAME: 'github', NODE_ENV: 'test' }, 16, 0)).toEqual({
+      mode: 'parallel',
+      loadDemoted: false,
+    })
+    expect(selectMode(null, { CI_NAME: 'github', NODE_ENV: 'test' }, 4, 0)).toEqual({
+      mode: 'serial',
+      loadDemoted: false,
+    })
   })
 })
 

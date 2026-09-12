@@ -14,6 +14,7 @@ const makeSnapshot = (overrides?: Partial<ContextSnapshot>): ContextSnapshot => 
   totalTokens: 1000,
   maxTokens: 8000,
   approximate: false,
+  locale: 'en',
   sections: [],
   ...overrides,
 })
@@ -41,5 +42,27 @@ describe('renderKonturTalkContext', () => {
     const result = renderKonturTalkContext(makeSnapshot({ maxTokens: null }))
     assert(result.method === 'formatted')
     expect(result.content).not.toContain('undefined')
+  })
+})
+
+describe('renderKonturTalkContext locale', () => {
+  test('ru localizes the header word and tokens unit', () => {
+    const result = renderKonturTalkContext(makeSnapshot({ locale: 'ru' }))
+    assert(result.method === 'formatted')
+    expect(result.content).toContain('**Контекст** · gpt-4 · 1,000 / 8,000 токенов (12.5%)')
+  })
+
+  test('ru localizes the table column headers', () => {
+    const result = renderKonturTalkContext(makeSnapshot({ locale: 'ru' }))
+    assert(result.method === 'formatted')
+    expect(result.content).toContain('| Раздел | Токены |')
+    expect(result.content).not.toContain('| Section | Tokens |')
+  })
+
+  test('ru localizes the approximate footer', () => {
+    const result = renderKonturTalkContext(makeSnapshot({ locale: 'ru', approximate: true }))
+    assert(result.method === 'formatted')
+    expect(result.content).toContain('_количество токенов приблизительное_')
+    expect(result.content).not.toContain('token counts are approximate')
   })
 })

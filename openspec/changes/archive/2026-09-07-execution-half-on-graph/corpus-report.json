@@ -1,0 +1,712 @@
+{
+  "generatedAt": "2026-09-05T10:39:38.519Z",
+  "workdirs": [
+    "/Users/ki/Projects/yourpapai/u3-live-proof-target-p/.sdd-runner",
+    "/Users/ki/Projects/yourpapai/u3-live-proof-target-u/.sdd-runner"
+  ],
+  "runs": [
+    {
+      "workDir": "/Users/ki/Projects/yourpapai/u3-live-proof-target-p/.sdd-runner",
+      "runId": "task",
+      "changeName": "task",
+      "status": "completed",
+      "eraContaminated": false,
+      "trajectory": {
+        "status": "known",
+        "value": [
+          {
+            "round": 1,
+            "counts": {
+              "blocker": 1,
+              "material": 2,
+              "nitpick": 2
+            },
+            "open": {
+              "blocker": 0,
+              "material": 0,
+              "nitpick": 0
+            },
+            "concerns": [],
+            "resolved": 5,
+            "dismissed": 0,
+            "verdict": "needs-review"
+          },
+          {
+            "round": 2,
+            "counts": {
+              "blocker": 1,
+              "material": 0,
+              "nitpick": 2
+            },
+            "open": {
+              "blocker": 0,
+              "material": 0,
+              "nitpick": 0
+            },
+            "concerns": [],
+            "resolved": 3,
+            "dismissed": 0,
+            "verdict": "needs-review"
+          },
+          {
+            "round": 3,
+            "counts": {
+              "blocker": 0,
+              "material": 4,
+              "nitpick": 4
+            },
+            "open": {
+              "blocker": 0,
+              "material": 0,
+              "nitpick": 0
+            },
+            "concerns": [],
+            "resolved": 8,
+            "dismissed": 0,
+            "verdict": "needs-review"
+          }
+        ]
+      },
+      "gates": {
+        "status": "known",
+        "value": {
+          "answered": [
+            {
+              "version": 1,
+              "mode": "final",
+              "latencyMs": 19733405,
+              "settledBy": "human",
+              "rule": null
+            },
+            {
+              "version": 2,
+              "mode": "final",
+              "latencyMs": 35719321,
+              "settledBy": "human",
+              "rule": null
+            },
+            {
+              "version": 3,
+              "mode": "escalation",
+              "latencyMs": 294374,
+              "settledBy": "human",
+              "rule": null
+            },
+            {
+              "version": 4,
+              "mode": "escalation",
+              "latencyMs": 2090509,
+              "settledBy": "human",
+              "rule": null
+            },
+            {
+              "version": 5,
+              "mode": "escalation",
+              "latencyMs": 1953194,
+              "settledBy": "human",
+              "rule": null
+            },
+            {
+              "version": 6,
+              "mode": "escalation",
+              "latencyMs": 717826,
+              "settledBy": "human",
+              "rule": null
+            },
+            {
+              "version": 7,
+              "mode": "escalation",
+              "latencyMs": 103229,
+              "settledBy": "human",
+              "rule": null
+            },
+            {
+              "version": 8,
+              "mode": "release",
+              "latencyMs": 504208,
+              "settledBy": "human",
+              "rule": null
+            }
+          ],
+          "neverAnswered": [],
+          "extends": [],
+          "autoDecisionsByRule": {
+            "R4": 2,
+            "R5": 5,
+            "none": 1
+          },
+          "waiterPendingRecords": 0,
+          "waiterRearms": 0
+        }
+      },
+      "retries": {
+        "status": "known",
+        "value": {
+          "implementer": {
+            "stall": 3,
+            "validation": 2
+          }
+        }
+      },
+      "stageFailures": {
+        "status": "known",
+        "value": {
+          "implement": {
+            "exhausted": 11,
+            "precondition": 0,
+            "infra": 0
+          }
+        }
+      },
+      "duplicateIdRate": {
+        "status": "known",
+        "value": 0
+      },
+      "lensOverlapRate": {
+        "status": "known",
+        "value": 0
+      },
+      "classChurn": {
+        "status": "unknown",
+        "reason": "no finding id spans multiple rounds"
+      },
+      "resolverActionMix": {
+        "status": "known",
+        "value": {
+          "edited": 16
+        }
+      },
+      "concernPersistence": {
+        "status": "known",
+        "value": 0
+      },
+      "r2Eligibility": {
+        "status": "unknown",
+        "reason": "no cap-hit convergence pairs"
+      },
+      "consistency": {
+        "answeredWithoutPresented": [],
+        "completedAfterUnsupersededAbort": false,
+        "bakResidue": false,
+        "gateFilesWithoutAnsweredEvent": [],
+        "memoDivergingFields": [],
+        "eraContaminated": false
+      },
+      "usage": {
+        "byRole": {
+          "estimator": {
+            "inputTokens": 77059,
+            "outputTokens": 2075,
+            "reasoningTokens": 4703,
+            "cachedReadTokens": 1184256,
+            "cachedWriteTokens": 0,
+            "costUsd": 0.025237765000000002,
+            "wallMs": 331524
+          },
+          "drafter": {
+            "inputTokens": 344043,
+            "outputTokens": 16327,
+            "reasoningTokens": 45751,
+            "cachedReadTokens": 6657408,
+            "cachedWriteTokens": 0,
+            "costUsd": 0.14118384500000003,
+            "wallMs": 2186691
+          },
+          "reviewer": {
+            "inputTokens": 232213,
+            "outputTokens": 13334,
+            "reasoningTokens": 59924,
+            "cachedReadTokens": 2243072,
+            "cachedWriteTokens": 0,
+            "costUsd": 0.06937655499999999,
+            "wallMs": 2471375
+          },
+          "resolver": {
+            "inputTokens": 340385,
+            "outputTokens": 22913,
+            "reasoningTokens": 53318,
+            "cachedReadTokens": 2443072,
+            "cachedWriteTokens": 0,
+            "costUsd": 0.081232705,
+            "wallMs": 2080395
+          },
+          "skeptic": {
+            "inputTokens": 90664,
+            "outputTokens": 4600,
+            "reasoningTokens": 22611,
+            "cachedReadTokens": 622656,
+            "cachedWriteTokens": 0,
+            "costUsd": 0.022942390000000003,
+            "wallMs": 870025
+          },
+          "decomposer": {
+            "inputTokens": 67270,
+            "outputTokens": 4158,
+            "reasoningTokens": 5663,
+            "cachedReadTokens": 257600,
+            "cachedWriteTokens": 0,
+            "costUsd": 0.0113645,
+            "wallMs": 260208
+          },
+          "atomicity": {
+            "inputTokens": 89433,
+            "outputTokens": 5371,
+            "reasoningTokens": 18722,
+            "cachedReadTokens": 276736,
+            "cachedWriteTokens": 0,
+            "costUsd": 0.016881765000000003,
+            "wallMs": 645213
+          },
+          "implementer": {
+            "inputTokens": 1917729,
+            "outputTokens": 75693,
+            "reasoningTokens": 281457,
+            "cachedReadTokens": 30138560,
+            "cachedWriteTokens": 0,
+            "costUsd": 6.1587144050000004,
+            "wallMs": 11258948
+          }
+        },
+        "byRound": {
+          "0": {
+            "inputTokens": 421102,
+            "outputTokens": 18402,
+            "reasoningTokens": 50454,
+            "cachedReadTokens": 7841664,
+            "cachedWriteTokens": 0,
+            "costUsd": 0.16642161000000003,
+            "wallMs": 2518215
+          },
+          "1": {
+            "inputTokens": 164439,
+            "outputTokens": 10931,
+            "reasoningTokens": 40285,
+            "cachedReadTokens": 1672640,
+            "cachedWriteTokens": 0,
+            "costUsd": 0.050226524999999994,
+            "wallMs": 1467358
+          },
+          "2": {
+            "inputTokens": 128103,
+            "outputTokens": 7968,
+            "reasoningTokens": 22613,
+            "cachedReadTokens": 1302016,
+            "cachedWriteTokens": 0,
+            "costUsd": 0.036783214999999994,
+            "wallMs": 1314748
+          },
+          "3": {
+            "inputTokens": 2445152,
+            "outputTokens": 107170,
+            "reasoningTokens": 378797,
+            "cachedReadTokens": 33007040,
+            "cachedWriteTokens": 0,
+            "costUsd": 6.273502580000001,
+            "wallMs": 14804058
+          }
+        },
+        "costKnown": true,
+        "unpricedEvents": 0
+      }
+    },
+    {
+      "workDir": "/Users/ki/Projects/yourpapai/u3-live-proof-target-u/.sdd-runner",
+      "runId": "task",
+      "changeName": "task",
+      "status": "completed",
+      "eraContaminated": false,
+      "trajectory": {
+        "status": "known",
+        "value": [
+          {
+            "round": 1,
+            "counts": {
+              "blocker": 0,
+              "material": 4,
+              "nitpick": 2
+            },
+            "open": {
+              "blocker": 0,
+              "material": 0,
+              "nitpick": 0
+            },
+            "concerns": [],
+            "resolved": 6,
+            "dismissed": 0,
+            "verdict": "needs-review"
+          },
+          {
+            "round": 2,
+            "counts": {
+              "blocker": 0,
+              "material": 1,
+              "nitpick": 1
+            },
+            "open": {
+              "blocker": 0,
+              "material": 0,
+              "nitpick": 0
+            },
+            "concerns": [],
+            "resolved": 2,
+            "dismissed": 0,
+            "verdict": "needs-review"
+          },
+          {
+            "round": 3,
+            "counts": {
+              "blocker": 0,
+              "material": 1,
+              "nitpick": 1
+            },
+            "open": {
+              "blocker": 0,
+              "material": 0,
+              "nitpick": 0
+            },
+            "concerns": [],
+            "resolved": 2,
+            "dismissed": 0,
+            "verdict": "needs-review"
+          },
+          {
+            "round": 4,
+            "counts": {
+              "blocker": 0,
+              "material": 1,
+              "nitpick": 2
+            },
+            "open": {
+              "blocker": 0,
+              "material": 0,
+              "nitpick": 1
+            },
+            "concerns": [],
+            "resolved": 2,
+            "dismissed": 1,
+            "verdict": "needs-review"
+          }
+        ]
+      },
+      "gates": {
+        "status": "known",
+        "value": {
+          "answered": [
+            {
+              "version": 1,
+              "mode": "escalation",
+              "latencyMs": 13947527,
+              "settledBy": "human",
+              "rule": null
+            },
+            {
+              "version": 2,
+              "mode": "final",
+              "latencyMs": 237413,
+              "settledBy": "human",
+              "rule": null
+            },
+            {
+              "version": 3,
+              "mode": "escalation",
+              "latencyMs": 1947294,
+              "settledBy": "human",
+              "rule": null
+            },
+            {
+              "version": 4,
+              "mode": "escalation",
+              "latencyMs": 252372,
+              "settledBy": "human",
+              "rule": null
+            },
+            {
+              "version": 5,
+              "mode": "escalation",
+              "latencyMs": 370177,
+              "settledBy": "human",
+              "rule": null
+            },
+            {
+              "version": 6,
+              "mode": "escalation",
+              "latencyMs": 1159971,
+              "settledBy": "human",
+              "rule": null
+            },
+            {
+              "version": 7,
+              "mode": "escalation",
+              "latencyMs": 1230977,
+              "settledBy": "human",
+              "rule": null
+            },
+            {
+              "version": 8,
+              "mode": "escalation",
+              "latencyMs": 702011,
+              "settledBy": "human",
+              "rule": null
+            },
+            {
+              "version": 9,
+              "mode": "escalation",
+              "latencyMs": 5679533,
+              "settledBy": "human",
+              "rule": null
+            },
+            {
+              "version": 10,
+              "mode": "escalation",
+              "latencyMs": 4805237,
+              "settledBy": "human",
+              "rule": null
+            },
+            {
+              "version": 11,
+              "mode": "escalation",
+              "latencyMs": 313566,
+              "settledBy": "human",
+              "rule": null
+            },
+            {
+              "version": 12,
+              "mode": "release",
+              "latencyMs": 384706,
+              "settledBy": "human",
+              "rule": null
+            }
+          ],
+          "neverAnswered": [],
+          "extends": [],
+          "autoDecisionsByRule": {
+            "none": 6351
+          },
+          "waiterPendingRecords": 6339,
+          "waiterRearms": 7
+        }
+      },
+      "retries": {
+        "status": "known",
+        "value": {
+          "reviewer": {
+            "stall": 2,
+            "validation": 1
+          },
+          "implementer": {
+            "stall": 1,
+            "validation": 0
+          }
+        }
+      },
+      "stageFailures": {
+        "status": "known",
+        "value": {
+          "review": {
+            "exhausted": 2,
+            "precondition": 0,
+            "infra": 0
+          },
+          "implement": {
+            "exhausted": 18,
+            "precondition": 0,
+            "infra": 0
+          }
+        }
+      },
+      "duplicateIdRate": {
+        "status": "known",
+        "value": 0
+      },
+      "lensOverlapRate": {
+        "status": "unknown",
+        "reason": "no skeptic findings sidecars"
+      },
+      "classChurn": {
+        "status": "known",
+        "value": 0.6666666666666666
+      },
+      "resolverActionMix": {
+        "status": "known",
+        "value": {
+          "edited": 11,
+          "dismissed": 1,
+          "evidence-answered": 1
+        }
+      },
+      "concernPersistence": {
+        "status": "known",
+        "value": 0.08333333333333333
+      },
+      "r2Eligibility": {
+        "status": "unknown",
+        "reason": "no cap-hit convergence pairs"
+      },
+      "consistency": {
+        "answeredWithoutPresented": [],
+        "completedAfterUnsupersededAbort": false,
+        "bakResidue": false,
+        "gateFilesWithoutAnsweredEvent": [],
+        "memoDivergingFields": [],
+        "eraContaminated": false
+      },
+      "usage": {
+        "byRole": {
+          "estimator": {
+            "inputTokens": 64603,
+            "outputTokens": 1314,
+            "reasoningTokens": 4727,
+            "cachedReadTokens": 402624,
+            "cachedWriteTokens": 0,
+            "costUsd": 0.22170684000000002,
+            "wallMs": 158508
+          },
+          "drafter": {
+            "inputTokens": 179990,
+            "outputTokens": 10252,
+            "reasoningTokens": 28116,
+            "cachedReadTokens": 2037248,
+            "cachedWriteTokens": 0,
+            "costUsd": 0.9504896800000001,
+            "wallMs": 928635
+          },
+          "reviewer": {
+            "inputTokens": 313014,
+            "outputTokens": 10215,
+            "reasoningTokens": 66023,
+            "cachedReadTokens": 2462592,
+            "cachedWriteTokens": 0,
+            "costUsd": 1.41394072,
+            "wallMs": 1216833
+          },
+          "resolver": {
+            "inputTokens": 202177,
+            "outputTokens": 9567,
+            "reasoningTokens": 34147,
+            "cachedReadTokens": 1495360,
+            "cachedWriteTokens": 0,
+            "costUsd": 0.864183,
+            "wallMs": 707363
+          },
+          "decomposer": {
+            "inputTokens": 19753,
+            "outputTokens": 2185,
+            "reasoningTokens": 3382,
+            "cachedReadTokens": 250432,
+            "cachedWriteTokens": 0,
+            "costUsd": 0.11726132,
+            "wallMs": 123019
+          },
+          "atomicity": {
+            "inputTokens": 54956,
+            "outputTokens": 3181,
+            "reasoningTokens": 13915,
+            "cachedReadTokens": 250368,
+            "cachedWriteTokens": 0,
+            "costUsd": 0.21725648,
+            "wallMs": 212498
+          },
+          "implementer": {
+            "inputTokens": 552194,
+            "outputTokens": 16296,
+            "reasoningTokens": 91302,
+            "cachedReadTokens": 5073600,
+            "cachedWriteTokens": 0,
+            "costUsd": 2.5656388000000003,
+            "wallMs": 1933841
+          }
+        },
+        "byRound": {
+          "0": {
+            "inputTokens": 244593,
+            "outputTokens": 11566,
+            "reasoningTokens": 32843,
+            "cachedReadTokens": 2439872,
+            "cachedWriteTokens": 0,
+            "costUsd": 1.1721965200000002,
+            "wallMs": 1087143
+          },
+          "1": {
+            "inputTokens": 116603,
+            "outputTokens": 6295,
+            "reasoningTokens": 26007,
+            "cachedReadTokens": 1265472,
+            "cachedWriteTokens": 0,
+            "costUsd": 0.63439572,
+            "wallMs": 507457
+          },
+          "2": {
+            "inputTokens": 105590,
+            "outputTokens": 2734,
+            "reasoningTokens": 6396,
+            "cachedReadTokens": 423808,
+            "cachedWriteTokens": 0,
+            "costUsd": 0.29818808,
+            "wallMs": 192020
+          },
+          "3": {
+            "inputTokens": 147717,
+            "outputTokens": 4257,
+            "reasoningTokens": 28755,
+            "cachedReadTokens": 785856,
+            "cachedWriteTokens": 0,
+            "costUsd": 0.55637916,
+            "wallMs": 506062
+          },
+          "4": {
+            "inputTokens": 772184,
+            "outputTokens": 28158,
+            "reasoningTokens": 147611,
+            "cachedReadTokens": 7057216,
+            "cachedWriteTokens": 0,
+            "costUsd": 3.6893173599999995,
+            "wallMs": 2988015
+          }
+        },
+        "costKnown": true,
+        "unpricedEvents": 0
+      }
+    }
+  ],
+  "groundTruth": [
+    {
+      "changeName": "task",
+      "repoRoot": "/Users/ki/Projects/yourpapai/u3-live-proof-target-p",
+      "exists": true,
+      "tasksDone": 25,
+      "tasksTotal": 25,
+      "commits": 16,
+      "onMainBranch": false,
+      "strandedComplete": true,
+      "mergedUnimplemented": false
+    },
+    {
+      "changeName": "task",
+      "repoRoot": "/Users/ki/Projects/yourpapai/u3-live-proof-target-u",
+      "exists": true,
+      "tasksDone": 24,
+      "tasksTotal": 24,
+      "commits": 3,
+      "onMainBranch": false,
+      "strandedComplete": true,
+      "mergedUnimplemented": false
+    }
+  ],
+  "aggregates": {
+    "runsAggregated": 2,
+    "eraContaminated": [],
+    "autoDecisionsByRule": {
+      "R4": 2,
+      "R5": 5,
+      "none": 6352
+    },
+    "duplicateResolutionEntries": 0,
+    "r2Eligibility": null,
+    "gatesNeverAnswered": 0,
+    "strandedComplete": [
+      "task",
+      "task"
+    ],
+    "mergedUnimplemented": []
+  }
+}

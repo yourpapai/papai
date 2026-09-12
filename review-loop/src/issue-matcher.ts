@@ -3,7 +3,15 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { agentWritePath, runAgent, type AgentUsage, type SpawnFn } from './agent-runner.js'
+import {
+  agentWritePath,
+  emptyUsage,
+  runAgent,
+  type AgentUsage,
+  type ClaudeRunContext,
+  type SpawnFn,
+} from './agent-runner.js'
+import type { AgentBackend } from './config.js'
 import type { LedgerIssueRecord } from './issue-ledger.js'
 import { IssueMatchesSchema } from './issue-schema.js'
 import type { IssueMatch, ReviewerIssue } from './issue-schema.js'
@@ -17,7 +25,11 @@ export interface MatchIssuesDeps {
   logPath: string
   cwd: string
   model: string
+  /** The role's reasoning-effort tier (D4); absent is no `--effort` (D6). */
+  effort?: string
   extraArgs: readonly string[]
+  backend?: AgentBackend
+  claude?: ClaudeRunContext
   reporter: ProgressReporter
   timeoutMs?: number
 }
@@ -53,13 +65,16 @@ function buildMatcherPrompt(
 
 export async function matchIssues(deps: MatchIssuesDeps): Promise<{ matches: IssueMatch[]; usage: AgentUsage }> {
   if (deps.newIssues.length === 0) {
-    return { matches: [], usage: { inputTokens: 0, outputTokens: 0, reasoningTokens: 0, costUsd: 0, wallMs: 0 } }
+    return {
+      matches: [],
+      usage: emptyUsage(),
+    }
   }
 
   if (deps.existingRecords.length === 0) {
     return {
       matches: deps.newIssues.map((_, index) => ({ newIssueIndex: index, existingId: null })),
-      usage: { inputTokens: 0, outputTokens: 0, reasoningTokens: 0, costUsd: 0, wallMs: 0 },
+      usage: emptyUsage(),
     }
   }
 
@@ -68,6 +83,9 @@ export async function matchIssues(deps: MatchIssuesDeps): Promise<{ matches: Iss
   const agentResult = await runAgent({
     spawn: deps.spawn,
     model: deps.model,
+    effort: deps.effort,
+    backend: deps.backend,
+    claude: deps.claude,
     cwd: deps.cwd,
     prompt,
     outputPath: deps.outputPath,

@@ -114,6 +114,7 @@ type AddProviderIndependentToolsOptions = Readonly<{
   username: string | null | undefined
   stagedDownloadFn: StagedFileDownloadFn | undefined
   allowTaskDependentDeferredPrompts?: boolean
+  activityAlertsEnabled?: boolean
 }>
 
 export function addProviderIndependentTools(tools: ToolSet, options: AddProviderIndependentToolsOptions): void {
@@ -154,6 +155,7 @@ export function addProviderIndependentTools(tools: ToolSet, options: AddProvider
       contextType,
       username,
       options.allowTaskDependentDeferredPrompts ?? true,
+      options.activityAlertsEnabled ?? false,
     )
   }
 }

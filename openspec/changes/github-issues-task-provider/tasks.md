@@ -1,0 +1,50 @@
+# Tasks: GitHub Issues task-provider plugin — session 1
+
+Test-first discipline throughout (the Write/Edit hook does not gate `plugins/` or
+`tests/`, so tasks.md enforces the order): each implementation task is preceded by its
+failing test. Behavior contracts: `specs/github-issues-task-provider/spec.md`. How:
+`design.md`.
+
+## 1. Scaffold and manifest
+
+- [x] 1.1 Create `tests/plugins/task-provider-github/manifest.test.ts` asserting `plugins/task-provider-github/plugin.json` parses `pluginManifestSchema` and declares: id `task-provider-github`, `apiVersion: 1`, `main: index.ts`, `defaultEnabled: false`, permissions `["provider.task", "identity"]`, `contributes.taskProviderTypes: ["github"]`, `providerCapabilities` exactly `["projects.list", "projects.read"]`, instance-scoped `providerConfigSchema` (`repo` required, `baseUrl` optional) and context-scoped `providerContextConfigSchema` (`token` required, sensitive), `providerAllowedHosts: ["api.github.com"]`, `providerAllowedInstanceHostsFromConfig: ["baseUrl"]`, `providerConfigValidator: "validateConfig"` — then create `plugin.json` to pass it. Verify: `bun test tests/plugins/task-provider-github/manifest.test.ts`
+- [x] 1.2 Create `tests/plugins/task-provider-github/activation.test.ts` (mirror YouTrack's) asserting the default-exported factory's `activate` registers task-provider type `github` and the factory builds a provider named `github`; then create `index.ts` (SPDX header, re-export `validateConfig`, keep the KNOWN GAP #15 comment) and `entry-runtime.ts` (`import.meta.require` module-contract-check building from `config['baseUrl'] ?? ''`, `config['repo'] ?? ''`, `config['token'] ?? ''`) to pass. Verify: `bun test tests/plugins/task-provider-github/activation.test.ts`
+- [x] 1.3 Create `tests/plugins/task-provider-github/constants.test.ts` asserting `GITHUB_CAPABILITIES` equals `{"projects.list", "projects.read"}` and the default base URL is `https://api.github.com`; then create `constants.ts` to pass. Verify: `bun test tests/plugins/task-provider-github/constants.test.ts`
+
+## 2. Instance-config validation
+
+- [x] 2.1 Create `tests/plugins/task-provider-github/validate-config.test.ts` covering: valid `owner/repo`; rejects `owner/`, `/repo`, `owner`, `owner /repo`, empty; rejects non-http(s) `baseUrl`; accepts absent and empty `baseUrl`; ignores the `token` key; returns `{ ok: true }` or `{ ok: false, reason }` with human-readable reasons — then create `validate-config.ts` to pass. Verify: `bun test tests/plugins/task-provider-github/validate-config.test.ts`
+
+## 3. API schemas
+
+- [x] 3.1 Create `tests/plugins/task-provider-github/schemas/user.test.ts` and `schemas/repo.test.ts` asserting the Zod v4 shapes (user: login/id/avatar_url/html_url/type; repo: id/name/full_name/owner/html_url/private/description-nullable) accept representative GitHub payloads and reject malformed ones; then create `schemas/user.ts` and `schemas/repo.ts` to pass. Verify: `bun test tests/plugins/task-provider-github/schemas/`
+- [x] 3.2 Create `tests/plugins/task-provider-github/schemas/issue.test.ts` asserting `issue.ts` accepts both label forms (plain strings from list endpoints, objects from single-issue), nullable body/state_reason/closed_at/milestone, optional `pull_request` marker, and exports inferred types; then create `schemas/issue.ts` to pass. Verify: `bun test tests/plugins/task-provider-github/schemas/issue.test.ts`
+
+## 4. REST client
+
+- [x] 4.1 Create `tests/plugins/task-provider-github/client.test.ts` covering: request headers (`Authorization: Bearer <token>`, `Accept: application/vnd.github+json`, `X-GitHub-Api-Version: 2022-11-28`, `Content-Type: application/json` only when a body is sent); baseUrl default when empty and trailing-slash stripping; path joining; `GitHubApiError` carrying statusCode/headers/body; token never appears in any logged or stringified output — then create `client.ts` (`githubFetch`, `GitHubConfig`, `readErrorBody`, pino child logger, provider-request observation boundary with `provider: 'github'`) to pass. Use `setMockFetch`/`restoreFetch` from `tests/utils/test-helpers.ts`. Verify: `bun test tests/plugins/task-provider-github/client.test.ts`
+- [x] 4.2 Extend `client.test.ts` with pagination and rate-limit cases: the paginate helper aggregates across pages via `page`/`per_page` until a short/empty page; 429, `Retry-After`, and `x-ratelimit-remaining: 0` each produce an error classifiable as `rateLimited`, while the ever-present `x-ratelimit-reset` header alone does not — then extend `client.ts` with the pagination helper and rate-limit detection to pass. Verify: `bun test tests/plugins/task-provider-github/client.test.ts`
+
+## 5. Error classification
+
+- [x] 5.1 Create `tests/plugins/task-provider-github/classify-error.test.ts` with the full matrix: plain 401/403 → `authFailed`; rate-limit-shaped 403/429 → `rateLimited` (header precedence over auth mapping); 404 → task-not-found for issue context vs project-not-found for repo context; 400/422 → `validationFailed`; 5xx → `unexpected`; network message patterns (`fetch`, `econnrefused`, `enotfound`, network/connect) → `systemError.networkError`; already-classified errors pass through; non-Error values → `unexpected`; classification context (taskId/projectId) is preserved — then create `classify-error.ts` (`GitHubClassifiedError` wrapping `AppError` from `papai/plugin-types`) to pass. Verify: `bun test tests/plugins/task-provider-github/classify-error.test.ts`
+
+## 6. Mappers
+
+- [x] 6.1 Create `tests/plugins/task-provider-github/mappers.test.ts` asserting: issue → `Task` with id = stringified issue `number`, status text folding `state_reason` (`closed (not_planned)` vs `closed`), first-assignee-login-or-null assignee, url = `html_url`, projectId = `owner/repo`, commentsCount, reporter; both label forms and PR-marked issues handled; issue → `TaskListItem`/`TaskSearchResult`; repo → `Project` (id = full_name) — then create `mappers.ts` mapping to `src/providers/domain-types.ts` shapes to pass. Verify: `bun test tests/plugins/task-provider-github/mappers.test.ts`
+
+## 7. Operations
+
+- [x] 7.1 Create `tests/plugins/task-provider-github/operations/projects.test.ts` asserting `listProjects` issues `GET /repos/{o}/{r}` and returns exactly the configured repo mapped to `Project`, and `getProject` returns it for the matching id / classifies mismatch and upstream-404 as project-not-found — then create `operations/projects.ts` to pass (mocked fetch via `setMockFetch`/`restoreFetch`). Verify: `bun test tests/plugins/task-provider-github/operations/projects.test.ts`
+- [x] 7.2 Create `tests/plugins/task-provider-github/operations/tasks.test.ts` asserting endpoints, payloads, and normalized results for: create (`POST /repos/{o}/{r}/issues` with title/body/assignees; `priority`/`dueDate`/`startDate` accepted and ignored); get (`GET .../issues/{n}`, 404 → task-not-found); update (`PATCH .../issues/{n}` mapping status `'closed'` → `{state:'closed', state_reason:'completed'}` and `'open'` → `{state:'open'}`, accepting plain and canonical status text, title/description/assignee updates); list (`GET .../issues?state=&page=&per_page=` with status filter mapped to state, paginated to exhaustion, PR-marked items dropped); search (`GET /search/issues` with `repo:` scope and pinned `is:issue`, honoring `limit`/`offset`) — then create `operations/tasks.ts` with pino debug-on-entry/info-on-success logging to pass. Verify: `bun test tests/plugins/task-provider-github/operations/tasks.test.ts`
+
+## 8. Provider assembly
+
+- [x] 8.1 Create `tests/plugins/task-provider-github/url-builder.test.ts` asserting task URL `{web}/owner/repo/issues/{n}` and project URL `{web}/owner/repo` with `web` = `https://github.com` for the default API host and the baseUrl origin for GHES (e.g. `https://ghes.example.com/api/v3` → `https://ghes.example.com`) — then create `url-builder.ts` to pass. Verify: `bun test tests/plugins/task-provider-github/url-builder.test.ts`
+- [x] 8.2 Create `tests/plugins/task-provider-github/prompt-addendum.test.ts` and `due-date.test.ts` asserting the addendum documents the GitHub status model, ignored priority/dates, login assignees, and search qualifiers, and that the due-date normalizers are no-ops (`undefined`/pass-through) — then create `prompt-addendum.ts` and `due-date.ts` to pass. Verify: `bun test tests/plugins/task-provider-github/prompt-addendum.test.ts tests/plugins/task-provider-github/due-date.test.ts`
+- [x] 8.3 Create `tests/plugins/task-provider-github/provider.test.ts` asserting `GitHubProvider implements TaskProvider` (`src/providers/types.ts`): `name = 'github'`, capabilities/traits from constants, `preferredUserIdentifier = 'login'`, required methods wired to the operations, `createTask` validates `projectId` equals the configured repo id (else project-not-found), no optional capability methods beyond `getProject`/`listProjects`, close is a status update through `updateTask` — then create `provider.ts` to pass. Verify: `bun test tests/plugins/task-provider-github/provider.test.ts`
+
+## 9. Full verification and docs
+
+- [x] 9.1 Run the new suite end-to-end and confirm green: `bun test tests/plugins/task-provider-github/` — then run the full checks `bun run test`, `bun run typecheck`, `bun run lint` and confirm clean. If the new `plugins/` file mass trips the in-process coverage ratchet (`scripts/coverage/floor.json`) or the T0 story-coverage floor (`scripts/story/coverage-floor.json`), adjust the floor from a green run via the sanctioned `bun coverage:ratchet` / `bun coverage:ratchet:stories` procedure and note it in the change. Verify: `bun run test:failures` (empty), `bun run test:status`
+- [x] 9.2 Update affected documentation: add the GitHub provider to the provider list wherever Kaneo/YouTrack are listed (`docs/architecture/overview.md` provider/task-instance sections, and `docs/architecture/environment.md` if it names provider token handling) and add `plugins/task-provider-github/README.md` modeled on YouTrack's. Verify: `bun run lint && grep -rn "task-provider-github" docs/architecture/ plugins/task-provider-github/README.md`

@@ -3,7 +3,7 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import type { CheckSpec } from './check-loop.js'
+import type { BackendSelection, ClaudeCredential } from './config-values.js'
 import type { DiffLimits } from './diff-guard.js'
 import type { OpenAiSettings } from './openai-config.js'
 
@@ -26,6 +26,38 @@ export interface PipelineConfig {
   repo: string
   githubToken: string
   /**
+   * Which backend serves this job's model turns (`AGENT_BACKEND`).
+   *
+   * One job-wide selector read before anything else in `loadConfig`: every
+   * route decision — credential demands, proxy or none, which adapter
+   * `contain()` builds — hangs off it. The default `opencode` route is
+   * byte-identical to the pre-change pipeline.
+   */
+  backend: BackendSelection
+  /**
+   * The claude route's single chosen Anthropic credential, or `null` on the
+   * opencode route (where the guard never fires and nothing is rewritten).
+   *
+   * Carried on config so the value-based scrub, the outbound redaction and the
+   * child environment all read one source; the name rides along because it is
+   * the only spelling an operator or a log reader should ever see.
+   */
+  claudeCredential: ClaudeCredential | null
+  /**
+   * `AGENT_CLAUDE_ENV`, parsed — the claude route's operator-chosen child
+   * environment, or `null` when unset or blank (the house absence shape).
+   *
+   * Carried here and **not** on `OpenAiSettings` (design D2 of
+   * `claude-route-custom-env`): the knob is claude-route-only, and a field on
+   * the settings object is one spread away from `OPENCODE_CONFIG_CONTENT` and
+   * the review-loop subprocesses, which the spec forbids. Parsed at load on
+   * both routes regardless — a malformed document fails startup whichever
+   * backend the job selected, so an operator flipping `AGENT_BACKEND` later
+   * cannot inherit a document that was never validated — while the entries are
+   * *applied* only on the claude route.
+   */
+  claudeEnv: Record<string, string> | null
+  /**
    * `AGENT_SELF_LOGIN`, or `null` to derive it from the token.
    *
    * Not defaulted to the owner here: that default was indistinguishable from a
@@ -36,17 +68,40 @@ export interface PipelineConfig {
   /** This pipeline's workflow name, so its own red runs do not re-trigger it. */
   selfWorkflowName: string
   openai: OpenAiSettings
+  /**
+   * Who the agent's commits claim to be. `github-actions[bot]` by default — the
+   * token's real identity, whose noreply
+   * `41898282+github-actions[bot]@users.noreply.github.com` verifies on GitHub.
+   * Overridden by `AGENT_COMMIT_NAME` / `AGENT_COMMIT_EMAIL` (`vars.*` in
+   * `agent-pipeline.yml`), which win per field over any per-run actor resolution
+   * in `commit-identity.ts` (explicit > actor > service).
+   */
   commitAuthorName: string
   commitAuthorEmail: string
   /** Build gate the review loop runs between rounds. */
   checkCommand: string
   /** Argv that runs the review loop, or `null` when this repo has none. */
   reviewCommand: readonly string[] | null
-  /** Commands the CI-fix phase runs locally to reproduce a red pull request. */
-  checks: readonly CheckSpec[]
   reviewMaxRounds: number
   reviewPoolSize: number
   agentTimeoutMs: number
+  /**
+   * How long a turn may make no progress — no finished model step, no newly
+   * started tool call — while provider retries or session errors accumulate,
+   * before it is aborted as a provider stall. `AGENT_STALL_TIMEOUT_MS`,
+   * default five minutes; `0` switches the bound off and leaves
+   * {@link agentTimeoutMs} the only turn bound, exactly as it was before this
+   * knob existed.
+   *
+   * The whole-turn deadline is a clock and this is a health check, and the
+   * incident that added it was the difference: four runs burned 90 minutes
+   * each inside their deadline because the gateway answered HTTP 200 and then
+   * streamed nothing, and nothing in the pipeline had a question to ask about
+   * *whether the turn was being served*. Both conditions are required before
+   * this bound fires — the retry evidence is what separates "provider down"
+   * from "one very long generation".
+   */
+  stallTimeoutMs: number
   /**
    * Epoch ms at which this **job** is killed by its own `timeout-minutes`, or
    * `null` when nothing has said.
@@ -99,6 +154,19 @@ export interface PipelineConfig {
    * re-runs the model turn that had already succeeded. `1` disables repair.
    */
   commitRepairMaxRounds: number
+  /**
+   * Model turns one `/sync` conflict gets, including the first, before the
+   * merge is aborted and the human remedy is reported.
+   *
+   * The same `ROUND_RANGE` family as {@link commitRepairMaxRounds} for the
+   * same reason: a repair round is one model turn over content already in
+   * hand. There is deliberately **no** persisted per-PR counter beside it —
+   * `/sync` is human-initiated like `/ask`, so the token ceiling is the bound
+   * that stops a maintainer spamming it, exactly as it stops a maintainer
+   * spamming questions. `1` disables repair: a conflicted sync then aborts
+   * and reports the remedy immediately.
+   */
+  syncRepairMaxRounds: number
   /** Ceiling on CI-fix rounds across the whole life of one pull request. */
   maxCiAttempts: number
   /** Ceiling on `/review` rounds across the whole life of one pull request. */

@@ -253,6 +253,36 @@ describe('buildPluginContext', () => {
       expect(fetch).toHaveBeenCalledTimes(1)
       expect(assertPublicUrl).toHaveBeenCalledTimes(1)
     })
+
+    test('forInstance admits only the hostname parsed from instance config and rejects a different host', async () => {
+      const fetch = mock(() => Promise.resolve(new Response('fixture')))
+      const assertPublicUrl = mock(() => Promise.resolve())
+      const manifest = pluginManifestSchema.parse({
+        id: 'instance-host-plugin',
+        name: 'Instance Host Plugin',
+        version: '1.0.0',
+        description: 'Tests per-instance host admission',
+        apiVersion: PLUGIN_API_VERSION,
+        main: 'index.ts',
+        permissions: ['provider.task'],
+        contributes: { taskProviderTypes: ['instance-tracker'] },
+        providerConfigSchema: [{ key: 'baseUrl', label: 'Base URL', required: true }],
+        providerAllowedInstanceHostsFromConfig: ['baseUrl'],
+      })
+      const { ctx } = buildPluginContext(manifest, '__system__', {
+        providerRuntimeDeps: { fetch, assertPublicUrl },
+      })
+
+      const instanceFetch = ctx.providerRuntime!.forInstance({ baseUrl: 'https://kaneo.invalid' })
+
+      expect(await instanceFetch('https://kaneo.invalid/api/projects').then((response) => response.text())).toBe(
+        'fixture',
+      )
+      expect(fetch).toHaveBeenCalledTimes(1)
+
+      await expect(instanceFetch('https://evil.invalid/exfiltrate')).rejects.toThrow('allowlist')
+      expect(fetch).toHaveBeenCalledTimes(1)
+    })
   })
 
   describe('registerTaskProviderType', () => {
@@ -671,9 +701,12 @@ describe('buildPluginContext', () => {
       // We test this by asserting that a call to a disallowed host still throws allowlist,
       // while the now-configured host does NOT throw an allowlist error.
       await expect(ctx.providerRuntime!.httpFetch('http://unknown-host.lan/v1/transcribe')).rejects.toThrow()
-      // The configured host is in the dynamic set — the rejection must not be an allowlist rejection
+      // The configured host is in the dynamic set — the rejection must not be an allowlist rejection.
+      // DNS failure shapes differ by bun version: ≤1.3.13 wraps the cause as "fetch failed",
+      // 1.4.0 surfaces it as "getaddrinfo ENOTFOUND <host>". Both mean the call got past the
+      // allowlist and died in the network layer, which is what this asserts.
       await expect(ctx.providerRuntime!.httpFetch('http://whisper.lan:9000/v1/transcribe')).rejects.toThrow(
-        /ECONNREFUSED|fetch|network|connect|socket|timeout|abort/iu,
+        /ECONNREFUSED|ENOTFOUND|getaddrinfo|fetch|network|connect|socket|timeout|abort/iu,
       )
     })
 

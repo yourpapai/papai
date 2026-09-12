@@ -3,13 +3,29 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
+import { afterEach, beforeEach, describe, expect, mock, test } from 'bun:test'
+import assert from 'node:assert/strict'
+
+import type { LanguageModelV3GenerateResult } from '@ai-sdk/provider'
+import { generateText, NoSuchToolError, stepCountIs, tool, type ToolSet } from 'ai'
+import { MockLanguageModelV3 } from 'ai/test'
+import { z } from 'zod'
 
 import type { AiProgressReporter, ToolFinishedEvent, ToolStartedEvent } from '../src/ai-progress-reporter.js'
+import { NO_ANALYTICS_SCOPE } from '../src/analytics/provider-request-scope.js'
+import { userCachesForTesting } from '../src/cache.js'
+import { toScopedContextId, toScopedThreadContextId } from '../src/chat/scoped-context.js'
 import { type DebugEvent, subscribe, unsubscribe } from '../src/debug/event-bus.js'
+import { AGENT_MAX_STEPS, invokeModel, resolveSystemPrompt } from '../src/llm-orchestrator-invoke.js'
 import { handleToolCallStart, handleToolCallFinishEvent } from '../src/llm-orchestrator-tool-events.js'
-import type { ToolCallContext } from '../src/llm-orchestrator-types.js'
-import { createMockReply, mockLogger } from './utils/test-helpers.js'
+import type { InvokeModelArgs, LlmOrchestratorDeps, ToolCallContext } from '../src/llm-orchestrator-types.js'
+import { defaultDeps } from '../src/llm-orchestrator.js'
+import { runRegistry } from '../src/run-control/registry.js'
+import { CORE_TOOL_NAMES } from '../src/tools/disclosure/core.js'
+import { createDisclosureSession, type DisclosureSession } from '../src/tools/disclosure/registry.js'
+import { createMockProvider } from './tools/mock-provider.js'
+import { createTrackedLoggerMock } from './utils/logger-mock.js'
+import { createMockReply, mockLogger, setupTestDb } from './utils/test-helpers.js'
 
 const baseContext = (): ToolCallContext => ({
   contextId: 'ctx-1',
@@ -280,6 +296,23 @@ describe('handleToolCallFinishEvent', () => {
     expect(captured.some((e) => e.type === 'llm:tool_result')).toBe(true)
   })
 
+  test('llm:tool_result carries the turn id from the tool-call context', () => {
+    handleToolCallFinishEvent(baseContext(), {
+      toolCall: {
+        toolName: 'get_task',
+        toolCallId: 'call-turn-id',
+        input: { id: 'x' },
+      },
+      durationMs: 3,
+      success: true,
+      output: { ok: true },
+    })
+
+    const result = captured.find((e) => e.type === 'llm:tool_result')
+    expect(result).toBeDefined()
+    expect(result?.turnId).toBe('turn-1')
+  })
+
   test('does not send legacy warning reply from hook handling while keeping llm:tool_result debug event', () => {
     const { reporter, finishedEvents } = createReporterSpy()
     const { textCalls } = createMockReply()
@@ -370,5 +403,292 @@ describe('live status wiring', () => {
       output: {},
     })
     expect(spy.finishes).toBe(1)
+  })
+})
+
+describe('resolveSystemPrompt', () => {
+  beforeEach(async () => {
+    mockLogger()
+    userCachesForTesting.clear()
+    await setupTestDb()
+  })
+
+  test('localizes the prompt from the config context derived from the storage context id', async () => {
+    const { setConfigValue } = await import('../src/config.js')
+    const groupConfigId = toScopedContextId({ platformInstanceId: 'tg', nativeContextId: 'invoke-group' })
+    const threadStorageId = toScopedThreadContextId({
+      platformInstanceId: 'tg',
+      nativeContextId: 'invoke-group',
+      threadId: 't1',
+    })
+    setConfigValue(groupConfigId, 'language', 'ru')
+
+    const prompt = resolveSystemPrompt({
+      provider: createMockProvider(),
+      contextId: threadStorageId,
+      enabledToolNames: new Set(['create_reminder']),
+      disclosure: undefined,
+      contextType: 'group',
+    })
+
+    expect(prompt).toContain('Отвечай пользователю на русском языке')
+  })
+})
+
+type CapturedGenerateOpts = Parameters<LlmOrchestratorDeps['generateText']>[0]
+type GenerateResult = Awaited<ReturnType<LlmOrchestratorDeps['generateText']>>
+
+// A bare mock model is enough: invokeModel passes it straight through and the
+// stubbed generateText never actually drives it.
+const wireMockModel = new MockLanguageModelV3({
+  doGenerate: {
+    content: [],
+    finishReason: { unified: 'stop', raw: undefined } as const,
+    usage: {
+      inputTokens: { total: 0, noCache: 0, cacheRead: 0, cacheWrite: 0 },
+      outputTokens: { total: 0, text: 0, reasoning: 0 },
+    },
+    warnings: [],
+  },
+})
+
+// A real, fully-typed result reused as the canned success return so the mock
+// deps stay assignable to LlmOrchestratorDeps without an unsafe assertion.
+const okGenerateResult: GenerateResult = await generateText({ model: wireMockModel, prompt: 'hi' })
+
+const disclosureStubTool = (): ToolSet[string] =>
+  tool({ description: 'x', inputSchema: z.object({}), execute: () => ({}) })
+
+function buildInvokeArgs(
+  captured: { opts?: CapturedGenerateOpts },
+  disclosure: DisclosureSession | undefined,
+): InvokeModelArgs & { reply: undefined; turnId: string } {
+  return {
+    contextId: 'ctx-1',
+    chatUserId: 'user-1',
+    contextType: 'dm',
+    mainModel: 'main',
+    model: wireMockModel,
+    provider: null,
+    tools: {},
+    enabledToolNames: new Set<string>(),
+    messages: [{ role: 'user' as const, content: 'hi' }],
+    providerRequestScope: NO_ANALYTICS_SCOPE,
+    deps: {
+      ...defaultDeps,
+      generateText: (opts) => {
+        captured.opts = opts
+        return Promise.resolve(okGenerateResult)
+      },
+      stepCountIs,
+      resolve: () => null,
+      maybeAutoProvision: () => Promise.resolve(false),
+    },
+    ...(disclosure === undefined ? {} : { disclosure }),
+    reply: undefined,
+    turnId: 't1',
+  }
+}
+
+describe('invokeModel repairToolCall wiring', () => {
+  beforeEach(async () => {
+    mockLogger()
+    userCachesForTesting.clear()
+    await setupTestDb()
+    runRegistry.clear()
+  })
+
+  afterEach(() => {
+    runRegistry.clear()
+  })
+
+  test('disclosure present: generateText options include a repair function bound to the disclosure session', async () => {
+    const tools: ToolSet = {
+      get_current_time: disclosureStubTool(),
+      search_tools: disclosureStubTool(),
+      load_tool: disclosureStubTool(),
+      list_tasks: disclosureStubTool(),
+    }
+    const disclosure = createDisclosureSession(tools, CORE_TOOL_NAMES)
+    const captured: { opts?: CapturedGenerateOpts } = {}
+    await invokeModel(buildInvokeArgs(captured, disclosure))
+
+    const repair = captured.opts?.repairToolCall
+    assert.ok(typeof repair === 'function', 'repairToolCall should be a function when disclosure is present')
+    const repaired = await repair({
+      toolCall: { type: 'tool-call', toolCallId: 'call-1', toolName: 'list_tasks', input: '{}' },
+      tools,
+      instructions: undefined,
+      system: undefined,
+      messages: [],
+      inputSchema: () => Promise.resolve({ type: 'object' }),
+      error: new NoSuchToolError({ toolName: 'list_tasks' }),
+    })
+    expect(repaired).toEqual({
+      type: 'tool-call',
+      toolCallId: 'call-1',
+      toolName: 'load_tool',
+      input: JSON.stringify({ names: ['list_tasks'] }),
+    })
+    expect(disclosure.activeToolNames()).toContain('list_tasks')
+  })
+
+  test('disclosure undefined: generateText options omit the repairToolCall key', async () => {
+    const captured: { opts?: CapturedGenerateOpts } = {}
+    await invokeModel(buildInvokeArgs(captured, undefined))
+    assert.ok(captured.opts !== undefined, 'generateText options should be captured')
+    expect('repairToolCall' in captured.opts).toBe(false)
+  })
+})
+
+// The invoke module binds `logger.child({ scope })` at module-eval time and the preload
+// graph evaluates it with the real logger, so force a fresh evaluation under a tracked
+// mock with a cache-busting query (mirrors tests/llm-orchestrator-send.test.ts) to
+// observe its warn calls.
+const tracked = createTrackedLoggerMock()
+void mock.module('../src/logger.js', () => ({ logger: tracked.logger, getLogLevel: tracked.getLogLevel }))
+
+type InvokeModule = typeof import('../src/llm-orchestrator-invoke.js')
+const isInvokeModule = (value: unknown): value is InvokeModule =>
+  typeof value === 'object' && value !== null && typeof Reflect.get(value, 'invokeModel') === 'function'
+const loadedInvoke: unknown = await import(`../src/llm-orchestrator-invoke.js?t=${crypto.randomUUID()}`)
+if (!isInvokeModule(loadedInvoke)) {
+  throw new Error('invoke module did not export expected shape')
+}
+const { invokeModel: trackedInvokeModel } = loadedInvoke
+
+const SECRET_TOOL_ARGS = 'secret-tool-args-must-not-appear-in-logs'
+
+const zeroUsage = (): LanguageModelV3GenerateResult['usage'] => ({
+  inputTokens: { total: 0, noCache: 0, cacheRead: 0, cacheWrite: 0 },
+  outputTokens: { total: 0, text: 0, reasoning: 0 },
+})
+
+const toolCallResult = (callIndex: number): LanguageModelV3GenerateResult => ({
+  content: [
+    {
+      type: 'tool-call',
+      toolCallId: `call-${callIndex}`,
+      toolName: 'create_task',
+      input: JSON.stringify({ title: SECRET_TOOL_ARGS }),
+    },
+  ],
+  finishReason: { unified: 'tool-calls', raw: undefined },
+  usage: zeroUsage(),
+  warnings: [],
+})
+
+const finalTextResult = (): LanguageModelV3GenerateResult => ({
+  content: [{ type: 'text', text: 'All done.' }],
+  finishReason: { unified: 'stop', raw: undefined },
+  usage: zeroUsage(),
+  warnings: [],
+})
+
+// Real AI SDK loop: defaultDeps keeps the real generateText and the real stepCountIs,
+// so the stop conditions (step cap, no-progress guard) are the production ones.
+function buildRealLoopArgs(
+  model: MockLanguageModelV3,
+  tools: ToolSet,
+): InvokeModelArgs & { reply: undefined; turnId: string } {
+  return {
+    contextId: 'ctx-1',
+    chatUserId: 'user-1',
+    contextType: 'dm',
+    mainModel: 'main',
+    model,
+    provider: null,
+    tools,
+    enabledToolNames: new Set<string>(),
+    messages: [{ role: 'user' as const, content: 'hi' }],
+    providerRequestScope: NO_ANALYTICS_SCOPE,
+    deps: {
+      ...defaultDeps,
+      resolve: () => null,
+      maybeAutoProvision: () => Promise.resolve(false),
+    },
+    reply: undefined,
+    turnId: 't1',
+  }
+}
+
+type TurnLimitWarnMeta = { contextId: string; turnId: string; steps: number }
+
+const isTurnLimitWarnMeta = (value: unknown): value is TurnLimitWarnMeta =>
+  typeof value === 'object' &&
+  value !== null &&
+  typeof Reflect.get(value, 'contextId') === 'string' &&
+  typeof Reflect.get(value, 'turnId') === 'string' &&
+  typeof Reflect.get(value, 'steps') === 'number'
+
+const turnLimitWarnMetas = (): TurnLimitWarnMeta[] =>
+  tracked
+    .getCallsByLevel('warn')
+    .flatMap((call) => (isTurnLimitWarnMeta(call.args[0]) ? [call.args[0]] : []))
+    .filter((meta) => meta.contextId === 'ctx-1' && meta.turnId === 't1')
+
+describe('invokeModel turn-limit telemetry', () => {
+  const captured: DebugEvent[] = []
+  const listener = (event: DebugEvent): void => {
+    captured.push(event)
+  }
+
+  beforeEach(async () => {
+    mockLogger()
+    userCachesForTesting.clear()
+    await setupTestDb()
+    runRegistry.clear()
+    tracked.clearCalls()
+    captured.length = 0
+    subscribe(listener)
+  })
+
+  afterEach(() => {
+    unsubscribe(listener)
+    runRegistry.clear()
+  })
+
+  test('a real loop capped at AGENT_MAX_STEPS marks llm:end with stopReason turn_limit and warns identifiers only', async () => {
+    let callCount = 0
+    const capModel = new MockLanguageModelV3({
+      doGenerate: (): Promise<LanguageModelV3GenerateResult> => {
+        callCount += 1
+        return Promise.resolve(toolCallResult(callCount))
+      },
+    })
+    const tools: ToolSet = { create_task: disclosureStubTool() }
+
+    await trackedInvokeModel(buildRealLoopArgs(capModel, tools))
+
+    const end = captured.find((event) => event.type === 'llm:end')
+    assert.ok(end !== undefined, 'llm:end should be emitted')
+    expect(end.data['steps']).toBe(AGENT_MAX_STEPS)
+    expect(end.data['stopReason']).toBe('turn_limit')
+
+    expect(turnLimitWarnMetas()).toEqual([{ contextId: 'ctx-1', turnId: 't1', steps: AGENT_MAX_STEPS }])
+    const serialisedWarns = JSON.stringify(tracked.getCallsByLevel('warn').map((call) => call.args))
+    expect(serialisedWarns).not.toContain(SECRET_TOOL_ARGS)
+  })
+
+  test('a turn that finishes naturally carries no stopReason field and emits no turn-limit warn', async () => {
+    const scriptedResults = [toolCallResult(1), toolCallResult(2), finalTextResult()]
+    let callIndex = 0
+    const naturalModel = new MockLanguageModelV3({
+      doGenerate: (): Promise<LanguageModelV3GenerateResult> => {
+        const result = scriptedResults[callIndex]
+        callIndex += 1
+        assert.ok(result !== undefined, 'scripted natural-model results exhausted')
+        return Promise.resolve(result)
+      },
+    })
+    const tools: ToolSet = { create_task: disclosureStubTool() }
+
+    await trackedInvokeModel(buildRealLoopArgs(naturalModel, tools))
+
+    const end = captured.find((event) => event.type === 'llm:end')
+    assert.ok(end !== undefined, 'llm:end should be emitted')
+    expect('stopReason' in end.data).toBe(false)
+    expect(end.data['steps']).toBe(3)
+    expect(turnLimitWarnMetas()).toEqual([])
   })
 })

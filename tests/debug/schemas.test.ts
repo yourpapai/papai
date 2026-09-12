@@ -11,11 +11,14 @@ import {
   HistoryMessageSchema,
   InstructionSchema,
   LogEntrySchema,
+  LlmTraceSchema,
   safeParseSession,
   ToolCallDetailSchema,
   StepDetailSchema,
   safeParseLlmTrace,
 } from '../../src/debug/schemas.js'
+import { assertEach, type Row } from '../utils/grouped-assertions.js'
+import { schemaValidates } from '../utils/test-helpers.js'
 
 describe('schemas', () => {
   describe('FactSchema', () => {
@@ -379,6 +382,31 @@ describe('schemas', () => {
       expect(result.routingIntent).toBe('task_read')
       expect(result.generatedText).toBe('I created a task for you.')
       expect(result.stepsDetail).toHaveLength(1)
+    })
+  })
+
+  describe('LlmTraceSchema verifierOutcome', () => {
+    const baseTrace = {
+      timestamp: Date.now(),
+      model: 'gpt-4',
+      duration: 2500,
+      steps: 3,
+      totalTokens: { inputTokens: 150, outputTokens: 250 },
+    }
+
+    test('verifierOutcome is an optional ok/empty/error enum on an llm trace', async () => {
+      const rows: readonly Row<{ label: string; outcome: string | undefined; expected: boolean }>[] = [
+        { label: 'the field can be omitted (optional)', outcome: undefined, expected: true },
+        { label: 'ok is accepted', outcome: 'ok', expected: true },
+        { label: 'empty is accepted', outcome: 'empty', expected: true },
+        { label: 'error is accepted', outcome: 'error', expected: true },
+        { label: 'an unknown value is rejected', outcome: 'failed', expected: false },
+      ]
+      await assertEach(rows, (row) => {
+        expect(schemaValidates({ inputSchema: LlmTraceSchema }, { ...baseTrace, verifierOutcome: row.outcome })).toBe(
+          row.expected,
+        )
+      })
     })
   })
 })

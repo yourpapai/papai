@@ -25,7 +25,8 @@ import os from 'node:os'
 import path from 'node:path'
 
 import { createStoryRunnerSession } from '../../scripts/story/session.js'
-import { writeFrozenCoverageSupport } from './story-frozen-inputs.helpers.js'
+import { expectRejection } from '../utils/test-helpers.js'
+import { writeFrozenSupportInputs } from './story-frozen-inputs.helpers.js'
 
 const roots: string[] = []
 
@@ -137,7 +138,7 @@ function fixture(): Readonly<{ root: string; dependencyRoot: string }> {
   writeFileSync(path.join(root, 'tests/mock-reset.ts'), 'reset')
   writeFileSync(path.join(root, 'tests/utils/test-helpers.ts'), 'helpers')
   writeFileSync(path.join(root, 'tests/utils/logger-mock.ts'), 'logger')
-  writeFrozenCoverageSupport(root)
+  writeFrozenSupportInputs(root)
   writeFileSync(path.join(root, 'scripts/story/test-stories.ts'), 'runner')
   writeFileSync(path.join(root, 'src/runtime.ts'), 'runtime v1')
   writeFileSync(path.join(root, 'context-vault-indexer/lock.ts'), 'lock v1')
@@ -504,7 +505,7 @@ describe('story runner session', () => {
   ] as const)('rejects a %s reporter path', async (_name, reporterArguments) => {
     const { root, dependencyRoot } = fixture()
 
-    await expect(
+    await expectRejection(
       createStoryRunnerSession(
         { root, seed: 41021, reporterArguments },
         {
@@ -512,6 +513,7 @@ describe('story runner session', () => {
             Promise.resolve({ key: 'a'.repeat(64), root: dependencyRoot, treeHash: dependencyTreeHash() }),
         },
       ),
-    ).rejects.toThrow('reporter outfile')
+      'reporter outfile',
+    )
   })
 })

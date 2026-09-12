@@ -30,9 +30,14 @@ trap 'rm -rf "$TMPDIR"' EXIT
 # and for `test` that is a multi-minute round trip to re-read bytes this script
 # already paid for. Cleared at the start rather than deleted at the end so the
 # newest run's output is what is on disk, with nothing stale beside it.
+#
+# The clearing itself lives in the FULL-mode branch below, not here. Only full mode reads or
+# writes this directory; staged mode keeps its per-check output in $TMPDIR and cats from there.
+# As unconditional top-of-script setup this meant the pre-commit hook's `--staged` run deleted
+# the logs of any `check:full` still in flight: the full run kept going and still printed
+# "-> reports/checks/<name>.log" for files it no longer had. Silently destroying the evidence a
+# verification run exists to produce is the one failure this directory must not have.
 CHECKS_REPORT_DIR="reports/checks"
-rm -rf "$CHECKS_REPORT_DIR"
-mkdir -p "$CHECKS_REPORT_DIR" || { echo "Failed to create $CHECKS_REPORT_DIR" >&2; exit 1; }
 
 # Sanitize check names for safe temp filenames (replace : with _)
 safe_name() { echo "${1//:/_}"; }
@@ -328,13 +333,30 @@ if [ "$STAGED_MODE" = true ]; then
     exit 1
   fi
 else
-  # Original behavior: run all checks
-  checks=("lint" "typecheck" "format:check" "license-headers" "knip" "test" "test:client" "duplicates" "review-loop:lint" "review-loop:typecheck" "review-loop:format:check" "review-loop:test")
+  # Original behavior: run all checks. Workspace code (review-loop/, mutation-improve/,
+  # opencode-agent/) is enforced by these root checks alone: root lint
+  # (whose tsgolint type-check pass reports every tsgo diagnostic class — see
+  # openspec/changes/dedupe-lint-typecheck), format:check walk the workspace dirs,
+  # and the default test sweep runs tests/<workspace>/. Per-workspace proxy scripts
+  # stay local-only conveniences.
+  # test:hooks needs its own leg because .hooks/ is a dot-directory: bun's default discovery
+  # never reaches it, so the lane rides in the default `test` sweep for exactly zero files. It
+  # went unrun long enough for the TypeScript 7 upgrade to leave enforceWritePolicy failing open
+  # for four days (openspec/changes/fix-write-policy-suppression-guard). 185 tests, ~1.3s.
+  # Full mode is the only writer of the report dir, so it is the only clearer of it. See the
+  # CHECKS_REPORT_DIR comment at the top for why this is not top-of-script setup.
+  rm -rf "$CHECKS_REPORT_DIR"
+  mkdir -p "$CHECKS_REPORT_DIR" || { echo "Failed to create $CHECKS_REPORT_DIR" >&2; exit 1; }
+
+  checks=("lint" "format:check" "license-headers" "knip" "test" "test:hooks" "test:client" "duplicates")
   if [ "$SKIP_TESTS" = true ]; then
     filtered_checks=()
     for check in "${checks[@]}"; do
+      # test:hooks deliberately survives --skip-tests. The flag exists to skip the multi-minute
+      # suite; this lane is ~1.3s and guards write-time policy, so skipping it buys nothing and
+      # costs the one check that catches hook rot.
       case "$check" in
-        test|test:client|review-loop:test)
+        test|test:client)
           continue
           ;;
       esac
@@ -383,8 +405,8 @@ else
         # destabilized by worker-per-file --parallel: the VM is OOM-killed and
         # the runner shuts down mid-job. Run the suite serially there.
         # --timeout 15000 re-applies the per-test ceiling documented in
-        # bunfig.toml: bun 1.3.x silently ignores [test] timeout, so without
-        # this flag every test falls back to the 5000ms default and git-heavy
+        # bunfig.toml: bun (verified through 1.4.0) silently ignores [test]
+        # timeout, so without this flag every test falls back to the 5000ms default and git-heavy
         # integration tests (e.g. review-loop worktree tests) time out under
         # --parallel worker contention.
         if [ "${CI:-}" = "true" ]; then
@@ -419,8 +441,6 @@ else
         # waits on per-file accounting the report can stand behind.
       elif [ "$check" = "test:client" ]; then
         bun --conditions=browser test --preload ./tests/client-setup.ts --path-ignore-patterns '' tests/client/ >"$CHECKS_REPORT_DIR/$fname.log" 2>&1 || exit_code=$?
-      elif [ "$check" = "review-loop:test" ]; then
-        bun test tests/review-loop --timeout 15000 >"$CHECKS_REPORT_DIR/$fname.log" 2>&1 || exit_code=$?
       else
         bun run "$check" >"$CHECKS_REPORT_DIR/$fname.log" 2>&1 || exit_code=$?
       fi
@@ -453,12 +473,22 @@ else
       echo ""
       echo "✗ $check failed (exit code $exit_code):"
       echo "---"
-      cat "$CHECKS_REPORT_DIR/$fname.log"
+      # `|| true`, and not because a missing log is acceptable — the log is
+      # always there, this script wrote it. It is that `cat`'s *write* fails.
+      # When stdout is a pipe carrying O_NONBLOCK (a captured parent, e.g. the
+      # review-loop build gate, or the Actions runner), a `cat` that outruns the
+      # reader gets EAGAIN, prints `cat: write error: Resource temporarily
+      # unavailable`, and exits 1 — and `set -e` then aborts this script before
+      # the `N/M checks passed` summary below, which is the one line that names
+      # what failed. Run 33974052563 is what that costs: a review-loop gate that
+      # reported 40 lines of vite warnings and no verdict at all. The body is
+      # best-effort; the summary is not.
+      cat "$CHECKS_REPORT_DIR/$fname.log" || echo "(log body truncated: $CHECKS_REPORT_DIR/$fname.log)"
       echo "---"
       # Where to look, rather than what to run again. The output above is the
       # whole of it, but a terminal scroll-back is not a place you can query.
       case "$check" in
-        test|test:client|review-loop:test)
+        test|test:client)
           echo "→ bun run test:failures      (report already on disk; do not re-run to look)"
           ;;
         *)

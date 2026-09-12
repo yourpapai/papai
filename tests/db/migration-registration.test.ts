@@ -30,9 +30,50 @@ describe('MIGRATIONS list', () => {
     expect(ids).toContain('070_message_metadata_history_search')
   })
 
-  test('078_repair_epoch_aggregate_source_counters is the last migration', () => {
+  test('includes migration 081_alert_task_instance_pin', () => {
+    const ids = MIGRATIONS.map((m) => m.id)
+    expect(ids).toContain('081_alert_task_instance_pin')
+  })
+
+  test('includes migration 082_alert_activity_cursor', () => {
+    const ids = MIGRATIONS.map((m) => m.id)
+    expect(ids).toContain('082_alert_activity_cursor')
+  })
+
+  test('includes migration 083_llm_provider_base_refs', () => {
+    const ids = MIGRATIONS.map((m) => m.id)
+    expect(ids).toContain('083_llm_provider_base_refs')
+  })
+
+  test('includes migration 084_llm_provider_model_hints', () => {
+    const ids = MIGRATIONS.map((m) => m.id)
+    expect(ids).toContain('084_llm_provider_model_hints')
+  })
+
+  test('084_llm_provider_model_hints is the last migration', () => {
     const lastMigration = requireDefined(MIGRATIONS.at(-1))
-    expect(lastMigration.id).toBe('078_repair_epoch_aggregate_source_counters')
+    expect(lastMigration.id).toBe('084_llm_provider_model_hints')
+  })
+
+  test('084_llm_provider_model_hints is registered immediately after 083_llm_provider_base_refs', () => {
+    const ids = MIGRATIONS.map((m) => m.id)
+    const baseRefsIndex = ids.indexOf('083_llm_provider_base_refs')
+    expect(baseRefsIndex).toBeGreaterThanOrEqual(0)
+    expect(ids[baseRefsIndex + 1]).toBe('084_llm_provider_model_hints')
+  })
+
+  test('083_llm_provider_base_refs is registered immediately after 082_alert_activity_cursor', () => {
+    const ids = MIGRATIONS.map((m) => m.id)
+    const activityCursorIndex = ids.indexOf('082_alert_activity_cursor')
+    expect(activityCursorIndex).toBeGreaterThanOrEqual(0)
+    expect(ids[activityCursorIndex + 1]).toBe('083_llm_provider_base_refs')
+  })
+
+  test('082_alert_activity_cursor is registered immediately after 081_alert_task_instance_pin', () => {
+    const ids = MIGRATIONS.map((m) => m.id)
+    const alertPinIndex = ids.indexOf('081_alert_task_instance_pin')
+    expect(alertPinIndex).toBeGreaterThanOrEqual(0)
+    expect(ids[alertPinIndex + 1]).toBe('082_alert_activity_cursor')
   })
 
   test('077_context_vault_file_artifacts is registered immediately after 076_context_vault', () => {

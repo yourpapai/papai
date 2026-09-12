@@ -53,7 +53,7 @@ export const revertPaths = async (
   if (tracked.length > 0) await gitOrThrow('checkout', sha, '--', ...tracked)
   if (added.length > 0) await gitOrThrow('rm', '--force', '--', ...added)
 
-  await commit(gitOrThrow, options, revertMessage(paths), ['--no-verify'])
+  await commit(gitOrThrow, revertMessage(paths), ['--no-verify'])
   options.log.warn({ reverted: [...paths] }, protectedPathsNotice(paths))
 }
 

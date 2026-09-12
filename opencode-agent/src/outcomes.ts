@@ -48,6 +48,7 @@ export const OUTCOME_KEYS = [
   'TIME_SPENT_BETWEEN_STEPS',
   'ANSWER_TIME_SPENT',
   'CI_GAVE_UP',
+  'CI_SPENT',
   'REVIEWS_SPENT',
   'COMMAND_REFUSED',
 ] as const
@@ -95,6 +96,7 @@ export const OUTCOME_GLYPHS: Record<OutcomeKey, string> = {
   TIME_SPENT_BETWEEN_STEPS: '⛔',
   ANSWER_TIME_SPENT: '⛔',
   CI_GAVE_UP: PRESENTATION.CI_FIX.glyph,
+  CI_SPENT: '⛔',
   REVIEWS_SPENT: '⛔',
   COMMAND_REFUSED: '😕',
 }

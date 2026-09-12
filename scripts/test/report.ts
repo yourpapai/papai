@@ -42,6 +42,8 @@ export const RunReportSchema = z.object({
   argv: z.array(z.string()),
   scope: scopeSchema,
   mode: z.enum(['parallel', 'serial']),
+  /** True only when load demotion picked serial; absent reports (older artifacts) read as false. */
+  loadDemoted: z.boolean().default(false),
   fingerprint: z.string(),
   gitSha: z.string().nullable(),
   totals: z.object({
@@ -74,6 +76,7 @@ export interface BuildReportInput {
   argv: readonly string[]
   scope: RunScope
   mode: 'parallel' | 'serial'
+  loadDemoted: boolean
   fingerprint: string
   gitSha: string | null
 }
@@ -145,6 +148,7 @@ export function buildReport(input: BuildReportInput): RunReport {
     argv: [...input.argv],
     scope: input.scope,
     mode: input.mode,
+    loadDemoted: input.loadDemoted,
     fingerprint: input.fingerprint,
     gitSha: input.gitSha,
     totals: totalsFrom(summary, junit, runErrors.length),

@@ -8,6 +8,7 @@ import { describe, expect, test } from 'bun:test'
 import {
   hasAttachmentTransformerPermission,
   hasProviderAllowedHostsFromConfig,
+  hasProviderAllowedInstanceHostsFromConfig,
   hasProviderManifestPermission,
   hasRequiredMainForManifest,
 } from '../../src/plugins/manifest-validation.js'
@@ -15,10 +16,11 @@ import {
 const baseInput = {
   permissions: [] as string[],
   providerCapabilities: [],
-  providerConfigSchema: [],
+  providerConfigSchema: [] as readonly { key: string }[],
   providerContextConfigSchema: [],
   providerAllowedHosts: [],
   providerAllowedHostsFromConfig: [] as string[],
+  providerAllowedInstanceHostsFromConfig: [] as string[],
   providerConfigValidator: undefined,
   contributes: {
     configKeys: [],
@@ -92,6 +94,43 @@ describe('hasProviderAllowedHostsFromConfig', () => {
         configRequirements: [{ key: 'base_url', scope: 'context' }],
       }),
     ).toBe(true)
+  })
+})
+
+describe('hasProviderAllowedInstanceHostsFromConfig', () => {
+  test('returns true when no instance host keys declared', () => {
+    expect(hasProviderAllowedInstanceHostsFromConfig({ ...baseInput })).toBe(true)
+  })
+
+  test('returns true when an instance host key references a providerConfigSchema entry', () => {
+    expect(
+      hasProviderAllowedInstanceHostsFromConfig({
+        ...baseInput,
+        providerAllowedInstanceHostsFromConfig: ['baseUrl'],
+        providerConfigSchema: [{ key: 'baseUrl' }],
+      }),
+    ).toBe(true)
+  })
+
+  test('returns false when an instance host key is missing from providerConfigSchema', () => {
+    expect(
+      hasProviderAllowedInstanceHostsFromConfig({
+        ...baseInput,
+        providerAllowedInstanceHostsFromConfig: ['baseUrl'],
+        providerConfigSchema: [],
+      }),
+    ).toBe(false)
+  })
+
+  test('returns false when an instance host key references a non-instance configRequirements key instead', () => {
+    expect(
+      hasProviderAllowedInstanceHostsFromConfig({
+        ...baseInput,
+        providerAllowedInstanceHostsFromConfig: ['base_url'],
+        providerConfigSchema: [{ key: 'baseUrl' }],
+        configRequirements: [{ key: 'base_url', scope: 'admin' }],
+      }),
+    ).toBe(false)
   })
 })
 

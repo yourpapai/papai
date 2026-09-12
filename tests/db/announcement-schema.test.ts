@@ -23,6 +23,7 @@ describe('announcement-schema', () => {
         announcedAt: '2026-06-26T00:00:00.000Z',
         rawBody: '## What is new',
         humanizedBody: 'Some new features',
+        humanizedBodies: '{"en":"Some new features","ru":"Новые функции"}',
         broadcastAt: '2026-06-26T01:00:00.000Z',
       })
       .run()
@@ -33,7 +34,30 @@ describe('announcement-schema', () => {
       announcedAt: '2026-06-26T00:00:00.000Z',
       rawBody: '## What is new',
       humanizedBody: 'Some new features',
+      humanizedBodies: '{"en":"Some new features","ru":"Новые функции"}',
       broadcastAt: '2026-06-26T01:00:00.000Z',
+    })
+  })
+
+  test('legacy row with only humanized_body reads back with null humanizedBodies', () => {
+    const db = getDrizzleDb()
+    db.insert(versionAnnouncements)
+      .values({
+        version: 'v1.2.3',
+        announcedAt: '2026-06-26T00:00:00.000Z',
+        rawBody: '## What is new',
+        humanizedBody: 'Some new features',
+      })
+      .run()
+
+    const row = db.select().from(versionAnnouncements).get()
+    expect(row).toEqual({
+      version: 'v1.2.3',
+      announcedAt: '2026-06-26T00:00:00.000Z',
+      rawBody: '## What is new',
+      humanizedBody: 'Some new features',
+      humanizedBodies: null,
+      broadcastAt: null,
     })
   })
 

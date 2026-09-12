@@ -499,3 +499,65 @@ describe('analytics lifecycle', () => {
     expect(rec.dismissed).toBe(1)
   })
 })
+
+describe('createLiveStatusReporter locale', () => {
+  test('locale ru creates the status with the ru thinking text', async () => {
+    const rec = makeReply()
+    const reporter = createLiveStatusReporter(rec.reply, { locale: 'ru' })
+    await reporter.start()
+    expect(rec.created).toEqual(['💭 Думаю…'])
+  })
+
+  test('locale ru formats tool labels from the ru catalog', async () => {
+    const rec = makeReply()
+    const reporter = createLiveStatusReporter(rec.reply, { locale: 'ru' })
+    await reporter.start()
+    reporter.onToolStart({ toolName: 'create_task', input: { title: 'Купить молоко' } })
+    await flushMicrotasks()
+    expect(rec.updates).toEqual(['📝 Создаю задачу: "Купить молоко"…'])
+  })
+
+  test('locale ru reverts to the ru idle text after the minimum hold', async () => {
+    const rec = makeReply()
+    const timers = makeFakeTimers()
+    const reporter = createLiveStatusReporter(rec.reply, {
+      locale: 'ru',
+      minLabelMs: 1000,
+      now: timers.now,
+      schedule: timers.schedule,
+    })
+    await reporter.start()
+    reporter.onToolStart({ toolName: 'get_current_time', input: {} })
+    reporter.onToolFinish()
+    await flushMicrotasks()
+    expect(rec.updates).toEqual(['🕒 Проверяю время…'])
+    timers.advance(1000)
+    await flushMicrotasks()
+    expect(rec.updates).toEqual(['🕒 Проверяю время…', '💭 Думаю…'])
+  })
+
+  test('locale ru renders the localized fallback for unregistered tools', async () => {
+    const rec = makeReply()
+    const reporter = createLiveStatusReporter(rec.reply, { locale: 'ru' })
+    await reporter.start()
+    reporter.onToolStart({ toolName: 'add_watcher', input: {} })
+    await flushMicrotasks()
+    expect(rec.updates).toEqual(['⚙️ Выполняю add watcher…'])
+  })
+
+  test('explicit locale en is byte-identical to passing no locale', async () => {
+    const withEn = makeReply()
+    const without = makeReply()
+    const enReporter = createLiveStatusReporter(withEn.reply, { locale: 'en' })
+    const defaultReporter = createLiveStatusReporter(without.reply)
+    await enReporter.start()
+    await defaultReporter.start()
+    enReporter.onToolStart({ toolName: 'create_task', input: { title: 'Buy milk' } })
+    defaultReporter.onToolStart({ toolName: 'create_task', input: { title: 'Buy milk' } })
+    await flushMicrotasks()
+    expect(withEn.created).toEqual(without.created)
+    expect(withEn.updates).toEqual(without.updates)
+    expect(withEn.created).toEqual(['💭 Thinking…'])
+    expect(withEn.updates).toEqual(['📝 Creating task: "Buy milk"…'])
+  })
+})

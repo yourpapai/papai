@@ -10,7 +10,7 @@
   <a href="https://github.com/yourpapai/papai/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/yourpapai/papai/ci.yml?branch=master&label=CI&style=flat-square" alt="CI Status"></a>
   <a href="https://github.com/yourpapai/papai/security"><img src="https://img.shields.io/github/actions/workflow/status/yourpapai/papai/ci.yml?branch=master&label=CodeQL&style=flat-square&logo=github" alt="CodeQL"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-BSL%201.1-0f766e?style=flat-square" alt="License: BSL 1.1"></a>
-  <a href="https://bun.sh"><img src="https://img.shields.io/badge/bun-1.3%2B-black?style=flat-square&logo=bun" alt="Bun Runtime"></a>
+  <a href="https://bun.sh"><img src="https://img.shields.io/badge/bun-1.4%2B-black?style=flat-square&logo=bun" alt="Bun Runtime"></a>
 </p>
 
 <p align="center">
@@ -93,7 +93,7 @@ YouTrack task creation can require workflow-specific custom fields. Papai expose
 
 ### Prerequisites
 
-- [Bun](https://bun.sh) 1.3+
+- [Bun](https://bun.sh) 1.4+
 - One supported chat platform: Telegram, Mattermost, Discord, or Kontur Talk
 - One supported task provider: Kaneo or YouTrack
 - OpenAI-compatible API credentials for your chosen model provider
@@ -493,7 +493,7 @@ Papai ships with four first-party plugins under [`plugins/`](plugins/). All are 
 | -------------------------------------------------------------- | ------------------------ | ---------------------------------------------------------------------------------------------------------- | ------------------------------------- |
 | [Audio Transcribe](plugins/audio-transcribe/README.md)         | `audio-transcribe`       | Auto-transcribes voice notes before the LLM turn and audio files on demand via an OpenAI-compatible API    | `http`, `attachments.read`, `storage` |
 | [Synthetic Web Search](plugins/synthetic-web-search/README.md) | `synthetic-web-search`   | Web search via the Synthetic Search API; returns title/url/markdown text                                   | `http`                                |
-| [Kaneo](plugins/task-provider-kaneo/README.md)                 | `task-provider-kaneo`    | Kaneo task-tracker integration (contributes the `kaneo` provider type; supports auto-provisioning)         | `provider.task`, `identity`           |
+| [Kaneo](plugins/task-provider-kaneo/README.md)                 | `task-provider-kaneo`    | Kaneo task-tracker integration (contributes the `kaneo` provider type; supports auto-provisioning)         | `provider.task`, `identity`, `http`   |
 | [YouTrack](plugins/task-provider-youtrack/README.md)           | `task-provider-youtrack` | YouTrack task-tracker integration (contributes the `youtrack` provider type; most fully-featured provider) | `provider.task`, `identity`           |
 
 ---
@@ -528,6 +528,9 @@ bun run test:failures  # read the last run's failures — does not re-run anythi
 bun run test:show 3    # one failure's full diagnostic
 bun run test:log expect  # filter the last run's log
 bun run test:affected  # only the tests a change can reach
+bun run test:audit  # read-only test-fragmentation report -> reports/test-audit/fragmentation.json
+bun run test:benchmark  # paired-arm consolidation speed benchmark -> reports/test-audit/benchmark.json
+bun run test:benchmark -- --project  # join benchmark + audit into a savings projection
 bun run test:raw   # unwrapped `bun test --parallel`, writes no report
 bun test:serial    # serial run, for debugging isolation-sensitive failures
 bun test:client
@@ -555,6 +558,55 @@ Notes:
 - `bun start:debug` also enables the local debug server.
 - `bun run test` excludes client and E2E suites (configured in `bunfig.toml`); run `bun test:client` and `bun test:e2e` separately. It is a wrapper (`scripts/test/run-cli.ts`) that builds the client bundles when missing, chooses parallel or serial from the core count (parallel needs 8+; it is measurably slower on 4), and writes `reports/test/last-run.{log,junit.xml,json}`. **Query that report instead of re-running the suite to filter its output** — `bun run test:failures`, `test:show <id>`, `test:log <pattern>`, `test:status`, `test:slowest`. Bare `bun test` remains Bun's built-in runner and leaves no report.
 - `bun check` runs staged-file checks, while `bun check:full` runs the wider repo checks.
+
+### codeindex MCP (structural code search)
+
+Agents (and humans) query this repo structurally — symbol lookup, keyword search,
+caller/impact analysis — through the `codeindex` MCP server (`code_symbol`,
+`code_search`, `code_impact`, `code_index`), registered project-wide in `.mcp.json`
+and pre-approved for Claude Code via `.claude/settings.json`. It indexes the product
+roots `src/`, `client/`, and `plugins/` (`.codeindex.json`); freshness is owned by the
+server itself (boot probe plus in-session `fs.watch` watcher) — no client-side reindex
+component ships in this repo.
+
+**Setup.** codeindex lives in a separate repository and is distributed by clone, not npm:
+
+```bash
+# from the papai checkout (or any of its worktrees)
+git clone <codeindex-remote-url> ../codeindex
+cd ../codeindex && bun install
+```
+
+The committed shim (`scripts/codeindex-cli.ts`) resolves the sibling clone relative to
+the primary checkout from any worktree. If the clone lives elsewhere, point `CODEINDEX_DIR`
+at it. When resolution fails the shim refuses with `codeindex repo not found at <dir>` /
+`Set CODEINDEX_DIR or clone the sibling repo at ../codeindex` — the two remedies are
+exactly the two setup options above.
+
+**Scripts.**
+
+```bash
+bun run codeindex:index    # full index build
+bun run codeindex:reindex  # incremental refresh (manual escape hatch)
+bun run codeindex:stats    # index statistics
+```
+
+**Per-worktree index.** Each checkout/worktree keeps its own index database under the
+git-ignored `.codeindex/` directory — delete a worktree and its index goes with it. The
+index is built lazily: a tree with no database gets one on the first tool call (or first
+`codeindex:index` run). An existing pre-v5 database is rebuilt once automatically on the
+v5 schema — that one-time rebuild is expected and needs no action.
+
+The agent CI pipeline can also run codeindex — as a gated experiment with its own
+provisioning (sibling checkout, index prebuild, canary, per-job usage report) in the
+`agent` job, enabled by declaring a `codeindex` server in the `AGENT_MCP_SERVERS` knob
+(secret or variable — this repository uses the secret spelling); see
+[`docs/operations/codeindex-ci-experiment.md`](docs/operations/codeindex-ci-experiment.md)
+for the enable/revert/read/decide procedures.
+
+**Verified against.** The integration was last verified against codeindex commit `d6eb4e8`
+(2026-09-10): all four MCP tools answering from a worktree, including `plugins/` symbols,
+with no client-side reindex process on edits.
 
 ---
 
@@ -594,7 +646,7 @@ bun test:stories
 ```
 
 Runs deterministic full-stack user stories against the real in-process runtime with fake
-transports. Every run executes inside the pinned `oven/bun:1.3.13` Docker image (digest
+transports. Every run executes inside the pinned `oven/bun:1.4.0` Docker image (digest
 single-sourced in `scripts/story/sandbox-image.txt`) — on Linux,
 and on macOS via Docker Desktop — with no network, a read-only app snapshot, and a read-only
 bind-mounted dependency cache, so a working Docker daemon is required. Windows hosts are not
@@ -618,13 +670,21 @@ bun test:mutate --update-baseline  # full run; ratchet scripts/mutation/baseline
 bun test:mutate:seed --scores=reports/paired/scores.json  # re-apply persisted scores (CI commit step; lost-seed recovery)
 ```
 
-Runs paired, per-file mutation testing with Stryker (`ignoreStatic: false`, each
+Runs paired, per-file mutation testing with Stryker (`ignoreStatic: false`,
+`disableTypeChecks: false` so the sandbox leaves non-target file bytes
+untouched — pinned by `tests/scripts/mutation/stryker-config.test.ts`; each
 source file paired with the test set that actually covers it — coverage-derived
 via `scripts/mutation/coverage-map.ts`, with the companion as fallback). The CI
 `mutation-testing` job is a
-**blocking per-file ratchet** on PRs: a changed file fails only if it has a
-recorded entry in `scripts/mutation/baseline.json` and its score drops below it;
-files with no recorded entry (new or never-baselined) are not regressions. The
+**blocking per-file ratchet** on PRs judged against
+`scripts/mutation/baseline.json`, whose entries are records — the score plus the
+counts behind it, `{score, killed, timeout, scored}` (bare legacy score numbers
+still coexist during the lazy migration, judged by score alone). A baselined
+file fails only when its measurement both scores below the recorded score **and**
+kills fewer mutants than the record — a true regression, meaning killing power
+dropped; a below-floor score with kills held (the mutant population grew) is
+new-code dilution and prints a `WARN` instead of failing. Files with no recorded
+entry (new or never-baselined) are not regressions. The
 `mutation-testing` job **gates the whole branch diff on every push** but only
 **measures** the files whose content changed since the previous run — the rest
 carry over scores recorded earlier on the branch, guarded by a content
@@ -637,7 +697,12 @@ scope, `seedMerge` preserves existing entries — not a full run) on push to
 `master`; its commit step replays the persisted per-file scores onto the latest
 master (`test:mutate:seed`), so a master update landing mid-run cannot lose the
 seed. See `scripts/mutation/README.md` for flags (`--no-ratchet`), the
-override/companion resolution, and the one-time migration catch-up note.
+override/companion resolution, the record validation rules, the lazy
+record-shape migration, and the one-time migration catch-up note.
+Toolchain: Stryker 10 — the CLI host is Node (≥ 22; only test children run on
+Bun), and `@hughescr/stryker-bun-runner` installs via a Bun patch until
+upstream accepts core 10 (details and deletion condition in
+`scripts/mutation/README.md`).
 
 ---
 
@@ -702,7 +767,7 @@ bun start:debug
 
 ## Tech Stack
 
-- **Runtime:** [Bun](https://bun.sh) 1.3+
+- **Runtime:** [Bun](https://bun.sh) 1.4+
 - **Language:** TypeScript (strict mode)
 - **Validation:** [Zod](https://zod.dev) v4
 - **LLM Integration:** [Vercel AI SDK](https://sdk.vercel.ai)

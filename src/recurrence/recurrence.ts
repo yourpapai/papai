@@ -63,7 +63,10 @@ const buildIcs = (args: CompiledRecurrence): string => {
 
 export const parseRrule = (args: CompiledRecurrence): ParseResult => {
   try {
-    const iter = new RRuleTemporal({ rruleString: buildIcs(args) })
+    // strict: enforce RFC 5545 constraints (COUNT+UNTIL, DATE UNTIL vs
+    // DATE-TIME DTSTART, ...) — violations must fail parse and degrade through
+    // the null/[] contract below, never produce undefined occurrence semantics.
+    const iter = new RRuleTemporal({ rruleString: buildIcs(args), strict: true })
     return { ok: true, iter }
   } catch (error) {
     const reason = error instanceof Error ? error.message : String(error)
@@ -72,35 +75,18 @@ export const parseRrule = (args: CompiledRecurrence): ParseResult => {
   }
 }
 
-// RRuleTemporal.next() enumerates every occurrence from DTSTART on each call
-// and throws past its maxIterations cap (10k), so aged-dtstart rules get slower
-// over time and dense ones (DAILY ~27y, HOURLY ~14mo) eventually throw.
-// between() instead fast-forwards to the window start when the rule has no
-// COUNT, so probe expanding windows anchored at `after` first.  The widest
-// window exceeds the sparsest generatable gap (YEARLY incl. leap years);
-// COUNT rules must enumerate from DTSTART anyway, as do the no-match cases
-// that fall through to next() (e.g. UNTIL in the past), all of which COUNT
-// or UNTIL keep bounded.  The first window stays under 7 days so a MINUTELY
-// rule (1,440/day) fits inside the same iteration cap.
-const NEXT_WINDOW_DAYS = [6, 90, 1464]
-const DAY_MS = 24 * 60 * 60 * 1000
-
+// rrule-temporal >=2.1 next() does not replay occurrences from DTSTART:
+// unbounded rules jump to a phase-aligned DTSTART just before `after`, and
+// COUNT-bound rules answer from lazily cached numeric query plans.  Rules
+// that can never match (e.g. BYMONTHDAY=30 in February) still exhaust the
+// iteration cap and throw; degrade that to null like a parse failure.
 export const nextOccurrence = (args: CompiledRecurrence, after: Date): Date | null => {
   const parsed = parseRrule(args)
   if (!parsed.ok) return null
   try {
-    if (!/(?:^|;)COUNT=/u.test(args.rrule)) {
-      for (const days of NEXT_WINDOW_DAYS) {
-        const windowEnd = new Date(after.getTime() + days * DAY_MS)
-        const first = parsed.iter.between(after, windowEnd, false)[0]
-        if (first !== undefined) return new Date(first.epochMilliseconds)
-      }
-    }
     const next = parsed.iter.next(after)
     return next === null ? null : new Date(next.epochMilliseconds)
   } catch (error) {
-    // Typically the library's maxIterations cap on a rule that never matches
-    // (e.g. BYMONTHDAY=30 in February); degrade like a parse failure.
     const reason = error instanceof Error ? error.message : String(error)
     log.warn({ rrule: args.rrule, reason }, 'nextOccurrence failed')
     return null

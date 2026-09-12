@@ -12,6 +12,7 @@ import { handleDeliver } from './phases/deliver.js'
 import { handleImplement } from './phases/implement.js'
 import { handlePlan } from './phases/plan.js'
 import { handleReview } from './phases/review.js'
+import { runSync } from './phases/sync.js'
 import { handleTriage } from './phases/triage.js'
 import { presentationFor } from './presentation.js'
 import { postAndAppend, postAnswer } from './run-post.js'
@@ -103,29 +104,25 @@ export const hasHandler = (phase: Phase): boolean => HANDLERS[phase] !== undefin
  * holds — so one gate, in the layer that owns the decision, is the whole rule.
  */
 export const driveMachine = async (input: MachineInput): Promise<RunResult> => {
+  // The `/sync` door, and it stands before both budget stops on purpose. The
+  // clean path spends nothing, so `/sync` must work **at** the token ceiling —
+  // a stop here would refuse the one operation that costs nothing. The
+  // wall-clock stop is refused for the sharper reason: it parks in
+  // `INCOMPLETE`, a state move, and moving state is the one thing `/sync`
+  // exists never to do. The handler asks both ceilings itself, at the points
+  // where they genuinely bind (a repair turn is the only thing a sync pays
+  // for), and every outcome it can take leaves the state untouched.
+  if (input.sync === true) return runSync(input)
+
   const { state, thread } = input
 
   const handler = input.answer ? handleAnswer : HANDLERS[state.phase]
   if (handler === undefined) return settle(input)
 
-  // Before the handler, and it is `token-budget.ts` that decides what "stop"
-  // means: over budget the run parks in FAILED naming this phase, so raising
-  // `AGENT_MAX_TOKENS` and replying `/retry` resumes exactly here. Stopping in
-  // place used to leave the issue in a phase no trigger re-enters.
-  const stopped = await stopIfOverBudget(input)
+  // Before the handler; what "stop" means and why the two are ordered is
+  // `stopIfNeeded`'s own story, directly below.
+  const stopped = await stopIfNeeded(input)
   if (stopped !== null) return stopped
-
-  // The other ceiling, and the order between the two is the decision. Tokens
-  // first, because that bound spans jobs and this one does not: a `/continue`
-  // gets a whole fresh clock, so an issue stopped for time and *also* over its
-  // token ceiling would be told to reply `/continue`, spend a job, and be told
-  // the real answer on the next run. Reported the other way round, the notice
-  // names `AGENT_MAX_TOKENS` — the thing that actually has to change — and the
-  // clock is still there to stop the run after it has been raised. The cost of
-  // that order is one `tokensUsed()` round trip on a job that was about to stop
-  // anyway, which is nothing next to a wasted job and a misleading remedy.
-  const timedOut = await stopIfOutOfTime(input)
-  if (timedOut !== null) return timedOut
 
   const attempt = await runGrouped(handler, input)
   if (!attempt.ok) return input.answer ? failAnswer(input, attempt.error) : failRun(input, attempt.error)
@@ -143,6 +140,29 @@ export const driveMachine = async (input: MachineInput): Promise<RunResult> => {
   }
 
   return driveMachine({ ...input, answer: false, state: next, thread: grown, posted: true })
+}
+
+/**
+ * The two ceilings, asked in order before a handler runs.
+ *
+ * Tokens first, because that bound spans jobs and the wall clock does not: a
+ * `/continue` gets a whole fresh clock, so an issue stopped for time and *also*
+ * over its token ceiling would be told to reply `/continue`, spend a job, and
+ * be told the real answer on the next run. Reported the other way round, the
+ * notice names `AGENT_MAX_TOKENS` — the thing that actually has to change —
+ * and the clock is still there to stop the run after it has been raised. The
+ * cost of that order is one `tokensUsed()` round trip on a job that was about
+ * to stop anyway, which is nothing next to a wasted job and a misleading
+ * remedy. What a token stop *means* is `token-budget.ts`'s: over budget the
+ * run parks in FAILED naming this phase, so raising `AGENT_MAX_TOKENS` and
+ * replying `/retry` resumes exactly here — stopping in place used to leave
+ * the issue in a phase no trigger re-enters.
+ */
+const stopIfNeeded = async (input: MachineInput): Promise<RunResult | null> => {
+  const stopped = await stopIfOverBudget(input)
+  if (stopped !== null) return stopped
+
+  return stopIfOutOfTime(input)
 }
 
 /**

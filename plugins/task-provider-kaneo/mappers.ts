@@ -73,6 +73,7 @@ export const mapTaskListItem = (t: KaneoTaskListItem, url: string): TaskListItem
   status: t.status,
   priority: t.priority,
   dueDate: t.dueDate,
+  createdAt: t.createdAt,
   url,
 })
 

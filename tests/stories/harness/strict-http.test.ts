@@ -8,6 +8,15 @@ import { describe, expect, test } from 'bun:test'
 import { createScenarioEvents } from './events.js'
 import { createStrictHttpDispatcher } from './strict-http.js'
 
+const makeDispatcher = (): {
+  http: ReturnType<typeof createStrictHttpDispatcher>
+  events: ReturnType<typeof createScenarioEvents>
+} => {
+  const events = createScenarioEvents('serveHost')
+  const http = createStrictHttpDispatcher(events)
+  return { http, events }
+}
+
 const captureError = (promise: Promise<unknown>): Promise<Error> =>
   promise.then(
     () => Promise.reject(new Error('expected rejection')),
@@ -173,5 +182,117 @@ describe('strict http dispatcher', () => {
     await idle
     expect(idleResolved).toBe(true)
     expect(() => http.verifyConsumed()).not.toThrow()
+  })
+})
+
+describe('serveHost', () => {
+  test('serves every request to a registered host in any order and any count', async () => {
+    const { http } = makeDispatcher()
+    http.serveHost('sim.invalid', (request) => new Response(new URL(request.url).pathname))
+
+    expect(await (await http.fetch('https://sim.invalid/b')).text()).toBe('/b')
+    expect(await (await http.fetch('https://sim.invalid/a')).text()).toBe('/a')
+    expect(await (await http.fetch('https://sim.invalid/a')).text()).toBe('/a')
+    expect(() => {
+      http.verifyConsumed()
+    }).not.toThrow()
+  })
+
+  test('leaves other hosts on the strict FIFO path', async () => {
+    const { http } = makeDispatcher()
+    http.serveHost('sim.invalid', () => new Response('sim'))
+    http.expect({ method: 'GET', url: 'https://other.invalid/x' }, () => new Response('other'))
+
+    expect(await (await http.fetch('https://sim.invalid/anything')).text()).toBe('sim')
+    expect(await (await http.fetch('https://other.invalid/x')).text()).toBe('other')
+    expect(() => {
+      http.verifyConsumed()
+    }).not.toThrow()
+  })
+
+  test('rejects an undeclared host even when another host is simulated', async () => {
+    const { http } = makeDispatcher()
+    http.serveHost('sim.invalid', () => new Response('sim'))
+
+    await expect(http.fetch('https://elsewhere.invalid/x')).rejects.toThrow('undeclared request')
+  })
+
+  test('throws at declaration time when serveHost collides with an expectation', () => {
+    const { http } = makeDispatcher()
+    http.expect({ method: 'GET', url: 'https://sim.invalid/x' }, () => new Response('x'))
+
+    expect(() => {
+      http.serveHost('sim.invalid', () => new Response('sim'))
+    }).toThrow('already has declared expectations')
+  })
+
+  test('throws at declaration time when an expectation collides with a simulated host', () => {
+    const { http } = makeDispatcher()
+    http.serveHost('sim.invalid', () => new Response('sim'))
+
+    expect(() => {
+      http.expect({ method: 'GET', url: 'https://sim.invalid/x' }, () => new Response('x'))
+    }).toThrow('is served by a host simulator')
+  })
+
+  test('throws at declaration time when the same host is registered twice', () => {
+    const { http } = makeDispatcher()
+    http.serveHost('sim.invalid', () => new Response('sim'))
+
+    expect(() => {
+      http.serveHost('sim.invalid', () => new Response('again'))
+    }).toThrow('is already served by a host simulator')
+  })
+
+  test('verifyConsumed fails a simulated host that saw no requests', () => {
+    const { http } = makeDispatcher()
+    http.serveHost('sim.invalid', () => new Response('sim'))
+
+    expect(() => {
+      http.verifyConsumed()
+    }).toThrow('host simulator received no requests: sim.invalid')
+  })
+
+  test('allowZeroRequests exempts a host from the min-one-request check', () => {
+    const { http } = makeDispatcher()
+    http.serveHost('sim.invalid', () => new Response('sim'), { allowZeroRequests: true })
+
+    expect(() => {
+      http.verifyConsumed()
+    }).not.toThrow()
+  })
+
+  test('rejects a redirect from a simulated host unless allowRedirect is set', async () => {
+    const { http } = makeDispatcher()
+    http.serveHost('sim.invalid', () => new Response(null, { status: 302, headers: { location: '/next' } }))
+
+    await expect(http.fetch('https://sim.invalid/x')).rejects.toThrow('redirect response rejected')
+  })
+
+  test('permits a redirect from a simulated host when allowRedirect is set', async () => {
+    const { http } = makeDispatcher()
+    http.serveHost('sim.invalid', () => new Response(null, { status: 302, headers: { location: '/next' } }), {
+      allowRedirect: true,
+    })
+
+    expect((await http.fetch('https://sim.invalid/x')).status).toBe(302)
+  })
+
+  test('records host-served traffic in the event trace', async () => {
+    const { http, events } = makeDispatcher()
+    http.serveHost('sim.invalid', () => new Response('sim'))
+    await http.fetch('https://sim.invalid/x')
+
+    expect(events.all().some((event) => event.kind === 'http.request')).toBe(true)
+    expect(events.all().some((event) => event.kind === 'http.response')).toBe(true)
+  })
+
+  test('surfaces a throwing host responder with the scenario failure prefix', async () => {
+    const { http } = makeDispatcher()
+    http.serveHost('sim.invalid', () => {
+      throw new Error('boom')
+    })
+
+    await expect(http.fetch('https://sim.invalid/x')).rejects.toThrow('HTTP responder failed')
   })
 })

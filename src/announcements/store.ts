@@ -4,12 +4,25 @@
 // See LICENSE in the project root for details.
 
 import { and, eq, isNull, ne } from 'drizzle-orm'
+import { z } from 'zod'
 
 import { getDrizzleDb } from '../db/drizzle.js'
 import { announcementDeliveries, authorizedGroups, users, versionAnnouncements } from '../db/schema.js'
+import { SUPPORTED_LOCALES, type Locale } from '../i18n/index.js'
 import { logger } from '../logger.js'
 
 const log = logger.child({ scope: 'announcements:store' })
+
+export const humanizedBodiesSchema = z.partialRecord(z.enum(SUPPORTED_LOCALES), z.string())
+
+export type HumanizedBodies = Partial<Record<Locale, string>>
+
+const SUPPORTED_LOCALE_KEYS = new Set<string>(SUPPORTED_LOCALES)
+
+/** Drop keys outside SUPPORTED_LOCALES: unknown locales are stripped, not fatal (zod records reject them). */
+function stripUnknownLocales(input: object): Record<string, unknown> {
+  return Object.fromEntries(Object.entries(input).filter(([key]) => SUPPORTED_LOCALE_KEYS.has(key)))
+}
 
 export type SubscribedUser = { platformInstanceId: string; platformUserId: string }
 export type SubscribedGroup = { groupId: string }
@@ -18,7 +31,22 @@ export type AnnouncementDraft = {
   version: string
   rawBody: string | null
   humanizedBody: string | null
+  humanizedBodies: HumanizedBodies
   broadcastAt: string | null
+}
+
+/** Parse the stored `humanized_bodies` JSON; unparseable or invalid content reads back as empty. */
+function parseHumanizedBodies(json: string | null): HumanizedBodies {
+  if (json === null) return {}
+  let raw: unknown
+  try {
+    raw = JSON.parse(json)
+  } catch {
+    return {}
+  }
+  if (typeof raw !== 'object' || raw === null) return {}
+  const result = humanizedBodiesSchema.safeParse(stripUnknownLocales(raw))
+  return result.success ? result.data : {}
 }
 
 export function getUserAnnounceSubscribed(platformInstanceId: string, platformUserId: string): boolean {
@@ -89,12 +117,26 @@ export function getAnnouncementDraft(version: string): AnnouncementDraft | null 
       version: versionAnnouncements.version,
       rawBody: versionAnnouncements.rawBody,
       humanizedBody: versionAnnouncements.humanizedBody,
+      humanizedBodies: versionAnnouncements.humanizedBodies,
       broadcastAt: versionAnnouncements.broadcastAt,
     })
     .from(versionAnnouncements)
     .where(eq(versionAnnouncements.version, version))
     .get()
-  return row ?? null
+  if (row === undefined) return null
+  const humanizedBodies = parseHumanizedBodies(row.humanizedBodies)
+  // Legacy coalescing, applied once at the single read point: a pre-080 row's
+  // `humanized_body` is the en body; a stored JSON map entry always wins.
+  if (humanizedBodies.en === undefined && row.humanizedBody !== null) {
+    humanizedBodies.en = row.humanizedBody
+  }
+  return {
+    version: row.version,
+    rawBody: row.rawBody,
+    humanizedBody: row.humanizedBody,
+    humanizedBodies,
+    broadcastAt: row.broadcastAt,
+  }
 }
 
 /** Insert the draft row once (dedup anchor). No-op if the version row already exists. */
@@ -116,13 +158,29 @@ export function upsertAnnouncementDraft(input: {
   log.info({ version: input.version }, 'announcement draft upserted')
 }
 
-export function updateHumanizedBody(version: string, body: string): void {
+/**
+ * Read-modify-write merge of per-locale bodies into `humanized_bodies` (single-process
+ * synchronous SQLite; no lost-update window). Every `en` write mirrors into the legacy
+ * `humanized_body` column. Unknown locales are stripped by the schema.
+ */
+export function updateHumanizedBodies(version: string, bodies: HumanizedBodies): void {
+  const incoming = humanizedBodiesSchema.parse(stripUnknownLocales(bodies))
+  const existing = getDrizzleDb()
+    .select({ humanizedBodies: versionAnnouncements.humanizedBodies })
+    .from(versionAnnouncements)
+    .where(eq(versionAnnouncements.version, version))
+    .get()
+  const merged: HumanizedBodies = { ...parseHumanizedBodies(existing?.humanizedBodies ?? null), ...incoming }
+  const set: { humanizedBodies: string; humanizedBody?: string } = {
+    humanizedBodies: JSON.stringify(merged),
+  }
+  if (incoming.en !== undefined) set.humanizedBody = incoming.en
   getDrizzleDb()
     .insert(versionAnnouncements)
-    .values({ version, announcedAt: new Date().toISOString(), humanizedBody: body })
-    .onConflictDoUpdate({ target: versionAnnouncements.version, set: { humanizedBody: body } })
+    .values({ version, announcedAt: new Date().toISOString(), ...set })
+    .onConflictDoUpdate({ target: versionAnnouncements.version, set })
     .run()
-  log.info({ version }, 'announcement humanized body updated')
+  log.info({ version, locales: Object.keys(incoming) }, 'announcement humanized bodies updated')
 }
 
 export function markBroadcast(version: string, atIso: string): void {

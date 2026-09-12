@@ -158,6 +158,7 @@ Verify that an implementation matches the change artifacts (specs, tasks, design
 
 - **Completeness**: Focus on objective checklist items (checkboxes, requirements list)
 - **Correctness**: Use keyword search, file path analysis, reasonable inference - don't require perfect certainty
+- **Structural search**: Prefer the `codeindex` MCP tools (`code_symbol` / `code_search` / `code_impact`) for symbol and requirement-evidence lookups in indexed roots - the Codebase Search Protocol in `CLAUDE.md` carries the full rules
 - **Coherence**: Look for glaring inconsistencies, don't nitpick style
 - **False Positives**: When uncertain, prefer SUGGESTION over WARNING, WARNING over CRITICAL
 - **Actionability**: Every issue must have a specific recommendation with file/line references where applicable

@@ -3,6 +3,7 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
+import { isDependencyDrift, isRetryFutile } from './errors.js'
 import type { MachineInput } from './phase-context.js'
 import { postAndAppend, postAnswer } from './run-post.js'
 import { renderAnswerFailure, renderFailure } from './run-report.js'
@@ -39,8 +40,28 @@ export const failRun = async (input: MachineInput, error: unknown): Promise<RunR
   const message = errorMessage(error)
   deps.log.error({ issue: state.issueId, phase: state.phase, error: message }, 'Phase handler failed')
 
-  const failed = transition(state, 'FAILED', await recordSpend(input, { lastError: message }))
-  const report = renderFailure(state.phase, message, failed, deps.config.maxAttempts, deps.config.runUrl)
+  // A drift refusal is the one failure that starts nothing: the guard fires at
+  // the branch switch, before any work, so `attempts` is carried rather than
+  // spent — the over-budget stop's doctrine, for the same reason. Spending one
+  // would let the retry gate refuse the `/retry` the drift remedy ends in, and
+  // every blind `/retry` the old footer invited would burn budget on a
+  // condition no retry can change.
+  const failed = transition(
+    state,
+    'FAILED',
+    await recordSpend(input, {
+      lastError: message,
+      ...(isDependencyDrift(error) ? { attempts: state.attempts } : {}),
+    }),
+  )
+  const report = renderFailure(
+    state.phase,
+    message,
+    failed,
+    deps.config.maxAttempts,
+    deps.config.runUrl,
+    isRetryFutile(error),
+  )
   await postAndAppend(thread, input, report, failed)
 
   // The comment above is what the workflow's fallback step would otherwise

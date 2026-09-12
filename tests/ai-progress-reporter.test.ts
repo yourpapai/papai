@@ -384,3 +384,71 @@ describe('createAiProgressReporter', () => {
     expect(textCalls[1]).toContain('```json')
   })
 })
+
+describe('progress lines per locale', () => {
+  const ruSettings: AiOutputSettings = {
+    toolVisibility: 'on',
+    reasoningVisibility: 'on',
+    detailLevel: 'sanitized',
+    liveStatus: 'off',
+  }
+
+  test('renders ru started and finished lines with localized labels', async () => {
+    const { reply, textCalls } = createMockReply()
+    const reporter = createAiProgressReporter(reply, ruSettings, 'ru')
+
+    reporter.toolStarted({ toolName: 'create_task', toolCallId: 'c1', input: { title: 'x' } })
+    await reporter.flush()
+    expect(textCalls[0]).toContain('Инструмент `create_task` запущен')
+    expect(textCalls[0]).toContain('Входные данные:')
+
+    reporter.toolFinished({
+      toolName: 'create_task',
+      toolCallId: 'c2',
+      input: { title: 'x' },
+      durationMs: 42,
+      success: true,
+      output: { id: 'T-1' },
+    })
+    await reporter.flush()
+    expect(textCalls[1]).toContain('Инструмент `create_task` — успешно за 42 мс')
+    expect(textCalls[1]).toContain('Результат:')
+  })
+
+  test('renders a ru failed finish without duration and with the error label', async () => {
+    const { reply, textCalls } = createMockReply()
+    const reporter = createAiProgressReporter(reply, ruSettings, 'ru')
+
+    reporter.toolFinished({
+      toolName: 'delete_task',
+      toolCallId: 'c3',
+      input: {},
+      durationMs: undefined,
+      success: false,
+      error: 'boom',
+    })
+    await reporter.flush()
+    expect(textCalls[0]).toContain('Инструмент `delete_task` — ошибка')
+    expect(textCalls[0]).not.toContain('мс')
+    expect(textCalls[0]).toContain('Ошибка:')
+  })
+
+  test('renders the ru hidden-reasoning notice', async () => {
+    const { reply, textCalls } = createMockReply()
+    const reporter = createAiProgressReporter(reply, ruSettings, 'ru')
+
+    reporter.reasoning('достаточно длинный текст размышлений')
+    await reporter.flush()
+    expect(textCalls[0]).toContain('Reasoning провайдера доступен (36 символов). Включите raw-режим')
+  })
+
+  test('defaults to en rendering when no locale is given', async () => {
+    const { reply, textCalls } = createMockReply()
+    const reporter = createAiProgressReporter(reply, ruSettings)
+
+    reporter.toolStarted({ toolName: 'create_task', toolCallId: 'c4', input: {} })
+    await reporter.flush()
+    expect(textCalls[0]).toContain('Tool `create_task` started')
+    expect(textCalls[0]).toContain('Input:')
+  })
+})

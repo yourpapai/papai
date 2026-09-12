@@ -23,18 +23,21 @@ export interface HeartbeatOptions {
   /** Injected so a test does not spend real minutes proving this ticks. */
   schedule?: (tick: () => void, everyMs: number) => { cancel: () => void }
   /**
-   * A second reader of the same tick, when one is wired.
+   * A second reader of the same tick, when one is wired — the stall bound.
    *
-   * The heartbeat already knows everything a live status surface wants to say
-   * and, until now, said it only into a log nobody has a link to. Routing the
-   * snapshot rather than duplicating the timer keeps one clock in the pipeline,
-   * and keeps the two readers from ever disagreeing about what a turn has done.
+   * The heartbeat owns the only clock a running turn has, and the stall
+   * watcher needs exactly that cadence: a health question asked while the
+   * turn is outstanding, on a timer that already exists. Routing a reader
+   * rather than duplicating the timer keeps one clock in the pipeline and
+   * keeps the two readers from ever disagreeing about what a turn has done.
    *
-   * The log half is unchanged and stays first: a reader that throws or hangs
-   * must not cost the line that was already being written. Nothing here awaits
-   * it either — the heartbeat's job is to fire on time, not to wait for whatever
-   * the tick is being reported to.
+   * The log half stays **first and unconditional**: the reader exists to stop
+   * the turn, and the line saying the job was not stuck is the one thing the
+   * tick already owed a CI reader. Nothing here awaits the reader either —
+   * the heartbeat's job is to fire on time, not to wait for whatever the
+   * tick is being reported to.
    */
+  reader?: () => void
 }
 
 const realSchedule = (tick: () => void, everyMs: number): { cancel: () => void } => {
@@ -71,6 +74,10 @@ export const withHeartbeat = async <T>(work: Promise<T>, options: HeartbeatOptio
       { elapsedMs: Date.now() - started, ...options.snapshot() },
       'Still waiting on the model; the job is not stuck',
     )
+    // Second, and never instead of the line above: the reader may reject the
+    // turn this tick belongs to, and the line is the one thing the tick owed a
+    // CI reader regardless of what the stall watcher concludes.
+    options.reader?.()
   }, options.everyMs)
 
   try {

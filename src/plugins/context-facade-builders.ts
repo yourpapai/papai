@@ -68,6 +68,7 @@ export function buildManifestProviderRuntime(
     deps,
     buildDynamicHosts(manifest),
     buildContextDynamicHosts(manifest),
+    manifest.providerAllowedInstanceHostsFromConfig ?? [],
   )
 }
 

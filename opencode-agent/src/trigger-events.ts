@@ -6,6 +6,8 @@
 import { z } from 'zod'
 
 import { issueNumberFromBranch } from './git.js'
+import { parsePrMergedEvent } from './pr-merged-event.js'
+import type { PrMergedTriggerEvent } from './pr-merged-event.js'
 import type { PendingPullRequestEvent, PullRequestTriggerEvent } from './pr-trigger.js'
 
 /**
@@ -64,6 +66,15 @@ export interface CiTriggerEvent {
   workflowName: string
   runUrl: string
   /**
+   * Id of the workflow run that went red, beside {@link runUrl}.
+   *
+   * The URL is what reports render; the id is what the Actions API is
+   * addressed by. Recovering an id by parsing the URL is the scraping the
+   * no-scraping rule forbids, and a hand-rolled parse of GitHub's URL shapes
+   * would be a second source of truth for one number.
+   */
+  runId: number
+  /**
    * Whether the run that went red was on a branch of **this** repository.
    *
    * `head_branch` is attacker-controlled: a fork's branch name reaches this
@@ -78,18 +89,11 @@ export interface CiTriggerEvent {
 
 /**
  * A merged PR on an agent branch — the archive door (D7). A system event (no
- * sender): `pull_request.closed(merged)` runs `ARCHIVE`. Fully parsed from the
- * payload, since `head.ref` rides on a `pull_request` webhook.
+ * sender): `pull_request.closed(merged)` runs `ARCHIVE`. The parse lives in
+ * `pr-merged-event.ts`, split from here along the one-door-one-module seam
+ * `pr-trigger.ts` cut.
  */
-export interface PrMergedTriggerEvent {
-  kind: 'pr-merged'
-  eventName: string
-  prNumber: number
-  issueNumber: number
-  baseBranch: string
-  fromThisRepository: boolean
-  defaultBranch: string | null
-}
+export type { PrMergedTriggerEvent } from './pr-merged-event.js'
 
 export type TriggerEvent = IssueTriggerEvent | CiTriggerEvent | PullRequestTriggerEvent | PrMergedTriggerEvent
 
@@ -131,6 +135,7 @@ const ciPayloadSchema = z.object({
     head_branch: z.string().nullable().default(null),
     conclusion: z.string().nullable().default(null),
     html_url: z.string().default(''),
+    id: z.number().int().positive(),
     // Absent on a payload shape that predates this check, and absent is not
     // trusted: `fromThisRepository` below resolves it to `false`.
     head_repository: z.object({ full_name: z.string().default('') }).optional(),
@@ -206,6 +211,7 @@ const parseCiEvent = (eventName: string, payload: unknown): CiTriggerEvent | nul
     conclusion: run.conclusion ?? 'unknown',
     workflowName: run.name,
     runUrl: run.html_url,
+    runId: run.id,
     // Compared, never defaulted to true: two absent names would otherwise be
     // "equal" and wave through the very payload this exists to catch.
     fromThisRepository:
@@ -263,37 +269,3 @@ export const parseTriggerEvent = (eventName: string, payload: unknown): ParsedTr
 const parseIssueOrPullRequest = (eventName: string, payload: unknown): ParsedTrigger | null =>
   (eventName === 'issue_comment' ? parsePullRequestEvent(eventName, payload) : null) ??
   parseIssueEvent(eventName, payload)
-
-const prMergedSchema = z.object({
-  action: z.literal('closed'),
-  pull_request: z.object({
-    merged: z.literal(true),
-    number: z.number().int().positive(),
-    head: z.object({
-      ref: z.string().min(1),
-      repo: z.object({ full_name: z.string().default('') }).optional(),
-    }),
-    base: z.object({ ref: z.string().min(1) }),
-  }),
-  repository: z.object({ full_name: z.string().default(''), default_branch: z.string().min(1).optional() }).optional(),
-})
-
-/** `pull_request.closed(merged)` on an agent branch — the archive door (D7). */
-const parsePrMergedEvent = (eventName: string, payload: unknown): PrMergedTriggerEvent | null => {
-  const parsed = prMergedSchema.safeParse(payload)
-  if (!parsed.success) return null
-  const { pull_request: pr, repository } = parsed.data
-  const issueNumber = issueNumberFromBranch(pr.head.ref)
-  if (issueNumber === null) return null
-  const headFullName = pr.head.repo?.full_name ?? ''
-  const repoFullName = repository?.full_name ?? ''
-  return {
-    kind: 'pr-merged',
-    eventName,
-    prNumber: pr.number,
-    issueNumber,
-    baseBranch: pr.base.ref,
-    fromThisRepository: headFullName.length > 0 && headFullName === repoFullName,
-    defaultBranch: repository?.default_branch ?? null,
-  }
-}

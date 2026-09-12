@@ -5,6 +5,12 @@
 
 import { describe, expect, mock, test } from 'bun:test'
 
+import { blockGitBranchCreate } from '../.hooks/git/checks/block-git-branch-create.mjs'
+import { blockGitCheckout } from '../.hooks/git/checks/block-git-checkout.mjs'
+import { blockGitReset } from '../.hooks/git/checks/block-git-reset.mjs'
+import { blockGitRm } from '../.hooks/git/checks/block-git-rm.mjs'
+import { blockGitSwitch } from '../.hooks/git/checks/block-git-switch.mjs'
+
 const checkFullCalls: Array<{ ctx: { cwd: string; session_id: string }; skipTests: boolean | undefined }> = []
 const sessionStateById = new Map<string, { needsRecheck: boolean }>()
 
@@ -139,5 +145,87 @@ describe('TddEnforcement', () => {
         skipTests: true,
       },
     ])
+  })
+})
+
+/**
+ * The widened agent git-verb blocklist (walk-robustness F-P4): history- and
+ * structure-mutating verbs join stash/discard — blunt textual matching in the
+ * per-verb check-module style, each refusal naming its verb. The modules are
+ * imported real (only the two pre-existing checks are mocked above).
+ */
+describe('agent git-verb guard — widened blocklist (walk-robustness F-P4)', () => {
+  const bashCtx = (command: string): { tool_name: string; tool_input: Record<string, unknown> } => ({
+    tool_name: 'bash',
+    tool_input: { command },
+  })
+
+  test('git reset is refused in every mode, naming the verb', () => {
+    for (const command of ['git reset --hard HEAD~1', 'git reset', 'echo x && git reset --soft origin/main']) {
+      const result = blockGitReset(bashCtx(command))
+      expect(result).toMatchObject({ decision: 'block' })
+      expect(result?.reason).toContain('git reset')
+    }
+  })
+
+  test('git rm is refused, naming the verb', () => {
+    const result = blockGitRm(bashCtx('git rm -f src/one.ts'))
+    expect(result).toMatchObject({ decision: 'block' })
+    expect(result?.reason).toContain('git rm')
+  })
+
+  test('git switch is refused in every form, naming the verb', () => {
+    for (const command of ['git switch agent/issue-42', 'git switch -c tmp/detour', 'git switch --detach']) {
+      const result = blockGitSwitch(bashCtx(command))
+      expect(result).toMatchObject({ decision: 'block' })
+      expect(result?.reason).toContain('git switch')
+    }
+  })
+
+  test('git checkout is refused in every form — the discard-only scope is subsumed', () => {
+    for (const command of ['git checkout main', 'git checkout -- src/one.ts', 'git checkout -b tmp/detour']) {
+      const result = blockGitCheckout(bashCtx(command))
+      expect(result).toMatchObject({ decision: 'block' })
+      expect(result?.reason).toContain('git checkout')
+    }
+  })
+
+  test('git branch creation is refused, naming branch creation', () => {
+    const result = blockGitBranchCreate(bashCtx('git branch agent/issue-42'))
+    expect(result).toMatchObject({ decision: 'block' })
+    expect(result?.reason).toContain('branch')
+  })
+
+  test('flagged git branch forms stay allowed — listing, deletion, rename, and bare listing', () => {
+    for (const command of [
+      'git branch --show-current',
+      'git branch -a',
+      'git branch --list',
+      'git branch -d tmp/detour',
+      'git branch -D tmp/detour',
+      'git branch -m old new',
+      'git branch',
+    ]) {
+      expect(blockGitBranchCreate(bashCtx(command))).toBeNull()
+    }
+  })
+
+  test('commands without the blocked verbs pass every new check', () => {
+    for (const command of ['git log --oneline', 'git status --porcelain', 'bun test tests/one.test.ts']) {
+      expect(blockGitReset(bashCtx(command))).toBeNull()
+      expect(blockGitRm(bashCtx(command))).toBeNull()
+      expect(blockGitSwitch(bashCtx(command))).toBeNull()
+      expect(blockGitCheckout(bashCtx(command))).toBeNull()
+      expect(blockGitBranchCreate(bashCtx(command))).toBeNull()
+    }
+  })
+
+  test('a non-bash tool never trips the guard', () => {
+    const ctx = { tool_name: 'Write', tool_input: { command: 'git reset --hard' } }
+    expect(blockGitReset(ctx)).toBeNull()
+    expect(blockGitRm(ctx)).toBeNull()
+    expect(blockGitSwitch(ctx)).toBeNull()
+    expect(blockGitCheckout(ctx)).toBeNull()
+    expect(blockGitBranchCreate(ctx)).toBeNull()
   })
 })

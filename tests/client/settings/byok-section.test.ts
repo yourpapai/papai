@@ -9,7 +9,7 @@ import { flushSync, mount, unmount } from 'svelte'
 
 import { setCsrfToken } from '../../../client/settings/fetchers.js'
 import ByokSection from '../../../client/settings/sections/ByokSection.svelte'
-import { restoreFetch, setMockFetch } from '../../utils/test-helpers.js'
+import { restoreFetch, setMockFetch, waitFor } from '../../utils/test-helpers.js'
 
 const json = (payload: unknown, status = 200): Response =>
   new Response(JSON.stringify(payload), { status, headers: { 'Content-Type': 'application/json' } })
@@ -17,6 +17,22 @@ const json = (payload: unknown, status = 200): Response =>
 const drain = async (): Promise<void> => {
   for (let i = 0; i < 10; i++) await Promise.resolve()
   flushSync()
+}
+
+const metadataHitPayload = {
+  providerId: 'openai',
+  modelId: 'gpt-4o',
+  contextWindow: 128_000,
+  maxOutputTokens: 16_384,
+  source: 'models-dev',
+  via: 'inferred',
+  snapshotFetchedAt: 1_700_000_000_000,
+}
+
+const setInput = (testid: string, value: string): void => {
+  const input = document.querySelector<HTMLInputElement>(`[data-testid="${testid}"]`)!
+  input.value = value
+  input.dispatchEvent(new Event('input', { bubbles: true }))
 }
 
 const disabledPayload = {
@@ -88,6 +104,13 @@ const byokMock =
       return Promise.resolve(json({ ok: true }))
     }
     return Promise.resolve(json(state.current))
+  }
+
+const routeByokWithMetadata =
+  (state: MockState) =>
+  (url: string, init?: RequestInit): Promise<Response> => {
+    if (url.includes('/settings/api/llm-model-metadata')) return Promise.resolve(json(metadataHitPayload))
+    return byokMock(state)(url, init)
   }
 
 let target: HTMLElement
@@ -253,6 +276,42 @@ describe('ByokSection', () => {
     expect(raw).toContain('"action":"upsert-provider"')
     expect(raw).toContain('"label":"My provider"')
     expect(raw).toContain('"apiKey":"sk-test"')
+  })
+
+  test('the provider form sends declared base references', async () => {
+    setCsrfToken('c')
+    const state: MockState = {
+      current: enabledWithProviderPayload,
+      afterPatch: enabledWithProviderPayload,
+      patchBodies: [],
+    }
+    setMockFetch(routeByokWithMetadata(state))
+    mountSection()
+    await drain()
+
+    target.querySelector<HTMLButtonElement>('[data-testid="byok-add-provider"]')!.click()
+    await drain()
+
+    expect(target.querySelector('[data-testid="byok-provider-form-base-provider"]')).not.toBeNull()
+    setInput('byok-provider-form-label', 'My provider')
+    setInput('byok-provider-form-api-key', 'sk-test')
+    setInput('byok-provider-form-base-provider', 'openai')
+    setInput('byok-provider-form-base-model', 'gpt-4o')
+    flushSync()
+
+    await waitFor(() => {
+      flushSync()
+      return document.querySelector('[data-testid="byok-provider-form"] [data-testid="model-metadata-hint"]') !== null
+    })
+
+    target.querySelector<HTMLButtonElement>('[data-testid="byok-provider-form-save"]')!.click()
+    await drain()
+    await drain()
+
+    expect(state.patchBodies.length).toBe(1)
+    const raw = state.patchBodies[0]!
+    expect(raw).toContain('"baseProvider":"openai"')
+    expect(raw).toContain('"baseModel":"gpt-4o"')
   })
 
   test('shows a distinct unreadable state with a danger pill', async () => {

@@ -2,13 +2,61 @@
 
 ## Purpose
 
-`review-loop/` is a standalone Bun workspace for the shell-invoked autonomous code-review loop runner. It spawns reviewer and fixer `opencode run` agent subprocesses via shell calls with file-based JSON exchange, collects reviewer issues into a durable ledger, and drives multi-round verify/fix cycles. It is local developer tooling, not a papai runtime dependency.
+`review-loop/` is a standalone Bun workspace for the shell-invoked autonomous code-review loop runner. It spawns reviewer and fixer agent subprocesses via shell calls with file-based JSON exchange, collects reviewer issues into a durable ledger, and drives multi-round verify/fix cycles. It is local developer tooling, not a papai runtime dependency.
 
-Agent subprocess guards live in `src/spawn.ts` + `src/agent-runner.ts`: besides the wall-clock `timeout`, an optional `inactivityTimeoutMs` watchdog kills a child that produces no stdout (hung LLM stream) and reports `stalled: true`; `runAgent` retries a stall once but never retries a wall-clock timeout. Callers opt in by passing `inactivityTimeoutMs` through `RunAgentOptions` (mutation-improve wires it from `agent.inactivityTimeoutMs`; review-loop's own config does not yet).
+## Agent Backend Selection
+
+One run-wide knob selects which CLI serves every agent role. The `backend` field
+lives **inside the per-role agent blocks** (`reviewer`/`fixer`/`matcher`/`inspector`)
+with values `"opencode"` (the default) and `"claude"` — there is no top-level key,
+and a top-level spelling is silently stripped by config parsing. Each role may
+omit the field; every role that names it must agree, or config validation fails
+naming "one backend per run". The default `opencode` route is byte-identical to
+the pre-knob loop: no `claude` process spawns and no Anthropic credential is read.
+
+The `claude` route shells out to the official Claude Code CLI instead of
+`opencode run`:
+
+- **Credentials select the profile.** Exactly one of `ANTHROPIC_API_KEY`
+  (→ the bare profile, `--bare`) or `CLAUDE_CODE_OAUTH_TOKEN` (→ the native
+  profile with the neutralization flags) must be set — both or neither refuse
+  before any spend, as does a set `LLM_API_KEY`. A present-but-empty value
+  reads as unset, because CI forwards unset secrets as `''`.
+- **CLI state is run-scoped.** Each spawn gets its own `CLAUDE_CONFIG_DIR`
+  under an OS-tmp parent created at run start and removed at teardown — never
+  inside a worktree, so no loop commit can stage it.
+- **One model knob serves either backend**: a `provider/model` spelling keeps
+  its model id.
+- **Usage accounting is unchanged** — token/cost totals, live lines and
+  `metrics.json` carry the same fields, counted once per turn from the claude
+  `result` line.
+
+Operator trade-offs on the claude route: analysis roles (reviewer, matcher,
+inspector) get **no `Bash`** — the prompts direct `git diff`/`rg` calls those
+roles cannot run, so each turn eats refused calls (recorded refusal shape, no
+tool effect); turns killed before their `result` line are invisible to usage
+totals (under-count, same as the parent route); there is no retry layer beyond
+the loop's standing retry-once-on-stall; the OAuth spelling bills against
+five-hour subscription windows and a quota exhausted mid-run is an ordinary
+turn failure. The credential is readable by the fixer's `Bash` children (the
+accepted fixer residual); the loop scrubs it from its own logs and captures.
+
+**Install the pinned CLI** — `@anthropic-ai/claude-code@2.1.251`, the version
+the fixture corpus and the allowlist doctrine were recorded against. A drifted
+CLI presents as the missing-`result`-line attempt failure (every NDJSON line
+unrecognized); an absent binary presents as `spawn claude ENOENT` — retried
+once per the standing policy, then an `AgentRunError` naming the label. Both
+mean "install the pinned CLI", not a PATH problem.
+
+## Agent subprocess guards
+
+Agent subprocess guards live in `src/spawn.ts` + `src/agent-runner.ts`: besides the wall-clock `timeout`, an optional `inactivityTimeoutMs` watchdog kills a child that produces no stdout (hung LLM stream) and reports `stalled: true`; `runAgent` retries a stall once but never retries a wall-clock timeout. The stall retry continues the killed attempt's session when its line handler captured an id — the re-spawn carries the backend-mapped continuation flag (`--session <id>` opencode, `--resume <id>` claude, composed in `buildAgentCommand`) instead of minting a fresh session, and re-sends the same prompt into it; with no captured id the retry argv is byte-identical to the pre-change fresh re-spawn (escalation-retry-session-continuation D4, unconditional for every consumer). Callers opt in by passing `inactivityTimeoutMs` through `RunAgentOptions` (mutation-improve wires it from `agent.inactivityTimeoutMs`; review-loop's own config does not yet).
 
 A run has a **soft stop** of its own (`src/stop-controller.ts`): `runTimeoutMs`
 (config, `0` = no budget) and `SIGINT`/`SIGTERM` both ask the loop to stop, and it
-honours that between two issues and between two rounds — the boundaries where the
+honours that between two issues — between two batches under `batchVerify`, which
+also asks `remainingMs()` before each batch starts so a cluster the budget cannot
+fit is deferred instead — and between two rounds: the boundaries where the
 fix in hand is committed, build-checked, merged and, under `mergeEachFix`,
 published. A stopped run writes its artifacts, **skips `finalizeRun`** (a
 multi-minute build gate whose only possible outcome, on a run out of time, is to
@@ -35,7 +83,7 @@ primary lock and never throws; `finalizeRun` still does the final merge.
 
 ## Fix instruction contract
 
-Three rules the fix prompts carry, all of them shaping the fix at generation time rather than
+Four rules the fix prompts carry, all of them shaping the fix at generation time rather than
 gating it afterwards — a gate rejects only once the fixer's 5–21 minutes and the build check are
 already spent.
 
@@ -60,6 +108,30 @@ afterwards does not count.
 documentation: name the file and report the gap in `reasoning` instead. The loop cannot keep
 prose true — no actor sees two fixes, and the terminal round's fixes are never reviewed — so a
 paragraph one fix writes and a later fix invalidates ships confidently wrong.
+
+**Protected paths** (`PROTECTED_PATHS_RULE`) forbids creating or editing a file under
+`.github/workflows/` — a push from the pipeline's token cannot carry one, and the refusal
+discards the whole commit — and lands the "say what a maintainer should apply by hand" half on
+the fixer's result schema: a fix that genuinely requires such an edit is verdict `needs_human`
+with the exact change described in `reasoning`, editing nothing. All three fix prompts carry it,
+retries included, for the same reason the ladder is. The reviewer prompt carries the reporting
+half: a workflow-fix finding describes the change in `suggestedFix` for manual application —
+self-contained, the exact replacement text or a copy-pasteable patch, because it may be the
+only record of the change that survives the run. The defect is real, it just does not route to
+an edit that can never be pushed. Run 32992114904 (issue #360) is the cost of the gap: the
+fixer edited `.github/workflows/ci.yml`, the push guard reverted it, and the run died on a push
+GitHub refused whole. And PR #362's `#35d7c517` is the cost of the _reporting_ gap the loop
+has since closed: a needs-human finding reached the maintainer as a title line while the exact
+change sat in a `ledger.json` that dies with the runner — so the run summary now renders the
+suggested fix and the fixer's reasoning under each needs-human line, bounded, with a ledger
+pointer when neither exists.
+
+Like the ladder, that constant is **duplicated across the workspace boundary and pinned**:
+`opencode-agent`'s `protected-paths.ts` owns the text, this workspace's copy carries it verbatim
+plus the one fixer-only mapping line (a fixer has no reply, it has a JSON result), and
+`tests/opencode-agent/protected-paths-rule.test.ts` asserts the containment. The inspect prompts
+carry nothing — they judge diffs and write nothing. The prompts are the courtesy; the mechanism
+is the push guard in the opencode-agent phase that reverts what they could not prevent.
 
 The orchestrator records one advisory boolean per accepted fix: did its diff touch a test path
 (`measureCheckBehind`, `commit-attempt.ts`). It gates nothing and touches no retry budget; it
@@ -142,13 +214,19 @@ measures whether its two actors agree instead of pretending to check them.
 - `createWorktree` runs `bun install` in the fresh worktree (skipped when no `package.json`): worktrees live under the main checkout so most deps resolve by walking up to its root `node_modules`, but non-hoisted workspace deps (e.g. opencode-agent's `@octokit/rest`) do not, and the build gate fails on TS2307/import errors without the install.
 - Per-run state lives at `<workDir>/runs/<runId>/state.json` (see `src/run-state.ts`).
 - Progress logs and transcripts land alongside the run state (see `src/progress-log.ts`).
-- `config.example.json` at the workspace root documents the expected config shape; real configs are loaded from the path passed via `--config` (defaults to `.review-loop/config.json`). The optional top-level `pricing` map (USD per 1M tokens, glob-matched against the agent model) enables estimated-cost display.
+- `config.example.json` at the workspace root documents the expected config shape; real configs are loaded from the path passed via `--config` (defaults to `.review-loop/config.json`). The optional top-level `pricing` map (USD per 1M tokens, glob-matched against the agent model) enables estimated-cost display; entries take optional `cacheRead`/`cacheWrite` rates, and cached tokens contribute 0 to estimates when a rate is unpublished.
 
 ## Run Stats
 
 `src/run-stats.ts` (pure aggregate), `src/cost.ts` (pricing lookup), and `src/diff-stats.ts` (git numstat at worker merges) feed the `LiveRenderer` footer's aggregate segments (total tokens, `~$ est`, tool calls, `+a/-r`) and the final summary's `Stats:` line. Aggregates persist to `metrics.json` (`runStats` block) and rehydrate on `--resume-run`; stats accumulation is independent of the EPIPE downgrade, and segments are hidden when zero/unpriced.
 
+Cached-token accounting: opencode's `step_finish` reports `tokens.input` as **uncached input only**, with cache hits in a sibling `tokens.cache: { read, write }` object. The event parser surfaces `cacheRead`/`cacheWrite`, and usage flows track them as separate counters (`cachedReadTokens`/`cachedWriteTokens`) — never folded into `inputTokens`, which everywhere means uncached. Live lines, the footer, and summaries render `in X · cached Y / out Z` (reads only; hidden when zero); `metrics.json` and `events.ndjson` carry both counters additively, so pre-change artifacts replay/rehydrate with cache 0.
+
 The `LiveRenderer` folds all agent progress into one live line per slot key; `commit(key, line?)` freezes a slot as a permanent scrolled line (line-handler commits on agent dispose unless `commitOnDispose: false`). Non-TTY output prints only `event()`/`commit()` lines — `slot()`/`live()` updates are suppressed.
+
+The line handler also forwards stage-agent todo snapshots through the optional `ProgressReporter.todos?` hook (`src/todo-capture.ts`): opencode `todowrite` and claude `TodoWrite` `tool_use` parts are normalized at the decoder boundary to `{content, status}` items — backend-internal fields (`priority`, `activeForm`) dropped, `todoread` and unknown tools silent — so consumers decide what becomes a run fact. afk-runner's agent reporter maps it to `agent_todos` L0 telemetry; the other optional-hook consumers (review-loop's own renderer, mutation-improve) ignore it and are unchanged.
+
+The line handler also forwards stage-agent todo snapshots through the optional `ProgressReporter.todos?` hook (`src/todo-capture.ts`): opencode `todowrite` and claude `TodoWrite` `tool_use` parts are normalized at the decoder boundary to `{content, status}` items — backend-internal fields (`priority`, `activeForm`) dropped, `todoread` and unknown tools silent — so consumers decide what becomes a run fact. afk-runner's agent reporter maps it to `agent_todos` L0 telemetry; the other optional-hook consumers (review-loop's own renderer, mutation-improve) ignore it and are unchanged.
 
 ## Scripts
 
@@ -167,6 +245,10 @@ change's task list: `--plan openspec/changes/<name>/tasks.md`.
 ## TDD Hooks
 
 The repo TDD resolver treats `review-loop/src/**` as gateable implementation code and maps it to `tests/review-loop/**`. New review-loop work must follow the same test-first flow used under `src/` and other repo-owned implementation paths.
+
+## Batch Verification
+
+When `batchVerify: true` (`config.ts`, default `false`), the reviewer may coalesce same-class findings into one theme issue with `spans: {file,lineStart,lineEnd,evidence}[]` (`issue-schema.ts`, `prompt-templates.ts` coalescence rule). `clusterRecords` (`issue-clustering.ts`) groups flat pending issues by kind + title n-gram, preserving kind-first order. `processPendingIssues` dispatches one fixer per cluster sequentially (still `poolSize=1`), with no per-issue or per-batch `build`/`inspect`. After all batches, the round runs **one `build` (`runAggregatedBuild`) and one `inspector` (`runAggregatedInspector`)** over the aggregated working-tree diff (`git add -N .; git diff baselineSha`). Build/inspect failures attribute via claimed files (issue `spans` + fixer `targetFiles` vs build output + `git diff --name-only`); ambiguous failures mark all batched members `needs_human`. Surviving members are committed per batch (`fix(review-loop): <title> (+N)`) and the stacked commits are published by **one** `mergeWorkerIntoPrimary` — never a failing fix; a surviving member whose files a decided member also claims is held back for split retry, because `git add` stages the file's current content, rejected edits included. A cluster is deferred before its fixer starts (`shouldDeferBatch`, `batch-defer.ts`) when the run budget no longer fits the median batch duration: `low`/`cleanup` first, `medium` at half that margin, `critical`/`high`/caller-exposed defects never; deferred records stay `discovered` and are counted in the summary's `Deferred:` line. This is the deferred-verification counterpart to ADR-0303's per-issue gate — see `design.md` D2–D5.
 
 ## Dependencies
 

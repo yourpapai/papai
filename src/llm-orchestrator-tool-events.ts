@@ -127,7 +127,7 @@ export const buildToolCallStartHandler =
 // the debug/progress plumbing.
 type ToolExecutionEndArg = Parameters<NonNullable<Parameters<typeof generateText>[0]['onToolExecutionEnd']>>[0]
 
-const adaptToolExecutionEnd = (event: ToolExecutionEndArg): ToolCallFinishEvent => {
+export const adaptToolExecutionEnd = (event: ToolExecutionEndArg): ToolCallFinishEvent => {
   const success = event.toolOutput.type === 'tool-result'
   return {
     toolCall: {
@@ -225,7 +225,7 @@ export const handleToolCallFinishEvent = (ctx: ToolCallContext, event: ToolCallF
       toolName: event.toolCall.toolName,
       toolCallId: event.toolCall.toolCallId,
       success: event.success,
-      durationMs: event.durationMs,
+      durationMs: Math.max(0, Math.round(event.durationMs)),
       argsBytes: safeByteLength(event.toolCall.input),
       resultBytes: event.success ? safeByteLength(event.output) : null,
       ...contextEnvelope(ctx),
@@ -239,7 +239,7 @@ export const handleToolCallFinishEvent = (ctx: ToolCallContext, event: ToolCallF
   }
   reportToolFinished(ctx, event)
   ctx.liveStatus?.onToolFinish()
-  handleToolCallFinish(ctx.contextId, undefined, event)
+  handleToolCallFinish(ctx.contextId, undefined, { ...event, turnId: ctx.turnId })
 }
 
 export const buildToolCallFinishHandler =

@@ -17,6 +17,7 @@ import {
   createMockChatWithCommandHandlers,
   createMockReply,
   mockLogger,
+  setupTestDb,
 } from '../utils/test-helpers.js'
 
 describe('/dashboard command', () => {
@@ -24,8 +25,9 @@ describe('/dashboard command', () => {
   let lastHandler: CommandHandler | null = null
   const { provider: mockChat, commandHandlers } = createMockChatWithCommandHandlers()
 
-  beforeEach(() => {
+  beforeEach(async () => {
     mockLogger()
+    await setupTestDb()
     db = new Database(':memory:')
     migration047DashboardSessions.up(db)
     setStoreDb(db)

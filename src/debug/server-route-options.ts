@@ -28,6 +28,7 @@ export type WebServerRouteOptions = Readonly<{
 
 export type WebServerStartOptions = Readonly<{
   debugEnabled?: boolean
+  /** No longer affects the log buffer — the buffer stream attaches at logger module load. */
   logLevel?: string
   pluginProviderRuntimeDeps?: ProviderRuntimeDeps
 }>

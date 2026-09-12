@@ -3,14 +3,21 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
+import { t } from '../i18n/index.js'
+import type { DictionaryKey, Locale } from '../i18n/index.js'
+
+/** Dictionary key of a live-status tool label. */
+type LiveStatusToolKey = Extract<DictionaryKey, `liveStatus.tools.${string}`>
+
 /**
  * A status entry for a tool. The optional `arg` extractor is the allowlist: only the
  * single field it reads is ever surfaced. `quote: false` renders the value bare
- * (used for hosts); otherwise it is wrapped in quotes.
+ * (used for hosts); otherwise it is wrapped in quotes. The label itself is resolved
+ * from the i18n catalog via `key`.
  */
 type ToolStatusEntry = {
   emoji: string
-  label: string
+  key: LiveStatusToolKey
   quote?: boolean
   arg?: (input: unknown) => string | undefined
 }
@@ -51,38 +58,58 @@ const sanitizeArg = (value: string): string => {
 }
 
 const REGISTRY: Record<string, ToolStatusEntry> = {
-  web_fetch: { emoji: '🌐', label: 'Fetching', quote: false, arg: hostOf },
-  fetch_chat_link: { emoji: '🔗', label: 'Reading link', quote: false, arg: hostOf },
-  search_memory: { emoji: '🔍', label: 'Searching memory', arg: (i) => getStringField(i, ['query']) },
-  list_memory: { emoji: '🧠', label: 'Recalling memory' },
-  remember_memory: { emoji: '🧠', label: 'Saving a memory' },
-  search_memos: { emoji: '🔍', label: 'Searching memos', arg: (i) => getStringField(i, ['query']) },
-  save_memo: { emoji: '📌', label: 'Saving a memo' },
-  list_memos: { emoji: '📒', label: 'Listing memos' },
-  create_task: { emoji: '📝', label: 'Creating task', arg: (i) => getStringField(i, ['title', 'name']) },
-  update_task: { emoji: '✏️', label: 'Updating task' },
-  delete_task: { emoji: '🗑️', label: 'Deleting task' },
-  get_task: { emoji: '📄', label: 'Reading task' },
-  list_tasks: { emoji: '📋', label: 'Listing tasks' },
-  search_tasks: { emoji: '🔍', label: 'Searching tasks', arg: (i) => getStringField(i, ['query', 'text']) },
-  count_tasks: { emoji: '🔢', label: 'Counting tasks' },
-  add_comment: { emoji: '💬', label: 'Adding a comment' },
-  create_project: { emoji: '📁', label: 'Creating project', arg: (i) => getStringField(i, ['name', 'title']) },
-  list_projects: { emoji: '📁', label: 'Listing projects' },
-  list_files: { emoji: '📎', label: 'Listing files' },
-  search_staged_files: { emoji: '📎', label: 'Searching files', arg: (i) => getStringField(i, ['query']) },
-  upload_attachment: { emoji: '📤', label: 'Attaching a file' },
-  resolve_staged_file: { emoji: '📎', label: 'Attaching a file' },
-  create_recurring_task: { emoji: '🔁', label: 'Scheduling a recurring task' },
-  create_reminder: { emoji: '⏰', label: 'Setting up a reminder', arg: (i) => getStringField(i, ['prompt']) },
-  create_alert: { emoji: '🔔', label: 'Setting up an alert', arg: (i) => getStringField(i, ['prompt']) },
-  list_reminders: { emoji: '📋', label: 'Listing reminders and alerts' },
-  get_reminder: { emoji: '📄', label: 'Reading reminder details' },
-  update_reminder: { emoji: '✏️', label: 'Updating reminder' },
-  cancel_reminder: { emoji: '🗑️', label: 'Cancelling reminder' },
-  lookup_group_history: { emoji: '🕘', label: 'Checking history' },
-  find_user: { emoji: '👤', label: 'Looking up a user' },
-  get_current_time: { emoji: '🕒', label: 'Checking the time' },
+  web_fetch: { emoji: '🌐', key: 'liveStatus.tools.web_fetch', quote: false, arg: hostOf },
+  fetch_chat_link: { emoji: '🔗', key: 'liveStatus.tools.fetch_chat_link', quote: false, arg: hostOf },
+  search_memory: { emoji: '🔍', key: 'liveStatus.tools.search_memory', arg: (i) => getStringField(i, ['query']) },
+  list_memory: { emoji: '🧠', key: 'liveStatus.tools.list_memory' },
+  remember_memory: { emoji: '🧠', key: 'liveStatus.tools.remember_memory' },
+  search_memos: { emoji: '🔍', key: 'liveStatus.tools.search_memos', arg: (i) => getStringField(i, ['query']) },
+  save_memo: { emoji: '📌', key: 'liveStatus.tools.save_memo' },
+  list_memos: { emoji: '📒', key: 'liveStatus.tools.list_memos' },
+  create_task: {
+    emoji: '📝',
+    key: 'liveStatus.tools.create_task',
+    arg: (i) => getStringField(i, ['title', 'name']),
+  },
+  update_task: { emoji: '✏️', key: 'liveStatus.tools.update_task' },
+  delete_task: { emoji: '🗑️', key: 'liveStatus.tools.delete_task' },
+  get_task: { emoji: '📄', key: 'liveStatus.tools.get_task' },
+  list_tasks: { emoji: '📋', key: 'liveStatus.tools.list_tasks' },
+  search_tasks: {
+    emoji: '🔍',
+    key: 'liveStatus.tools.search_tasks',
+    arg: (i) => getStringField(i, ['query', 'text']),
+  },
+  count_tasks: { emoji: '🔢', key: 'liveStatus.tools.count_tasks' },
+  add_comment: { emoji: '💬', key: 'liveStatus.tools.add_comment' },
+  create_project: {
+    emoji: '📁',
+    key: 'liveStatus.tools.create_project',
+    arg: (i) => getStringField(i, ['name', 'title']),
+  },
+  list_projects: { emoji: '📁', key: 'liveStatus.tools.list_projects' },
+  list_files: { emoji: '📎', key: 'liveStatus.tools.list_files' },
+  search_staged_files: {
+    emoji: '📎',
+    key: 'liveStatus.tools.search_staged_files',
+    arg: (i) => getStringField(i, ['query']),
+  },
+  upload_attachment: { emoji: '📤', key: 'liveStatus.tools.upload_attachment' },
+  resolve_staged_file: { emoji: '📎', key: 'liveStatus.tools.resolve_staged_file' },
+  create_recurring_task: { emoji: '🔁', key: 'liveStatus.tools.create_recurring_task' },
+  create_reminder: {
+    emoji: '⏰',
+    key: 'liveStatus.tools.create_reminder',
+    arg: (i) => getStringField(i, ['prompt']),
+  },
+  create_alert: { emoji: '🔔', key: 'liveStatus.tools.create_alert', arg: (i) => getStringField(i, ['prompt']) },
+  list_reminders: { emoji: '📋', key: 'liveStatus.tools.list_reminders' },
+  get_reminder: { emoji: '📄', key: 'liveStatus.tools.get_reminder' },
+  update_reminder: { emoji: '✏️', key: 'liveStatus.tools.update_reminder' },
+  cancel_reminder: { emoji: '🗑️', key: 'liveStatus.tools.cancel_reminder' },
+  lookup_group_history: { emoji: '🕘', key: 'liveStatus.tools.lookup_group_history' },
+  find_user: { emoji: '👤', key: 'liveStatus.tools.find_user' },
+  get_current_time: { emoji: '🕒', key: 'liveStatus.tools.get_current_time' },
 }
 
 /** Humanize a tool id for the fallback: last `__` segment (MCP/plugin) or stripped prefix, spaced + lowercased. */
@@ -94,16 +121,17 @@ const humanizeToolName = (toolName: string): string => {
 }
 
 /** Render the status line for a tool call (without the parallel "(+n)" suffix, which the reporter adds). */
-export const formatToolStatus = (toolName: string, input: unknown): string => {
+export const formatToolStatus = (toolName: string, input: unknown, locale: Locale = 'en'): string => {
   const entry = REGISTRY[toolName]
   if (entry === undefined) {
-    return `⚙️ Running ${humanizeToolName(toolName)}…`
+    return t('liveStatus.runningTool', locale, { tool: humanizeToolName(toolName) })
   }
+  const label = t(entry.key, locale)
   const rawArg = entry.arg === undefined ? undefined : entry.arg(input)
   if (rawArg === undefined || rawArg.trim() === '') {
-    return `${entry.emoji} ${entry.label}…`
+    return `${entry.emoji} ${label}…`
   }
   const arg = sanitizeArg(rawArg)
   const middle = entry.quote === false ? ` ${arg}` : `: "${arg}"`
-  return `${entry.emoji} ${entry.label}${middle}…`
+  return `${entry.emoji} ${label}${middle}…`
 }

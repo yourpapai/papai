@@ -12,6 +12,7 @@ import {
   createGroupMessage,
   createMockChatWithCommandHandlers,
   mockLogger,
+  setupTestDb,
 } from '../utils/test-helpers.js'
 
 describe('help command', () => {
@@ -31,8 +32,9 @@ describe('help command', () => {
     buttons: (): Promise<undefined> => Promise.resolve(undefined),
   }
 
-  beforeEach(() => {
+  beforeEach(async () => {
     mockLogger()
+    await setupTestDb()
     capturedText = null
     lastHandler = null
     registerHelpCommand(mockChat)

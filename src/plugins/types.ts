@@ -14,6 +14,7 @@ import {
   hasAttachmentTransformerPermission,
   hasMatchingContextConfigKeys,
   hasProviderAllowedHostsFromConfig,
+  hasProviderAllowedInstanceHostsFromConfig,
   hasProviderManifestPermission,
   hasRequiredMainForManifest,
   isValidMainPath,
@@ -189,6 +190,7 @@ export const pluginManifestSchema = z
     providerContextConfigSchema: z.array(providerContextConfigRequirementSchema).optional().default([]),
     providerAllowedHosts: z.array(providerHostSchema).optional().default([]),
     providerAllowedHostsFromConfig: z.array(configKeySchema).optional().default([]),
+    providerAllowedInstanceHostsFromConfig: z.array(providerConfigFieldKeySchema).optional().default([]),
     providerConfigValidator: z
       .string()
       .min(1)
@@ -247,16 +249,26 @@ export const pluginManifestSchema = z
       'providerAllowedHostsFromConfig keys must reference at least one configRequirements entry (admin or context scope)',
     path: ['providerAllowedHostsFromConfig'],
   })
+  .refine(hasProviderAllowedInstanceHostsFromConfig, {
+    message: 'providerAllowedInstanceHostsFromConfig keys must reference an instance-scoped providerConfigSchema entry',
+    path: ['providerAllowedInstanceHostsFromConfig'],
+  })
 
 export type ParsedPluginManifest = z.output<typeof pluginManifestSchema>
 // Fields with Zod `.default([])` are optional on the hand-constructed type; test fixtures and non-provider plugins may omit them.
 export type PluginManifest = Omit<
   ParsedPluginManifest,
-  'providerContextConfigSchema' | 'providerTraits' | 'providerAllowedHostsFromConfig' | 'storageScope' | 'mcpServer'
+  | 'providerContextConfigSchema'
+  | 'providerTraits'
+  | 'providerAllowedHostsFromConfig'
+  | 'providerAllowedInstanceHostsFromConfig'
+  | 'storageScope'
+  | 'mcpServer'
 > & {
   providerContextConfigSchema?: ParsedPluginManifest['providerContextConfigSchema']
   providerTraits?: ParsedPluginManifest['providerTraits']
   providerAllowedHostsFromConfig?: ParsedPluginManifest['providerAllowedHostsFromConfig']
+  providerAllowedInstanceHostsFromConfig?: ParsedPluginManifest['providerAllowedInstanceHostsFromConfig']
   storageScope?: ParsedPluginManifest['storageScope']
   mcpServer?: ParsedPluginManifest['mcpServer']
 }

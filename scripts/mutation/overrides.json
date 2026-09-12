@@ -172,6 +172,18 @@
     "tests/plugins/task-provider-youtrack/schemas/issue.test.ts"
   ],
   "plugins/task-provider-youtrack/validate-config.ts": ["tests/plugins/task-provider-youtrack/index.test.ts"],
+  "opencode-agent/src/config-shape.ts": ["tests/opencode-agent/config.test.ts"],
+  "opencode-agent/src/phase-context.ts": [
+    "tests/opencode-agent/ci-fix-red-run.test.ts",
+    "tests/opencode-agent/comment-intent.test.ts",
+    "tests/opencode-agent/feedback-target.test.ts",
+    "tests/opencode-agent/git-commit.test.ts"
+  ],
+  "opencode-agent/src/run-result.ts": [
+    "tests/opencode-agent/labels.test.ts",
+    "tests/opencode-agent/orchestrator.test.ts",
+    "tests/opencode-agent/token-budget.test.ts"
+  ],
   "src/deferred-prompts/tool-handlers.ts": [
     "tests/deferred-prompts/tool-handlers.test.ts",
     "tests/deferred-prompts/tool-handlers-logging.test.ts"

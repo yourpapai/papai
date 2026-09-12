@@ -8,11 +8,19 @@ import { readFile, writeFile } from 'node:fs/promises'
 import { STORY_COVERAGE_LCOV_PATH } from '../story/reports.js'
 import { nextFloor, parseLcovTotals, serializeFloor } from './ratchet-lib.js'
 import { type CoverageFloor, readCoverageFloor, STORY_COVERAGE_FLOOR_PATH } from './story-coverage-gate.js'
+import { discoverScopedSourceFiles, scopeLcov } from './story-scope.js'
 
 const EPSILON = 0.005
 
-export function computeRatchetedFloor(lcov: string, current: CoverageFloor, epsilon: number): CoverageFloor {
-  const totals = parseLcovTotals(lcov)
+export function computeRatchetedFloor(
+  lcov: string,
+  sourceFiles: readonly string[],
+  current: CoverageFloor,
+  epsilon: number,
+): CoverageFloor {
+  // Must scope identically to the gate: a floor raised from an unscoped
+  // measurement would sit above anything the gate can ever report.
+  const totals = parseLcovTotals(scopeLcov(lcov, sourceFiles).lcov)
   return {
     lines: nextFloor(current.lines, totals.lines.pct, epsilon),
     functions: nextFloor(current.functions, totals.functions.pct, epsilon),
@@ -21,8 +29,9 @@ export function computeRatchetedFloor(lcov: string, current: CoverageFloor, epsi
 
 async function main(): Promise<void> {
   const lcov = await readFile(STORY_COVERAGE_LCOV_PATH, 'utf8')
+  const sourceFiles = await discoverScopedSourceFiles(process.cwd())
   const current = await readCoverageFloor(STORY_COVERAGE_FLOOR_PATH)
-  const next = computeRatchetedFloor(lcov, current, EPSILON)
+  const next = computeRatchetedFloor(lcov, sourceFiles, current, EPSILON)
   if (next.lines === current.lines && next.functions === current.functions) {
     console.log('T0 coverage floor unchanged.')
     return

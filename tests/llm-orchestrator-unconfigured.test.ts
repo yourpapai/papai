@@ -198,6 +198,16 @@ describe('resolveLlmForTurn', () => {
   })
 })
 
+describe('unconfigured replies per locale', () => {
+  test('central LLM unconfigured fallback renders in ru for a ru-configured context', async () => {
+    clearAdminLlmBinding()
+    setConfigValue('unc-ctx-ru', 'language', 'ru')
+    const { reply, textCalls } = createMockReply()
+    await processMessage(reply, 'unc-ctx-ru', 'user-1', null, 'hello', 'dm', undefined, undefined, undefined, 'turn-ru')
+    expect(textCalls[0]).toContain('Бот не полностью настроен')
+  })
+})
+
 describe('unconfigured_reply chat-turn producers', () => {
   test('central LLM unconfigured emits one central_llm fact after the fallback reply', async () => {
     clearAdminLlmBinding()

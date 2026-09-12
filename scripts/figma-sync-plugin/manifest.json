@@ -1,0 +1,12 @@
+{
+  "name": "papai story sync",
+  "id": "papai-story-sync",
+  "api": "1.0.0",
+  "main": "dist/code.js",
+  "ui": "ui.html",
+  "editorType": ["figma"],
+  "networkAccess": {
+    "allowedDomains": ["http://127.0.0.1:7781", "http://localhost:7781"],
+    "reasoning": "Fetches the local bun figma:sync manifest and Storybook PNG renders from the developer's machine."
+  }
+}

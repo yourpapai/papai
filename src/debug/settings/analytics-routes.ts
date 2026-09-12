@@ -25,6 +25,7 @@ import { getDrizzleDb } from '../../db/drizzle.js'
 import { analyticsCensorIntervals } from '../../db/schema.js'
 import { logger } from '../../logger.js'
 import type { AuthenticatedSettingsRequest } from '../../settings/request-auth.js'
+import { activeCollectionRefKey, collectionEligibilityEffect } from './analytics-consent.js'
 import { settingsRequestNowMs } from './request-clock.js'
 import { authenticate, parseJsonBody, requireCsrf, settingsJson } from './respond.js'
 
@@ -161,9 +162,16 @@ const handlePutPreferences = async (
     ['local_longitudinal', body.data.localLongitudinal],
     ['external_pseudonymous', body.data.externalPseudonymous],
   ]
+  const onAppliedInTx = collectionEligibilityEffect(activeCollectionRefKey(identity, deps.subject.keyrings), {
+    policyVersion,
+    nowMs,
+  })
   for (const [lane, value] of lanes) {
     if (value === undefined) continue
-    setPreference({ governanceActorKey, keyVersion, lane, value, policyVersion, source: 'settings', nowMs }, storeDeps)
+    setPreference(
+      { governanceActorKey, keyVersion, lane, value, policyVersion, source: 'settings', nowMs, onAppliedInTx },
+      storeDeps,
+    )
   }
   log.info('analytics preference updated through settings')
   return settingsJson(200, { ok: true, preference: preferencePayload(identity, deps) })

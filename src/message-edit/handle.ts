@@ -20,12 +20,14 @@ import type { AuthorizationResult, ChatProvider, IncomingMessage, ReplyFn } from
 import { getDrizzleDb } from '../db/drizzle.js'
 import { messageMetadata } from '../db/schema.js'
 import { applyEditToHistory } from '../history.js'
+import { t } from '../i18n/index.js'
 import type { ProcessMessageFn } from '../llm-orchestrator-process-args.js'
 import { logger } from '../logger.js'
 import { getMessageByContext } from '../message-cache/index.js'
 import { lastTurnRegistry, type LastTurn } from '../run-control/last-turn-registry.js'
 import { runRegistry } from '../run-control/registry.js'
 import type { RunControl } from '../run-control/types.js'
+import { getContextLanguage } from '../utils/config-language.js'
 import { classifyEdit } from './classify.js'
 import type { EditWindow } from './classify.js'
 import { handleW2WithSideEffects, regenerateFromEditedText } from './w2-regen.js'
@@ -178,7 +180,7 @@ async function pushW1SteerAndAck(
 ): Promise<void> {
   const steerText = `⟲ Your earlier message was edited. New version:\n\n${msg.text}`
   run.steerQueue.push({ text: steerText })
-  await reply.text('✋ folding that into the current run…')
+  await reply.text(t('steer.ack', getContextLanguage(auth.configContextId ?? auth.storageContextId)))
   const observer = deps.analyticsObserver
   if (observer === undefined) return
   const source = buildAnalyticsSourceContext(msg, auth, 'normal', null)

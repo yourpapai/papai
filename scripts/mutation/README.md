@@ -18,6 +18,39 @@ is built per batch from a coverage map (see `scripts/mutation/coverage-map.ts`)
 and falls back to the companion when no covering test is found. Because the
 test set stays small, the accurate mode is cheap.
 
+## Toolchain: Stryker 10 and the runner patch
+
+The gate runs on `@stryker-mutator/core` 10 (Babel 8 instrumentation, an
+empty-expression mutator, Node ≥ 22 for the CLI host — only test children run
+on Bun, so the machine driving `node_modules/.bin/stryker` needs Node 22+; the
+two mutation jobs in `.github/workflows/ci.yml` pin it via `setup-node`).
+Installed next to it is `@hughescr/stryker-bun-runner@1.3.8`, whose published
+metadata only accepts core 9: a Bun patch
+(`patches/@hughescr%2Fstryker-bun-runner@1.3.8.patch`, registered under
+`patchedDependencies` in `package.json`) widens its peer/dependency ranges to
+`^9.0.0 || ^10.0.0`, applying exactly upstream PR
+hughescr/stryker-bun-runner#1. **Delete the patch** (and the
+`patchedDependencies` entry) when any runner release accepting core 10 ships;
+`patchedDependencies` pins the exact version, so drifting breaks loudly at
+install time. Because the score fingerprint hashes `bun.lock` and
+`package.json`, the bump alone invalidated every carried-over score, and
+`baseline.json` was reseeded from a fresh full v10 run (delete the file, then
+`bun test:mutate --update-baseline`) — floors may sit lower than their v9
+values where the new instrumenter counts more mutants.
+
+A **product dependency** bump can invalidate individual floors the same way,
+without touching any lockfile the fingerprint sees: zod 4.5 (merged after a
+floor was recorded) made `discriminatedUnion` validate options eagerly at
+construction, so 19 construction-crash static mutants in
+`afk-runner/src/event-schemas.ts` flipped Killed → RuntimeError — a crash at
+first `.parse()` inside a test is a kill, a crash at module load is a
+RuntimeError, which scoring excludes (`score-merger.ts`). Survivors were
+unchanged, but killed 105 → 86 read as a true regression. `seedMerge` is
+monotonic and never lowers a rich floor, so re-basing one is
+delete-then-seed: drop the stale key from `baseline.json`, then
+`bun test:mutate:file <path> --update-baseline` records the fresh measurement
+(PR #431).
+
 ## Commands
 
 ```bash
@@ -37,6 +70,9 @@ bun test:mutate:changed --no-score-cache
 bun test:mutate --threshold=0.6
 bun test:mutate:file src/foo.ts --threshold=0.6
 bun test:mutate:changed --base=origin/master --threshold=0.6
+
+# Seed floors for exactly the listed files (scoped seed — no gate verdict):
+bun test:mutate:file src/foo.ts --update-baseline
 
 # Show raw Stryker output while still writing paired JSON reports:
 bun test:mutate:file src/foo.ts --verbose
@@ -100,6 +136,9 @@ For each source file, `pairedRun` resolves the test set in this priority:
    - `client/debug/x.ts` -> `tests/client/debug/x.test.ts`
    - `plugins/task-provider-kaneo/foo.ts` -> `tests/plugins/task-provider-kaneo/foo.test.ts`
    - `review-loop/src/foo.ts` -> `tests/review-loop/foo.test.ts`
+   - `opencode-agent/src/foo.ts` -> `tests/opencode-agent/foo.test.ts` — flat: the whole
+     `src/` subtree strips, so `opencode-agent/src/phases/implement-steps.ts` also maps to
+     `tests/opencode-agent/implement-steps.test.ts`
 
 A source with no covering test, no override, and no companion is skipped with
 a warning — fix it by adding a companion test, registering a cross-cutting
@@ -110,10 +149,109 @@ override, or widening the candidate heuristics in `coverage-map.ts`.
 - `bun test:mutate` — accurate full paired run over the configured
   `stryker.config.json` `mutate` scope.
 - `bun test:mutate:changed` — accurate paired run over files changed vs the
-  selected base branch. The CI gate uses this command.
+  selected base branch, measured and gated in one process. Still the local
+  command; CI now runs the three-stage form below.
 - `bun test:mutate:file` — accurate paired run for explicitly listed files.
 - `bun test:mutate:changed-paired` — descriptive alias for
   `bun test:mutate:changed`.
+- `bun test:mutate:plan` / `:shard` / `:gate` — the three stages CI runs. See
+  **Sharded CI runs** below.
+
+## Sharded CI runs (plan → k × shard → gate)
+
+The gate was the CI wall clock: on
+[run 33292465702](https://github.com/yourpapai/papai/actions/runs/33292465702) every other job
+finished in 5 minutes while mutation testing ran 73m21s, at 81% of its own 90-minute timeout.
+Work is linear in changed-file count (~107s/file over 252 measurements) and each file is an
+independent Stryker process, so it divides cleanly. CI now runs three jobs:
+
+```bash
+# 1. Decide what to measure and how to divide it. Measures nothing itself.
+bun test:mutate:plan --base=origin/master     # -> reports/paired/shard-plan.json
+
+# 2. Measure one slice. Runs once per matrix entry. Never judges: always exits 0.
+bun test:mutate:shard --index=0               # -> reports/paired/shards/shard-0.json
+
+# 3. Combine every slice into the whole-branch verdict. This is the gate.
+bun test:mutate:gate
+```
+
+**The matrix is sized from estimated work, not from a constant.**
+`k = clamp(ceil(ΣW / max(B, maxW)), 1, cap)`, where `B = targetWall − orchestration − preparation`
+and `W` is a per-file weight of `≈12s + 0.505s/line` (fitted on 226 measured per-file runs). Below
+`--min-work` (default 330s) of estimated work the plan emits **no shards at all** and the gate runs
+on carried-over scores alone, so a one-to-three-file pull request never spawns a matrix. The cap
+defaults to 12 — the measured knee, past which the slowest single file floors the makespan.
+
+The `max(B, maxW)` term is easy to omit and expensive to omit: an LPT makespan is bounded below by
+the largest single item, so shards past `ΣW / maxW` cannot make the run finish sooner. Dropping it
+oversizes the 38-target runs by roughly 40%.
+
+Tunables for experimenting with the two constants design.md records as analytic rather than fitted:
+`--cap=N`, `--min-work=SECONDS` (0 disables the floor), `--target-wall=SECONDS`.
+
+**Why a plan job rather than each shard selecting for itself.** Hash-partitioning needs no
+artifacts, but every shard would rebuild the coverage map (+9% wall) and the split would be
+cost-blind — weighting the packing is worth as much as sizing (−8.5m vs −8.6m across 16 measured
+runs; −17.7m together). The plan builds the map once and publishes it; shards consume it through
+the existing `PairedRunDeps.buildMap` seam and spawn no coverage runs of their own.
+
+**A lost shard fails the gate.** This is the property the whole shape hangs on. The gate reconciles
+the plan's `toMeasure` against what actually came back, accounting per _target_ rather than per
+shard — which catches both a shard that never reported and one that died partway through its list.
+A target is accounted for once it appears in some shard's scores, skips or errors; an unmeasurable
+file is a known outcome the gate acts on, an absent one is not. Without this, a dead shard drops
+its files, the ratchet finds nothing to fail on, and a blocking gate goes green. Shard result files
+are validated on read for the same reason: one the gate cannot parse contributes nothing, so its
+targets surface as missing rather than as a quietly narrower verdict.
+
+Ordering inside the gate is load-bearing twice: measurements are recorded **before** the verdict
+(a failing run must not forget what it measured — see ADR-0424), and the missing-target check runs
+**before** the score checks (absence of evidence is not a low score).
+
+CI caching splits by producer: the plan job writes `coverage-map.cache.json`, the gate job writes
+`score-cache.json`. They shared one `actions/cache` key when one job wrote both, and entries are
+immutable per key. The gate is the sole writer of the score cache, so shards never race for it.
+
+The master `mutation-baseline` seed job is unchanged and still runs single-process.
+
+## The gate measures product code
+
+`test:mutate:changed` selects a changed file only when `isGateableImplFile`
+(`.hooks/tdd/test-resolver.mjs`) accepts it, which means an implementation source under `src/`,
+`client/`, `plugins/`, `review-loop/src/` or `opencode-agent/src/` — the last
+one excluding its `index.ts` barrel, like every other gated tree.
+`stryker.config.json`'s `mutate` globs do not narrow this further — the
+paired runner overwrites `mutate` with the single target file — so that predicate is the gate's
+only scoping authority.
+
+Everything else is internal infrastructure or tooling and is deliberately **not** gated per file:
+`scripts/`, `mutation-improve/`, and every workspace path outside the `src/` roots above (docs,
+workflow config, barrels). They keep their
+suites under `tests/` and run in CI like any other test; what they do not get is a per-file
+mutation floor. The reason is cost — measured over the 32 first-parent commits before this rule
+landed, 118 of the gate's 141 selected targets (84%) were workspace sources, at roughly 107s per
+file — which is also why a workspace `src/` root re-enters the gate only as a deliberate widening
+that ships its floors in the same commit: `opencode-agent/src/` was added exactly that way (see
+**Scoped seed** below).
+
+Two consequences worth stating, because both look like bugs otherwise:
+
+- **A branch that touches only non-gateable roots selects zero targets and passes.** That is the
+  correct verdict, not a lost measurement — a `scripts/`- or `mutation-improve/`-only branch, or
+  one that edits only docs, earns it. The plan job emits an empty shard matrix and the gate
+  renders its verdict from carried-over scores. An `opencode-agent/src/`-only branch does not:
+  the workspace is a gateable root, so its files are selected, measured and judged against their
+  floors like any other product code.
+- **Non-gateable is not unmappable.** `suggestTestPath` / `findTestFile` / `resolveImplPath` and
+  `coverage-map.ts`'s `samePackageTestDir` still map workspaces the gate does not measure, because
+  `bun run test:affected` and the score fingerprint depend on
+  those mappings. Narrowing the gate must never narrow the mappers. The coding-agent workspace
+  maps **flat**, not mirrored — `opencode-agent/src/phases/implement-steps.ts` resolves
+  `tests/opencode-agent/implement-steps.test.ts` — matching where its tests actually live.
+
+The same predicate gates the Write/Edit TDD hook checks, so the two surfaces always agree on what
+"gateable" means.
 
 ## Generated modules are not targets
 
@@ -126,6 +264,24 @@ file with a `ConfigError` and lands in the gate as `errored`, not as a score.
 fresh generation; that drift guard is worth more than a mutation score on a file whose content
 comes from a generator anyway. Without the exclusion, every PR that adds a tool — and so
 regenerates the slug table — fails this gate on a file it never hand-wrote.
+
+The same failure shape reached beyond `generated/` targets until `stryker.config.json` pinned
+`disableTypeChecks: false`: Stryker's default prepends `// @ts-nocheck` to every TS file in the
+sandbox — including files it does **not** mutate — so the drift-guard test failed unmutated inside
+the paired test set of _any_ `src/analytics/*` target, landing those targets in `errored`. Bun
+never typechecks at test runtime, so the pragma bought nothing here; keeping it off is what makes
+the sandbox byte-faithful for non-target files. `tests/scripts/mutation/stryker-config.test.ts`
+pins the flag so a config regression fails a test instead of the gate.
+
+One target remains scoped out for an instrumentation-shape reason even with that flag off:
+`plugins/task-provider-kaneo/auto-provision.ts` (via a `!` glob here and
+`isInstrumentationIncompatibleFile` in the changed-files gate). Its killing test
+`tests/analytics/provider-request-scope-setup-paths.test.ts` reads the impl's source text and
+regex-checks that every `runWithProviderRequestScope` call site settles; the file's two call sites
+are bare arrow-tail delegations, and Stryker 10's Babel 8 instrumenter reprints them so the
+**unmutated** instrumented copy already fails the guard — every paired run lands in `errored`
+instead of producing a score. The guard is worth more than a mutation score on a 14-line
+delegation wrapper whose callees (`provision.ts`) stay in scope.
 
 ## Incremental measurement (carried-over scores)
 
@@ -177,26 +333,41 @@ unmeasurable file can never be carried over into a pass.
 
 ## Ratchet gate (`scripts/mutation/baseline.json`)
 
-A committed per-file baseline of mutation scores backs a monotonic ratchet:
+A committed per-file baseline of mutation scores backs a monotonic ratchet.
+Each entry is a **record**: the score plus the absolute counts behind it —
+`{ "score": 0.85, "killed": 16, "timeout": 1, "scored": 20 }` — so the gate can
+compare killing power (`killed + timeout`, the score formula's numerator)
+against what was actually achieved before, not just a percentage of a population
+that changes size. Legacy entries may still be a bare score number (see
+Migration below); the two shapes coexist in the one committed sorted map.
 
-- **PR gate** (`test:mutate:changed`): a changed file fails only when it has a
-  recorded baseline entry and its score drops below it. Files with no baseline
-  entry (new or never-baselined) are not regressions — the gate is
-  regression-only, so the overall score ratchets upward as files improve without
-  blocking routine work on currently-low-scoring or newly-added code. Disable
-  with `--no-ratchet`.
+- **PR gate** (`test:mutate:changed`): a baselined file fails only when its
+  measurement both scores below the recorded score **and** kills fewer mutants
+  than the record — a true regression, meaning killing power dropped, reported
+  as `file score < floor, kills m < n recorded`. When the score falls below the
+  recorded score but kills held (the mutant population grew — new-code
+  dilution), the run exits 0 and prints a `WARN` line naming the file, its held
+  kill count, and both scores. A score-only legacy record is judged by score
+  alone and cannot classify dilution, so it keeps the stricter judgment. Files
+  with no baseline entry (new or never-baselined) are not regressions — the
+  gate is regression-only, so the overall score ratchets upward as files
+  improve without blocking routine work on currently-low-scoring or
+  newly-added code. Disable with `--no-ratchet`.
 - **Master seed** (`test:mutate:changed --base=HEAD~1 --update-baseline`): on
   push to `master`, the CI `mutation-baseline` job measures the files changed
   since the previous master commit and merges them into `baseline.json` via
   `seedMerge`, which takes the per-key max and PRESERVES existing entries
   (unlike the full-run `ratchetMerge`, which drops keys no longer in scope).
-  First-touch files — new or never-baselined — get seeded after merge, so the
-  baseline accumulates floors for every touched file over time. The committed
-  baseline is the floor the PR gate enforces. The run also writes its per-file
-  scores to `reports/paired/scores.json` so the commit step can re-seed without
-  re-running Stryker. The scores file is always written — even when the run
-  measured no gateable files (e.g. a docs- or scripts-only merge) — so the
-  commit step no-ops gracefully instead of failing on a missing artifact.
+  A strictly-higher score replaces the record wholesale — the new score
+  together with that measurement's counts, never a mix of old and new; an
+  equal-or-lower measurement over a record leaves it untouched. First-touch
+  files — new or never-baselined — get seeded after merge, so the baseline
+  accumulates floors for every touched file over time. The committed baseline
+  is the floor the PR gate enforces. The run also writes its per-file scores
+  to `reports/paired/scores.json` (as records) so the commit step can re-seed
+  without re-running Stryker. The scores file is always written — even when
+  the run measured no gateable files (e.g. a docs- or scripts-only merge) — so
+  the commit step no-ops gracefully instead of failing on a missing artifact.
 - **Commit-step re-seed** (`test:mutate:seed --scores=reports/paired/scores.json
 [--fresh-base=SHA]`): master can move while mutation testing runs (e.g. a
   release bump push), which would reject a naive push and lose the seed. The CI
@@ -207,10 +378,72 @@ A committed per-file baseline of mutation scores backs a monotonic ratchet:
   is never recorded for content master no longer has; those files are seeded by
   the commit that changed them.
 
+Records are validated at load: the counts must be finite non-negative integers
+with `scored > 0`, `score` finite in [0, 1], `killed + timeout <= scored`, and
+`score` equal to `(killed + timeout) / scored` within 1e-9. A record that fails
+this aborts the run with the file and the expected relation named — a corrupt
+floor must never silently gate on nonsense. A hand-tuned floor must therefore
+keep its counts consistent (compute them from the intended score, or re-measure).
+
 Re-generate the baseline from scratch (discards history) by deleting
 `scripts/mutation/baseline.json` and running `bun test:mutate --update-baseline`
 (a full run; its `ratchetMerge` drops keys no longer in scope, which is what you
 want when rebuilding).
+
+### Scoped seed for a newly gated root (`test:mutate:file --update-baseline`)
+
+Widening the gate to a new root needs one seeding run that measures the entire new scope fresh,
+before the widened scope judges its first change. No other command does that:
+`test:mutate:changed --update-baseline` measures only the branch diff (the new root's files are
+unchanged on master), and full regeneration is prohibitive. So `test:mutate:file` accepts
+`--update-baseline`: it measures exactly the listed files with reuse disabled, merges them into
+`baseline.json` via `seedMerge`, writes the scores snapshot, and exits 0 — a seed, not a gate, so
+no threshold verdict applies. The seed that floored the coding-agent workspace:
+
+```bash
+bun test:mutate:file $(git ls-files ':(glob)opencode-agent/src/**/*.ts' \
+  ':(exclude,glob)opencode-agent/src/**/index.ts' \
+  ':(exclude,glob)opencode-agent/src/**/constants.ts') --update-baseline
+```
+
+Two pathspec properties are load-bearing: the positive pattern needs the `:(glob)` magic — under
+git's default matching it requires a subdirectory below `src/` and silently drops the top-level
+sources — and the excludes must be tree-scoped **and** globbed, because an unanchored
+`:(exclude)**/index.ts` zeroes the entire selection. An empty selection exits 2 on this
+entrypoint, deliberately: here it is always a pathspec bug, never a green seed.
+
+**Chunking.** The paired runner measures its file list sequentially, and a fresh workspace scope
+is hours of wall clock — past any CI job ceiling. Split the list into ≈30–60-minute chunks and run
+them one after another: `seedMerge` is per-key max and idempotent, so chunks compose and retries
+never conflict, and `--update-baseline` implies `--no-score-cache`, so every chunk's floors come
+from fresh measurement. Errored or skipped files record no floor and stay retryable — repeat until
+every file in the new scope has one, then land the widening (predicate, globs, mappers) and the
+seeded `baseline.json` as a single commit, so the widened scope never exists without its floors.
+One artifact does not compose: `runUpdateBaseline` rewrites `reports/paired/scores.json` with only
+that run's `perFile`, so after N chunks the snapshot holds just the last chunk's files. The floors
+in `baseline.json` are the record of truth; the snapshot feeds only the fresh-base re-seed replay
+path and must not be read as the chunk-complete set.
+
+### Migration (record shape — lazy, no reseed required)
+
+Baseline entries are migrating from bare score numbers to rich records. Mixed
+entries coexist in the one committed file; no reseed is required. A legacy
+bare entry keeps its score-only floor and is judged by score alone (the
+stricter rule — it cannot classify dilution), and converts to a record the
+next time a seeding or bumping run measures its file at or above its recorded
+score — the ordinary case, since mutation scoring is deterministic and
+marginal merges tie. A below-floor measurement leaves the legacy entry
+untouched (the floor must not drop, and counts cannot be paired with a score
+they did not produce). To convert everything at once, run the optional one-time
+full-run conversion: `bun test:mutate --update-baseline` as a full run, or the
+delete-and-regenerate recipe above.
+
+**Rollback pairs code and data:** the pre-record loader rejects rich entries,
+so reverting the code while keeping the new `baseline.json` bricks the gate.
+Revert the commit AND restore the pre-change `baseline.json` blob together
+(`git checkout <pre-change> -- scripts/mutation/baseline.json`). A
+partially-converted baseline rolls back cleanly to score-only floors — scores
+are identical in both shapes, so no floor is lost. See ADR-0427.
 
 ### Migration (one-time catch-up)
 
@@ -220,3 +453,32 @@ every recently-changed unbaselined file at once — expect a large one-time
 baseline entries (measured against the companion test set alone, often an
 undercount) ratchet upward as their files are re-measured on later master runs
 with coverage-derived test sets.
+
+### `tsconfigFile` points at a file that does not exist — on purpose
+
+`stryker.config.json` sets `tsconfigFile` to `tsconfig.stryker-rewrite-disabled.json`,
+which is not a real file. That is the switch that turns off Stryker's sandbox
+tsconfig rewrite: the preprocessor looks the path up in the sandbox file set,
+finds nothing, and skips.
+
+The rewrite has to be skipped because it calls `ts.parseConfigFileTextToJson` —
+the TypeScript 6 compiler API. Since the repo moved to TypeScript 7, whose entry
+point exports only the version, that call throws `is not a function` and aborts
+the whole run before a single mutant is tested. Stryker 10 added a TypeScript 7
+_checker_; this sandbox path was not part of that.
+
+Skipping is safe here, and only here, because the rewrite is a no-op for this
+repo's `tsconfig.json`: it declares no `extends` and no `references`, and its
+`exclude` entries and the `papai/plugin-types` path alias are all repo-relative,
+so they resolve unchanged inside the sandbox. `tsconfig.json` itself is still
+copied into the sandbox untouched — plugin sources under `plugins/` import
+through that alias and would not resolve without it (`test:mutate:file
+plugins/task-provider-kaneo/mappers.ts` is the check that proves it).
+
+Revisit if `tsconfig.json` ever gains `extends`, `references`, or a path that
+points outside the repository — then the rewrite stops being a no-op and Stryker
+needs a real classic-API TypeScript again.
+
+`tests/scripts/mutation/stryker-config.test.ts` pins this sentinel: it asserts
+the `tsconfigFile` value and that the file does not exist, so the switch cannot
+be changed or "fixed" without a test naming this section.

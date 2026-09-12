@@ -59,6 +59,27 @@ describe('kaneoFetch', () => {
     expect(capturedHeaders['Content-Type']).toBe('application/json')
   })
 
+  test('uses the injected runtime fetch instead of the global transport', async () => {
+    let requests = 0
+    const runtimeFetch = (): Promise<Response> => {
+      requests += 1
+      return Promise.resolve(
+        new Response(JSON.stringify(createMockTask({ id: 'runtime-task', number: 1 })), { status: 200 }),
+      )
+    }
+
+    await kaneoFetch(
+      { ...mockConfig, fetch: runtimeFetch },
+      'GET',
+      '/tasks/runtime-task',
+      undefined,
+      undefined,
+      KaneoTaskResponseSchema,
+    )
+
+    expect(requests).toBe(1)
+  })
+
   test('throws KaneoApiError on non-ok response', async () => {
     setMockFetch(() => Promise.resolve(new Response('Not found', { status: 404 })))
 
@@ -215,6 +236,28 @@ describe('kaneoFetch', () => {
       assert(error instanceof KaneoApiError)
       expect(error.statusCode).toBe(404)
       expect(error.responseBody).toEqual({ error: 'Not found' })
+    }
+  })
+
+  test('preserves plain-text error bodies for classification', async () => {
+    // Kaneo serves some error bodies as plain text (e.g. 400 "Workspace ID could not
+    // be determined"); reading json() first consumes the body, so the text fallback
+    // must not collapse to the unreadable-body sentinel.
+    setMockFetch(() =>
+      Promise.resolve(
+        new Response('Workspace ID could not be determined', {
+          status: 400,
+          headers: { 'Content-Type': 'text/plain' },
+        }),
+      ),
+    )
+
+    try {
+      await kaneoFetch(mockConfig, 'GET', '/column/proj-1', undefined, undefined, KaneoTaskResponseSchema)
+    } catch (error) {
+      assert(error instanceof KaneoApiError)
+      expect(error.statusCode).toBe(400)
+      expect(error.responseBody).toBe('Workspace ID could not be determined')
     }
   })
 

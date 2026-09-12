@@ -52,6 +52,7 @@ const SETTINGS: OpenAiSettings = {
   apiKey: 'unused-no-model-turn-in-this-probe',
   baseUrl: 'http://127.0.0.1:1/v1',
   model: 'unused',
+  provider: 'openai',
 }
 
 /** Long enough to prove a command hangs, short enough to run the whole table. */

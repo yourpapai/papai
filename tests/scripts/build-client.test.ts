@@ -45,6 +45,29 @@ describe('build-client', () => {
     expect(fs.existsSync(outDir)).toBe(true)
   })
 
+  // Pins the no-stray-assets contract of the Vite-driven build: the output
+  // dir holds exactly the 12 artifacts (4 apps x js/html/css) and nothing
+  // Vite-named (no hashed chunks, no default style.css). The real public/
+  // additionally carries pre-existing gitignored msw/storybook files that
+  // this temp-dir build never touches.
+  test('emits only the 12 contract artifacts, with no stray Vite-named assets', () => {
+    const expected = [
+      'admin.css',
+      'admin.html',
+      'admin.js',
+      'debug.css',
+      'debug.html',
+      'debug.js',
+      'settings.css',
+      'settings.html',
+      'settings.js',
+      'transcript.css',
+      'transcript.html',
+      'transcript.js',
+    ].sort()
+    expect(fs.readdirSync(outDir).sort()).toEqual(expected)
+  })
+
   test.each([['debug.js'], ['admin.js']])('outputs %s as IIFE', (jsName) => {
     const jsPath = path.join(outDir, jsName)
     expect(fs.existsSync(jsPath)).toBe(true)
@@ -77,5 +100,29 @@ describe('build-client', () => {
     expect(fs.existsSync(cssPath)).toBe(true)
     const content = fs.readFileSync(cssPath, 'utf8')
     expect(content).toContain('{')
+  })
+
+  // Pins the CSS assembly contract ahead of the Vite rewrite: tokens first,
+  // then base, then the app-local stylesheet, then compiled component CSS.
+  // Markers are unique to their layer: --bg: exists only in tokens.css,
+  // body { only in base.css (first occurrence), the local selector only in
+  // the app stylesheet, and the comment only in the assembled component block.
+  test.each([
+    ['debug.css', '#log-explorer'],
+    ['admin.css', '.eyebrow'],
+    ['settings.css', '.settings-shell'],
+    ['transcript.css', '.tx-wrap'],
+  ])('layers %s as tokens before base before local before component styles', (cssName, localMarker) => {
+    const cssPath = path.join(outDir, cssName)
+    expect(fs.existsSync(cssPath)).toBe(true)
+    const content = fs.readFileSync(cssPath, 'utf8')
+    const tokens = content.indexOf('--bg:')
+    const base = content.indexOf('body {')
+    const local = content.indexOf(localMarker)
+    const component = content.indexOf('/* component-scoped styles */')
+    expect(tokens).toBeGreaterThanOrEqual(0)
+    expect(base).toBeGreaterThan(tokens)
+    expect(local).toBeGreaterThan(base)
+    expect(component).toBeGreaterThan(local)
   })
 })

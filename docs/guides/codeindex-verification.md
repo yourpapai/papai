@@ -197,27 +197,24 @@ Run these prompts in OpenCode and observe tool calls via `OPENCODE_DEBUG=1` or T
 | `Which files call or import makeCreateTaskTool?`             | Calls `codeindex_code_impact(...)`                         | `grep -rn "makeCreateTaskTool" src/` then manual `read` loops |
 | `Find all web fetch related types.`                          | Calls `codeindex_code_search("web fetch")`                 | `grep -rn "web fetch" src/` (misses camelCase)                |
 
-### 5.3 Auto-Reindex Verification
+### 5.3 Freshness Verification (server-owned)
 
-- [x] Plugin `codeindex-reindex.ts` is registered in `opencode.json`
-- [x] Plugin listens to `tool.execute.after` for `write`, `edit`, `multiedit`
-- [x] Plugin filters to `src/` and `client/` `.ts/.tsx/.js/.jsx` files only
-- [x] Plugin debounces per session (600 ms)
-- [x] Plugin spawns `bun run scripts/codeindex-cli.ts reindex` in background
+- [x] No client-side reindex component ships in this repo (`.opencode/plugins/codeindex-reindex.ts` retired)
+- [x] The codeindex server's boot probe bootstraps a missing DB and catches up in background
+- [x] The server's in-session watcher (`fs.watch`, all processes) schedules catch-up on indexed-root edits
+- [x] Manual escape hatch remains: `code_index` tool with `mode: "incremental"`, or `bun run codeindex:reindex`
 
 #### Test
 
-On standard macOS shells, prefer a simple `pgrep` polling loop because `watch` is typically not installed by default.
-
 ```bash
-# Terminal 1: poll for the short-lived reindex process
-while true; do pgrep -fl 'scripts/codeindex-cli.ts reindex'; sleep 0.5; done
+# Terminal 1: start the server
+bun run scripts/codeindex-cli.ts mcp
 
-# Terminal 2: trigger write
+# Terminal 2: touch an indexed file
 bun -e "require('fs').writeFileSync('src/bot.ts', require('fs').readFileSync('src/bot.ts', 'utf8'))"
 ```
 
-Expected: After ~600 ms, a `bun run scripts/codeindex-cli.ts reindex` process appears briefly.
+Expected: no `bun run scripts/codeindex-cli.ts reindex` process spawns; only the in-server watcher's status moves (next query reflects the edit, possibly after a short debounce).
 
 ---
 
@@ -229,8 +226,7 @@ Expected: After ~600 ms, a `bun run scripts/codeindex-cli.ts reindex` process ap
 | `opencode mcp tools codeindex` shows nothing | Server crashes on startup                                   | Run `bun run scripts/codeindex-cli.ts mcp` directly; if needed, set `CODEINDEX_DIR` or clone the sibling repo at `../codeindex` |
 | Agent still uses `grep`                      | Instructions were added to wrong config (global vs project) | Ensure `CLAUDE.md` is in repo root, not just `~/.config/opencode/AGENTS.md`                                                     |
 | `codeindex_code_search` returns empty        | DB stale or file not indexed                                | Run `codeindex_code_index incremental`; verify file is in `.codeindex.json` roots                                               |
-| Reindex plugin not triggering                | Plugin not loaded                                           | Verify `opencode.json` `"plugin"` array includes `"./.opencode/plugins/codeindex-reindex.ts"`                                   |
-| Reindex plugin runs too often                | Debounce configured at 600 ms but sessions not isolated     | Check `debounceMap` uses `sessionID` key                                                                                        |
+| Results look stale after edits                | Server watcher catch-up pending                                | Call the `code_index` tool with `mode: "incremental"`, or run `bun run codeindex:reindex`             |
 
 ---
 

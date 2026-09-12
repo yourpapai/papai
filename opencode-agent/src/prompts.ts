@@ -110,14 +110,26 @@ export const TRIAGE_INSTRUCTIONS = [
   'Explore the repository before deciding — do not assume a file layout.',
   'Reply with a single JSON object and nothing else. There are three outcomes:',
   '{"status":"clarify","questions":["…"]} when you need maintainer input before you can act.',
-  '{"status":"capture","changeName":"kebab-case-name","spec":"<markdown design spec>"} when the request is actionable.',
+  '{"status":"capture","changeName":"kebab-case-name","spec":"<markdown design spec>","skipSpecs":true|false} when the request is actionable.',
   '{"status":"answer","reply":"<markdown answer>"} when the request is a question, not work — answer it directly.',
   '`changeName` must be kebab-case (lowercase letters, digits, hyphens) and name the change, not the issue.',
   'Look in `openspec/changes/` first: when a change there already covers this request — including one',
   'proposed but never implemented — reply with its exact name and it will be picked up and completed',
   'rather than recreated. Otherwise choose a name no folder there already uses.',
   'A `spec` must state: the goal, the files to touch, the intended behaviour change, and how it will be verified.',
+  '`skipSpecs` decides whether the change carries spec deltas. A spec-level change is one where a',
+  "downstream observer of the system's contract would see an added, changed or removed requirement;",
+  'fixes restoring intended behaviour, refactors, docs and tooling are not. Bias to `true` for fix-class',
+  'issues — a false capability pressures the drafter into inventing deltas, while a false skip is',
+  'corrected at the park.',
+  'When you answer `"skipSpecs":true`, the proposal\'s Capabilities section must read exactly',
+  '"None — skip_specs proposed because ⟨reason⟩" with your reason, so a maintainer can veto the call.',
+  'When the change does carry capabilities, name them at feature-domain granularity (e.g. `user-profile-memory`,',
+  '`sdd-automation`) — never issue-sized micro-capabilities. While `openspec/specs/` holds no archived',
+  'corpus, name new capabilities only: there is nothing yet to modify.',
   'Ask questions only when a wrong guess would produce the wrong feature; prefer stating an assumption in the spec.',
+  'When you ask for maintainer input, invite a plain reply on the thread; never suggest a slash command, which the',
+  'phase the issue is parked in may refuse.',
 ].join('\n')
 
 export const buildTriagePrompt = (context: PromptContext, feedback: string | null): string => {
@@ -164,6 +176,7 @@ export const buildCiFixPrompt = (
   round: number,
   blocked: readonly string[] = [],
   budget = CHECK_OUTPUT_BUDGET,
+  context: CiFixContext = {},
 ): string => {
   const shares = shareBudget(
     failures.map((failure) => failure.output.length),
@@ -173,6 +186,12 @@ export const buildCiFixPrompt = (
   return [
     `Continuous integration is red on this branch (repair round ${round}). Fix the root cause in the working tree.`,
     ...blockedPathsNote(blocked),
+    ...(context.command === undefined
+      ? []
+      : [
+          `The failing CI job was reproduced locally as \`${context.command.join(' ')}\`. The failures below are from that run.`,
+        ]),
+    ...(context.ciLog === undefined ? [] : [`## The CI log being repaired\n${envelope.wrap('ci-log', context.ciLog)}`]),
     // Check output is untrusted: a failing test prints whatever its source says,
     // and that source can come from a contributor. It used to go in raw, inside
     // a bare fence it could close, with only a *note* about it enveloped — the
@@ -186,6 +205,17 @@ export const buildCiFixPrompt = (
     'Do not weaken, skip, or delete tests to make a check pass, and do not add lint-disable or type-ignore comments.',
     'Reply with a one-paragraph summary of the fix.',
   ].join('\n\n')
+}
+
+/**
+ * The CI-side facts a repair round is composed against: the command a
+ * reproduction derived, and the log of the run being repaired. Both optional —
+ * a round may have neither — and the log is untrusted text, enveloped where it
+ * lands.
+ */
+export interface CiFixContext {
+  command?: readonly string[]
+  ciLog?: string
 }
 
 export const ANSWER_INSTRUCTIONS = [

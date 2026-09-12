@@ -94,6 +94,8 @@ describe('hermetic story runner', () => {
     ['rejects undeclared fetch', 'fetch'],
     ['rejects Bun.spawn', 'Bun.spawn'],
     ['rejects Bun.spawnSync', 'Bun.spawnSync'],
+    ['rejects a tsgo-shaped executable inside the execution root', 'Bun.spawn'],
+    ['rejects a tsgo-shaped child_process spawn inside the execution root', 'child_process.spawn'],
     ['rejects child_process execFile', 'child_process.execFile'],
     ['rejects child_process execFileSync', 'child_process.execFileSync'],
     ['rejects child_process spawn', 'child_process.spawn'],

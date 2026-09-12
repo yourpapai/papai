@@ -102,3 +102,79 @@ export const describeDetail = (event: unknown, sessionId: string): ActivityDetai
   const { part } = parsed.data.properties
   return { tool: part.tool, callID: part.callID, detail: detailOf(part.tool, part.state.input) }
 }
+
+/**
+ * The provider-side half: the failure text `session.status` retry and
+ * `session.error` carry, decoded for the transcript alone.
+ *
+ * The 2026-08-21 incident is why this exists: the provider's own message was
+ * the one account of what a dead gateway was doing — carried by these very
+ * events, all 78 retries of them — and `activity.ts` dropped it at decode, so
+ * no log, artifact or transcript anywhere named the cause. The public decoder
+ * **still drops it**, by the containment rule that a provider's error text is
+ * the natural place for a rejected credential to be quoted back into a
+ * world-readable CI log; this is the one place content may go, and it goes
+ * encrypted, with `redactSecrets` by value in front of the encryption.
+ *
+ * Both payload shapes are the pinned SDK's own — `status.message` on a retry,
+ * `error.data.message` on a session error — re-verified against 1.18.16. The
+ * name and status code stay public-side (`activity.ts` already decodes them);
+ * the row here is the message and which of the two events it was.
+ */
+const retryDetailEvent = z.object({
+  type: z.literal('session.status'),
+  properties: z.object({
+    sessionID: z.string(),
+    status: z.object({
+      type: z.literal('retry'),
+      attempt: z.number().optional(),
+      // `unknown` rather than `string`: a moved shape carrying an object under
+      // `message` must read as no detail, not fail the row — the same rule the
+      // tool field table applies to a non-scalar argument.
+      message: z.unknown().optional(),
+    }),
+  }),
+})
+
+const errorDetailEvent = z.object({
+  type: z.literal('session.error'),
+  properties: z.object({
+    // Optional here as in `activity.ts`'s decode: an error the server could
+    // not attribute is still this run's — there is one session per job.
+    sessionID: z.string().optional(),
+    error: z.object({ data: z.object({ message: z.unknown().optional() }).optional() }),
+  }),
+})
+
+/** The whitelisted provider text, bounded by the transcript's own size rule. */
+const boundedText = (message: unknown): string | null =>
+  typeof message === 'string' ? message.slice(0, DETAIL_MAX_LENGTH) : null
+
+/**
+ * Decodes one provider retry or session error into the transcript row it
+ * earns, or `null` for anything else — including a retry or error about
+ * another session.
+ *
+ * `status` is what the row shows beside the `provider` tool name, and carries
+ * the attempt number the public log also prints, so the two accounts of one
+ * incident can be lined up.
+ */
+export const describeProviderDetail = (
+  event: unknown,
+  sessionId: string,
+): { status: string; detail: string | null } | null => {
+  const retry = retryDetailEvent.safeParse(event)
+  if (retry.success && retry.data.properties.sessionID === sessionId) {
+    const { attempt, message } = retry.data.properties.status
+    return { status: attempt === undefined ? 'retry' : `retry (attempt ${attempt})`, detail: boundedText(message) }
+  }
+
+  const failure = errorDetailEvent.safeParse(event)
+  if (failure.success) {
+    const { sessionID, error } = failure.data.properties
+    if (sessionID !== undefined && sessionID !== sessionId) return null
+    return { status: 'error', detail: boundedText(error.data?.message) }
+  }
+
+  return null
+}

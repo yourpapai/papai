@@ -11,7 +11,11 @@ import { beforeEach, describe, expect, mock, test } from 'bun:test'
 import assert from 'node:assert/strict'
 
 import { extractFilesFromContext } from '../../../src/chat/telegram/file-helpers.js'
-import { TelegramChatProvider } from '../../../src/chat/telegram/index.js'
+import {
+  TelegramChatProvider,
+  type TelegramBotFactory,
+  type TelegramBotLike,
+} from '../../../src/chat/telegram/index.js'
 import {
   extractContextInfo,
   extractMessageIds,
@@ -87,6 +91,10 @@ function requireAuth(auth: AuthorizationResult | undefined): AuthorizationResult
   return auth
 }
 
+function entitiesOf(options: Partial<{ entities: unknown[]; message_thread_id: number }> | undefined): unknown[] {
+  return options?.entities ?? []
+}
+
 function isBotWithSendMessage(
   value: unknown,
 ): value is { api: { sendMessage: (...args: SendMessageCall) => Promise<unknown> } } {
@@ -140,6 +148,48 @@ describe('TelegramChatProvider', () => {
     expect(() => new TelegramChatProvider({ token: 'test-token', platformInstanceId: '   ' })).toThrow(
       'platformInstanceId is required',
     )
+  })
+
+  test('uses the injected bot factory for Bot API membership lookup', async () => {
+    const calls: Array<[number, number]> = []
+    const registeredCommands: string[] = []
+    const botFactory: TelegramBotFactory = (token) => {
+      expect(token).toBe('telegram-test-token')
+      const bot: TelegramBotLike = {
+        api: {
+          sendMessage: () => Promise.resolve(),
+          getChat: () => Promise.resolve({ id: 0 }),
+          getChatMember(chatId, userId) {
+            calls.push([Number(chatId), userId])
+            return Promise.resolve({ status: 'administrator' })
+          },
+          getChatAdministrators: () => Promise.resolve([]),
+          getFile: () => Promise.resolve({}),
+          createForumTopic: () => Promise.resolve({ message_thread_id: 1 }),
+          editMessageText: () => Promise.resolve(),
+          deleteMessage: () => Promise.resolve(),
+          setMyCommands: () => Promise.resolve(),
+          deleteMyCommands: () => Promise.resolve(),
+        },
+        on: () => undefined,
+        command(name) {
+          registeredCommands.push(name)
+        },
+        start: () => Promise.resolve(),
+        stop: () => Promise.resolve(),
+      }
+      return bot
+    }
+    const provider = new TelegramChatProvider({
+      token: 'telegram-test-token',
+      platformInstanceId: 'telegram-platform',
+      botFactory,
+    })
+
+    provider.registerCommand('help', () => Promise.resolve())
+    await expect(provider.isGroupAdmin('telegram-platform', '-100', '42')).resolves.toBe(true)
+    expect(registeredCommands).toEqual(['help'])
+    expect(calls).toEqual([[-100, 42]])
   })
 
   test('provider has correct name', () => {
@@ -346,6 +396,50 @@ describe('TelegramChatProvider', () => {
           ],
         },
       ])
+    })
+
+    test('chunks over-limit delivery with the mention prefix on the first chunk only', async () => {
+      const provider = createTelegramProvider()
+      const bot = getProviderBot(provider)
+
+      const calls: SendMessageCall[] = []
+      bot.api.sendMessage = (...args: SendMessageCall): Promise<unknown> => {
+        calls.push(args)
+        return Promise.resolve(undefined)
+      }
+
+      const target: DeferredDeliveryTarget = {
+        contextId: '99',
+        contextType: 'group',
+        threadId: '123',
+        audience: 'personal',
+        mentionUserIds: ['42'],
+        createdByUserId: '42',
+        createdByUsername: 'alice',
+      }
+
+      await provider.sendMessage('telegram-default', target, 'x'.repeat(5000))
+
+      expect(calls.length).toBeGreaterThan(1)
+      const firstText = calls[0]![1]
+      expect(firstText.startsWith('@alice ')).toBe(true)
+      expect(calls[0]![2]?.entities).toContainEqual({
+        offset: 0,
+        length: 6,
+        type: 'text_mention',
+        user: { id: 42, is_bot: false, first_name: 'alice' },
+      })
+      for (const [, text, options] of calls.slice(1)) {
+        expect(text.includes('@alice')).toBe(false)
+        expect(entitiesOf(options)).toHaveLength(0)
+      }
+      for (const [, text, options] of calls) {
+        expect(text.length).toBeLessThanOrEqual(4096)
+        expect(options?.message_thread_id).toBe(123)
+      }
+      const joined = calls.map(([, text]) => text).join('')
+      expect(joined.startsWith('@alice ')).toBe(true)
+      expect(joined.replace('@alice ', '')).toBe('x'.repeat(5000))
     })
   })
 
@@ -684,7 +778,7 @@ describe('TelegramChatProvider', () => {
   })
 
   describe('message edit handling', () => {
-    test('onMessageEdit subscribes to edited_message:text only', () => {
+    test('onMessageEdit subscribes to edited_message updates', () => {
       const provider = createTelegramProvider()
       const botValue = Reflect.get(provider as object, 'bot') as unknown
       assert(isBotWithLifecycleMethods(botValue), 'Expected Telegram provider bot to expose lifecycle methods')
@@ -696,11 +790,10 @@ describe('TelegramChatProvider', () => {
 
       provider.onMessageEdit((_msg) => Promise.resolve())
 
-      expect(filters).toContain('edited_message:text')
-      expect(filters).not.toContain('edited_channel_post:text')
+      expect(filters).toContain('edited_message')
     })
 
-    test('delivers edited_message:text to onMessageEdit with editedAt and messageId', async () => {
+    test('delivers edited_message to onMessageEdit with editedAt and messageId', async () => {
       const provider = createTelegramProvider()
       const botValue = Reflect.get(provider as object, 'bot') as unknown
       assert(isBotWithLifecycleMethods(botValue), 'Expected Telegram provider bot to expose lifecycle methods')
@@ -720,8 +813,8 @@ describe('TelegramChatProvider', () => {
         return Promise.resolve()
       })
 
-      const editedHandler = handlers.get('edited_message:text')
-      assert(editedHandler !== undefined, 'Expected edited_message:text handler to be registered')
+      const editedHandler = handlers.get('edited_message')
+      assert(editedHandler !== undefined, 'Expected edited_message handler to be registered')
 
       await Promise.resolve(
         editedHandler({
@@ -751,8 +844,8 @@ describe('TelegramChatProvider', () => {
         return Promise.resolve()
       })
 
-      const editedHandler = handlers.get('edited_message:text')
-      assert(editedHandler !== undefined, 'Expected edited_message:text handler to be registered')
+      const editedHandler = handlers.get('edited_message')
+      assert(editedHandler !== undefined, 'Expected edited_message handler to be registered')
 
       await Promise.resolve(
         editedHandler({
@@ -764,6 +857,36 @@ describe('TelegramChatProvider', () => {
       )
 
       expect(received).toEqual([{ editedAt: 0, messageId: '7' }])
+    })
+
+    test('ignores edited messages without text', async () => {
+      const provider = createTelegramProvider()
+      const botValue = Reflect.get(provider as object, 'bot') as unknown
+      assert(isBotWithLifecycleMethods(botValue), 'Expected Telegram provider bot to expose lifecycle methods')
+
+      const handlers = new Map<string | string[], (...args: unknown[]) => unknown>()
+      botValue.on = (filter: string | string[], handler: (...args: unknown[]) => unknown): void => {
+        handlers.set(filter, handler)
+      }
+
+      let delivered = false
+      provider.onMessageEdit(() => {
+        delivered = true
+        return Promise.resolve()
+      })
+
+      const editedHandler = handlers.get('edited_message')
+      assert(editedHandler !== undefined, 'Expected edited_message handler to be registered')
+      await Promise.resolve(
+        editedHandler({
+          from: { id: 42, username: 'alice' },
+          chat: { id: 99, type: 'private' },
+          editedMessage: { message_id: 8, photo: [] },
+          me: { id: 99999 },
+        }),
+      )
+
+      expect(delivered).toBe(false)
     })
   })
 
@@ -815,7 +938,14 @@ describe('TelegramChatProvider', () => {
 
     test('returns null for username (cannot resolve via Bot API)', async () => {
       const provider = createTelegramProvider()
+      Reflect.set(provider, 'bot', {
+        api: {
+          getChat: (_chatId: string): Promise<never> => Promise.reject(new Error('Bad Request: chat not found')),
+        },
+      })
+
       const result = await provider.resolveUserId('@username', context)
+
       expect(result).toBeNull()
     })
   })
@@ -891,7 +1021,7 @@ describe('TelegramChatProvider', () => {
       const ctx: MinimalContext = {
         message: {
           message_id: 100,
-          reply_to_message: { message_id: 50, text: 'original message' },
+          reply_to_message: { message_id: 50, from: { id: 70 }, text: 'original message' },
           quote: { text: 'quoted text' },
         },
       }
@@ -899,6 +1029,7 @@ describe('TelegramChatProvider', () => {
       expect(result).toEqual({
         messageIdStr: '100',
         replyToMessageIdStr: '50',
+        replyToAuthorIdStr: '70',
         replyToMessageText: 'original message',
         quoteText: 'quoted text',
       })
@@ -910,6 +1041,7 @@ describe('TelegramChatProvider', () => {
       expect(result).toEqual({
         messageIdStr: undefined,
         replyToMessageIdStr: undefined,
+        replyToAuthorIdStr: undefined,
         replyToMessageText: undefined,
         quoteText: undefined,
       })
@@ -927,6 +1059,7 @@ describe('TelegramChatProvider', () => {
       expect(result).toEqual({
         messageIdStr: '200',
         replyToMessageIdStr: '80',
+        replyToAuthorIdStr: undefined,
         replyToMessageText: 'origin',
         quoteText: 'quoted',
       })
@@ -946,7 +1079,7 @@ describe('TelegramChatProvider', () => {
 
     test('logMessageExtraction logs debug info', () => {
       expect(() => {
-        logMessageExtraction(123, 'ctx123', 'msg456', 'reply789', 'original text', 'quoted text')
+        logMessageExtraction(123, 'ctx123', 'msg456', 'reply789', 'original text', 'quoted text', '777')
       }).not.toThrow()
     })
   })

@@ -169,6 +169,45 @@ describe('story dependency snapshot', () => {
     ])
   })
 
+  test('materializes patchedDependencies patch files into staging and invalidates the cache when they change', async () => {
+    const { projectRoot, cacheRoot } = fixture()
+    mkdirSync(path.join(projectRoot, 'patches'))
+    writeFileSync(
+      path.join(projectRoot, 'package.json'),
+      '{"name":"snapshot-fixture","patchedDependencies":{"@scope/pkg@1.0.0":"patches/scope-pkg.patch"}}\n',
+    )
+    writeFileSync(path.join(projectRoot, 'patches', 'scope-pkg.patch'), 'patch-one\n')
+    const stagedPatches: string[] = []
+    const install = (options: StoryDependencyInstallerOptions): Promise<void> => {
+      stagedPatches.push(readFileSync(path.join(options.cwd, 'patches/scope-pkg.patch'), 'utf8'))
+      mkdirSync(path.join(options.cwd, 'node_modules/example'), { recursive: true })
+      writeFileSync(path.join(options.cwd, 'node_modules/example/index.js'), 'export default 1\n')
+      return Promise.resolve()
+    }
+
+    const first = await acquireStoryDependencySnapshot({ projectRoot, cacheRoot, bunVersion: '1.2.3' }, { install })
+    writeFileSync(path.join(projectRoot, 'patches', 'scope-pkg.patch'), 'patch-two\n')
+    const changed = await acquireStoryDependencySnapshot({ projectRoot, cacheRoot, bunVersion: '1.2.3' }, { install })
+
+    expect(first.key).not.toBe(changed.key)
+    expect(stagedPatches).toEqual(['patch-one\n', 'patch-two\n'])
+  })
+
+  test('rejects escaping patchedDependencies patch paths before dependency installation', async () => {
+    const { projectRoot, cacheRoot } = fixture()
+    writeFileSync(
+      path.join(projectRoot, 'package.json'),
+      '{"name":"snapshot-fixture","patchedDependencies":{"@scope/pkg@1.0.0":"../outside.patch"}}\n',
+    )
+
+    await expect(
+      acquireStoryDependencySnapshot(
+        { projectRoot, cacheRoot, bunVersion: '1.2.3' },
+        { install: (): Promise<void> => Promise.reject(new Error('installer must not run')) },
+      ),
+    ).rejects.toThrow('Unsafe story dependency patch path')
+  })
+
   test('rejects escaping and symlinked workspace paths before dependency installation', async () => {
     const { projectRoot, cacheRoot } = fixture()
     writeFileSync(path.join(projectRoot, 'package.json'), '{"name":"snapshot-fixture","workspaces":["../outside"]}\n')

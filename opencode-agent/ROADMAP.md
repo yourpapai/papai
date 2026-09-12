@@ -40,9 +40,10 @@ See LICENSE in the project root for details.
 > _between_ two of them and costs the run nothing at all. It also subsumes what was
 > left of S5-5 — its job-deadline half is the answer to that residue, and the run
 > behind it is the first evidence that a real implement phase does exceed the wall
-> clock this pipeline allows it. **S6** is where the rest is: S6-5 (the mutation
-> ratchet has never seen this workspace) and S6-7 (`check.sh`'s full list omits
-> it). Both, with what they cost and what fixing them costs, are evaluated in
+> clock this pipeline allows it. **S6**'s last two open items are closed by the
+> mutation-gate widening: S6-5 (the ratchet now measures this workspace) and
+> S6-7 (`check.sh` and the gate are pinned to agree on what product code is).
+> Both, with what they cost and what fixing them cost, are evaluated in
 > [`docs/remaining-findings-evaluation.md`](docs/remaining-findings-evaluation.md).
 >
 > That paragraph replaces "**S4** onwards is untouched", which was false when it
@@ -50,6 +51,13 @@ See LICENSE in the project root for details.
 > it — the same way S3-7 and S3-8 came to be listed as open. A status line nobody
 > re-derives is the most reliably wrong part of any long document, which is why
 > what remains is now named positively rather than by omission.
+
+> **MCP integration.** The recorded research — pinned-SDK surface, live-verified
+> binary behaviour, and the option comparison recommending an `AGENT_MCP_SERVERS`
+> env knob — lives in
+> [`docs/mcp-integration-research.md`](docs/mcp-integration-research.md); its
+> named follow-ups (the merge-vs-override experiment that never ran, MCP
+> credential containment, the per-server opt-out) are tracked there.
 >
 > A recurring pattern is worth stating once: several items marked `[FIXED]` were
 > re-opened on inspection because the fix had closed the _instance_ and left the
@@ -512,7 +520,7 @@ detection test red, and collapsing `unavailable` into `failed` turns the report
 test red. The unreachable `reviewLoopError` factory is deleted._
 
 `src/config.ts:19-22` hardcodes `bun run test:mutate:changed`, and `:116` wires
-it in with no environment override (unlike `AGENT_CHECKS`). Any repository other
+it in with no environment override. Any repository other
 than papai has no such script, so the command exits 127, `parseMutationScore`
 finds no score, and `runMutationImprove` spends `AGENT_MAX_MUTATION_ROUNDS`
 model calls asking the agent to "kill surviving mutants" from a `command not
@@ -1947,8 +1955,7 @@ OpenCode server for a phase built to avoid it.
 
 Two files moved to keep `max-lines` honest rather than to tidy: the commit half of the
 step walk is now `phases/implement-commit.ts` (what one step costs, against
-`implement-steps.ts`'s which step runs next), and `AGENT_CHECKS`' parse moved to
-`config-values.ts`, which is where reading a value out of the environment already lived.
+`implement-steps.ts`'s which step runs next).
 
 ### S5-7 — progress, and what it is deliberately not allowed to say
 
@@ -2120,7 +2127,13 @@ One wrinkle this surfaced but did not create: `bun install` runs against the
 default branch's lockfile, and `ensureBranch` switches the tree afterwards, so a
 dependency the agent adds on its own branch is not installed. That was already
 true of the issue-triggered path — it is uniform now rather than new — and
-belongs with S2 rather than here.
+belongs with S2 rather than here. The **detection** half is since closed:
+`ensureBranch` refuses a branch whose dependency manifests differ from base
+(`git-drift.ts`, after run 32507905723 burned a turn on exactly this), naming
+`/sync` as the remedy. The **install** half stays open by design — installing
+from the agent branch would run model-influenced install scripts in the secrets
+job — so an implementation that genuinely adds a dependency remains a
+maintainer reconciliation.
 
 **Verified after all.** Semgrep installs from PyPI, so the pinned 1.156.0 went
 into a virtualenv and the CI command ran here: `0 findings`. The rule no longer
@@ -2274,9 +2287,9 @@ Specific gaps worth closing, beyond the raw percentages:
 - **S6-2** No test drives `handleDeliver` against a git fake that behaves like a _fresh runner_ (branch absent locally). That fake permissiveness is why S1-2 is invisible.
 - **S6-3 [FIXED]** Both are now covered: a spec with `---` round-trips through the block channel, and a forged envelope terminator is asserted inert.
 - **S6-4 [FIXED]** `live-sdk.integration.ts` drives the real SDK; the unit fixtures are recorded from it.
-- **S6-5** **Stryker does not cover this workspace.** `stryker.config.json`'s `mutate` globs list `src/**` and `plugins/**` only, so the repo's strongest quality gate — the per-file mutation ratchet — never sees `opencode-agent/`. Ironic for a pipeline that runs a mutation loop. New files get a "first measurement, seeded" pass rather than an enforced floor, so this will not _block_ the PR; it just leaves the code unmeasured.
+- **S6-5 [FIXED]** The mutation gate covers this workspace. `opencode-agent/src/` is a sixth gateable root in `isGateableImplFile`, so `test:mutate:changed` and the plan/shard/gate CI dispatch select workspace sources; `stryker.config.json`'s `mutate` globs enumerate the tree for all-files runs, excluding the `index.ts` barrel like every other gated tree; and the resolver mappers learned the workspace's **flat** layout — `opencode-agent/src/**/x.ts` ↔ `tests/opencode-agent/x.test.ts`, the whole `src/` subtree stripping away, because that is where the 70 test files actually sit. Floors shipped in the same commit as the widening (`scripts/mutation/baseline.json`), so the scope never existed without them; modules added after the seed carry no floor and are judged by the no-floor rules — measured, never a free pass — which today is `config-shape.ts`, `phase-context.ts`, `run-result.ts` and `state-version.ts`.
 - **S6-6** **Coverage-floor risk on CI.** `scripts/coverage/floor.json` enforces an aggregate 90% lines / 90% functions. Eight of the spike's files sit below that. papai is large enough (~289k lines) that ~1,200 new lines at roughly 75% should not push the aggregate under the floor, but this has not been measured against a full coverage run and should be checked before merge.
-- **S6-7** `opencode-agent:lint` / `:typecheck` / `:format:check` / `:test` are not in `scripts/check.sh`'s full check list (`:296`), unlike `review-loop:*`. They are covered transitively by the root `lint`, `typecheck` and `test`, so this is consistency rather than a hole — but the asymmetry will confuse the next person.
+- **S6-7 [FIXED]** Closed by pin rather than by proxy entries: full mode is root-checks-only, and `tests/scripts/check.test.ts` derives both sides live — the gateable roots from the widened `isGateableImplFile`, the path-prefix arms from `check.sh`'s staged license/oxlint enumerations — and asserts every root is routed by both or recorded as a keyed exception. The shell check and the mutation gate can no longer silently disagree about what product code is.
 - **S6-8 [PARTLY FIXED]** `workflow.test.ts` now parses the workflow and asserts its trigger surface, condition, concurrency key, step wiring and permissions. That is a property check, not a linter: it cannot catch a shell-quoting or expression _syntax_ error the way `actionlint` would. Adding actionlint to CI is still worth doing.
 - **S6-9 [PARTLY CLOSED]** `bun security` (Semgrep) could not run in the authoring environment — no Semgrep binary and no Docker — so the spike had not been through the repo's security scan. CI has now run it, and it found one blocking issue in `agent-pipeline.yml`. See below.
 
@@ -2344,6 +2357,47 @@ built for. Related and worse: nothing asks whether a plan's steps leave anything
 uncommittable experimentation and put its only artefact in the last step but one,
 which is a plan the pipeline cannot make durable no matter how well the walk
 works. Both want their own finding.
+
+### S5-15 — a remedy the state it was prescribed for could not take
+
+Issue #323, 2026-08-21. The run refused on drifted manifests — master's
+`56c598a89` removed three `sdd-runner:*` scripts from `package.json` after the
+branch's last sync, so the branch had touched no manifest and still differed
+from base. Three defects stacked on that one refusal, and each is fixed:
+
+- **The footer contradicted the body it rode under.** `renderFailure` appended
+  "Reply `/retry` to resume" to every failure, including one whose message
+  opens "This is not something `/retry` can change" — violating the contract
+  `dependencyDriftError`'s own doc states. A skimming maintainer follows the
+  footer. Now `renderFailure` takes the failure's retry-futility
+  (`isRetryFutile` in `errors.ts`: drift and the settings-gated pull-request
+  refusal, the two whose messages name out-of-band remedies) and answers it
+  with "the way out is named above".
+- **The remedy was gated behind a pull request that would never open.** The
+  drift message prescribed `/sync`, whose predicate was `prNumber !== null`,
+  and a drift park is by construction pre-delivery. The maintainer typed
+  `/sync`, got "does not apply right now", and was pointed back at `/retry`.
+  The predicate is now "the agent branch exists" — `changeName !== null`, with
+  the one branch-less state that still names a change (a **cancelled** issue,
+  the `presentationKey` split) refused so `/sync` cannot resurrect the branch
+  `/cancel` deleted.
+- **Blind retries spent the budget.** The guard fires at the branch switch,
+  before any work, yet each refusal spent an attempt — two spare, on a
+  condition no retry could change. `failRun` now carries `attempts` for a
+  drift refusal, the over-budget stop's doctrine.
+
+**Deliberately not fixed: the pull request opens too late for a fast-moving
+base.** The deeper shape is that everything a maintainer can do to a branch —
+`/sync`, the checks, review — lives on the pull request, and the pull request
+only exists after `PR_DELIVERY`, at the far end of an implementation that can
+run for hours across many jobs while master moves under it. Issue #323 drifted
+mid-implementation twice in one afternoon. Opening a draft pull request at the
+first push of the agent branch would put `/sync` and the red/green signal on
+the page a maintainer already watches, but it moves the `feedback-target`
+split, `FRESH_PR_BUDGETS`, the CI-fix door and the archive door with it, and
+"COMPLETE means delivered" is the invariant the whole presentation layer reads.
+That is a design change, not a finding-sized fix; it wants an OpenSpec proposal
+of its own before anything implements it.
 
 ## Suggested sequencing
 

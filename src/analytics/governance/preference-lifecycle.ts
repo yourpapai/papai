@@ -10,8 +10,9 @@ import { inArray } from 'drizzle-orm'
 import { analyticsPolicyAudit } from '../../db/schema.js'
 import type { AnalyticsPreferenceRow } from '../../db/schema.js'
 import { logger } from '../../logger.js'
-import { upsertPreferenceRowInTx } from './preference-store.js'
-import type { PreferenceSource, PreferenceTx } from './preference-store.js'
+import { upsertPreferenceRowInTx } from './preference-row.js'
+import type { PreferenceTx } from './preference-row.js'
+import type { PreferenceSource } from './preference-types.js'
 
 const log = logger.child({ scope: 'analytics:governance:preference-lifecycle' })
 

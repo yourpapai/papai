@@ -5,7 +5,7 @@
 
 import { locateLatestBlock, readBlock, renderBlock } from './blocks.js'
 import type { IssueComment } from './blocks.js'
-import { agentStateSchema, STATE_VERSION } from './types.js'
+import { agentStateSchema, STATE_VERSION, TOKEN_SCALE } from './types.js'
 import type { AgentState } from './types.js'
 
 export type { IssueComment } from './blocks.js'
@@ -27,7 +27,10 @@ export const STATE_MARKER = 'AGENT_STATE'
 
 /** Fresh state for an issue the agent has not seen before. */
 export const initialState = (issueId: number): AgentState =>
-  agentStateSchema.parse({ v: STATE_VERSION, phase: 'INIT_OR_CLARIFY', issueId })
+  // `tokenScale` explicitly rather than by default: the schema defaults it to
+  // the superseded scale so that *existing* blocks describe themselves
+  // honestly, and an issue starting now has spent nothing on any scale.
+  agentStateSchema.parse({ v: STATE_VERSION, phase: 'INIT_OR_CLARIFY', issueId, tokenScale: TOKEN_SCALE })
 
 /** Renders the hidden block that carries state across ephemeral CI jobs. */
 export const serializeState = (state: AgentState): string => renderBlock(STATE_MARKER, state)

@@ -3,7 +3,7 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { describe, it, expect } from 'bun:test'
+import { describe, it, expect, beforeEach, mock } from 'bun:test'
 
 import {
   nextOccurrence,
@@ -12,6 +12,7 @@ import {
   recurrenceSpecToRrule,
 } from '../../src/recurrence/recurrence.js'
 import type { RecurrenceSpec } from '../../src/types/recurrence.js'
+import { createTrackedLoggerMock } from '../utils/logger-mock.js'
 
 describe('recurrenceSpecToRrule', () => {
   it('serialises a WEEKLY MO/WE/FR at 09:00 spec', () => {
@@ -152,8 +153,9 @@ describe('nextOccurrence', () => {
   })
 
   it('finds the next occurrence when dtstart is decades in the past', () => {
-    // RRuleTemporal.next() enumerates from DTSTART; without a windowed scan a
-    // ~30-year-old daily rule exceeds the library's maxIterations and throws.
+    // next() jumps to a phase-aligned DTSTART near `after` for unbounded
+    // rules, so a ~30-year-old daily rule must stay far under the library's
+    // maxIterations cap.
     const next = nextOccurrence(
       {
         rrule: 'FREQ=DAILY;BYHOUR=9;BYMINUTE=0',
@@ -166,7 +168,6 @@ describe('nextOccurrence', () => {
   })
 
   it('finds the next occurrence for an aged HOURLY rule (cron */hour translation)', () => {
-    // HOURLY hits maxIterations after ~14 months of dtstart age.
     const next = nextOccurrence(
       {
         rrule: 'FREQ=HOURLY;BYMINUTE=30',
@@ -179,8 +180,6 @@ describe('nextOccurrence', () => {
   })
 
   it('finds the next occurrence for a MINUTELY rule with a recent dtstart', () => {
-    // MINUTELY packs 10,080 occurrences into 7 days, so any scan window must
-    // stay under the library's 10k iteration cap.
     const next = nextOccurrence(
       {
         rrule: 'FREQ=MINUTELY',
@@ -190,6 +189,47 @@ describe('nextOccurrence', () => {
       new Date('2026-06-15T12:00:30Z'),
     )
     expect(next?.toISOString()).toBe('2026-06-15T12:01:00.000Z')
+  })
+
+  it('finds the next occurrence for an aged MINUTELY rule', () => {
+    // rrule-temporal >=2.1 next() jumps to a phase-aligned DTSTART just
+    // before `after` for unbounded rules, so a year-old MINUTELY rule must
+    // answer without replaying ~525k occurrences from DTSTART.
+    const next = nextOccurrence(
+      {
+        rrule: 'FREQ=MINUTELY',
+        dtstartUtc: '2025-06-15T11:50:00Z',
+        timezone: 'UTC',
+      },
+      new Date('2026-06-15T12:00:30Z'),
+    )
+    expect(next?.toISOString()).toBe('2026-06-15T12:01:00.000Z')
+  })
+
+  it('finds the next occurrence for a COUNT rule with remaining occurrences', () => {
+    // COUNT-bound rules answer from lazy query plans since 2.1, so the
+    // remaining-occurrence lookup must stay correct past its dtstart.
+    const next = nextOccurrence(
+      {
+        rrule: 'FREQ=DAILY;COUNT=60',
+        dtstartUtc: '2026-05-01T09:00:00Z',
+        timezone: 'UTC',
+      },
+      new Date('2026-06-15T12:00:00Z'),
+    )
+    expect(next?.toISOString()).toBe('2026-06-16T09:00:00.000Z')
+  })
+
+  it('returns null for a COUNT rule exhausted long ago', () => {
+    const next = nextOccurrence(
+      {
+        rrule: 'FREQ=DAILY;COUNT=3',
+        dtstartUtc: '2020-01-01T09:00:00Z',
+        timezone: 'UTC',
+      },
+      new Date('2026-06-15T12:00:00Z'),
+    )
+    expect(next).toBeNull()
   })
 
   it('returns null instead of throwing for a rule that can never match', () => {
@@ -281,5 +321,77 @@ describe('occurrencesBetween', () => {
       3,
     )
     expect(occ.length).toBe(3)
+  })
+})
+
+describe('strict RFC 5545 parsing', () => {
+  // The parse-failure warn goes through the module-level child logger, so
+  // asserting it needs a tracked logger installed before a fresh module load
+  // (a static import would already have bound the real logger). mock.module
+  // is process-wide; tests/mock-reset.ts restores the real logger in its
+  // global beforeEach — same pattern as tests/plugins/task-provider-youtrack.
+  const COUNT_UNTIL = 'FREQ=DAILY;COUNT=5;UNTIL=20260601T000000Z'
+
+  // The module binds `logger.child({ scope: 'recurrence' })` at load, so each
+  // test imports a fresh copy (cache-busted) against its own mocks.
+  let loadCount = 0
+  const freshModule = (): Promise<typeof import('../../src/recurrence/recurrence.js')> => {
+    loadCount++
+    return import(`../../src/recurrence/recurrence.js?strict=${loadCount}`)
+  }
+
+  let tracked: ReturnType<typeof createTrackedLoggerMock>
+  let strictRecurrence: typeof import('../../src/recurrence/recurrence.js')
+
+  beforeEach(async () => {
+    tracked = createTrackedLoggerMock()
+    void mock.module('../../src/logger.js', () => ({
+      getLogLevel: tracked.getLogLevel,
+      logger: tracked.logger,
+    }))
+    strictRecurrence = await freshModule()
+  })
+
+  it('rejects COUNT combined with UNTIL at parse time', () => {
+    const res = strictRecurrence.parseRrule({
+      rrule: COUNT_UNTIL,
+      dtstartUtc: '2026-04-20T09:00:00Z',
+      timezone: 'UTC',
+    })
+    expect(res).toEqual({ ok: false, reason: 'COUNT and UNTIL MUST NOT occur in the same recurrence rule' })
+  })
+
+  it('rejects a DATE-valued UNTIL against a DATE-TIME DTSTART', () => {
+    const res = strictRecurrence.parseRrule({
+      rrule: 'FREQ=DAILY;UNTIL=20260601',
+      dtstartUtc: '2026-04-20T09:00:00Z',
+      timezone: 'UTC',
+    })
+    expect(res).toEqual({ ok: false, reason: 'UNTIL rule part MUST have the same value type as DTSTART' })
+  })
+
+  it('degrades COUNT+UNTIL nextOccurrence to null with a warn naming the rule', () => {
+    const next = strictRecurrence.nextOccurrence(
+      { rrule: COUNT_UNTIL, dtstartUtc: '2026-04-20T09:00:00Z', timezone: 'UTC' },
+      new Date('2026-04-21T00:00:00Z'),
+    )
+    expect(next).toBeNull()
+    const warns = tracked.getCallsByLevel('warn')
+    expect(warns.length).toBeGreaterThanOrEqual(1)
+    expect(warns[0]?.args[0]).toMatchObject({
+      rrule: COUNT_UNTIL,
+      reason: 'COUNT and UNTIL MUST NOT occur in the same recurrence rule',
+    })
+  })
+
+  it('degrades COUNT+UNTIL occurrencesBetween to [] without throwing', () => {
+    const occ = strictRecurrence.occurrencesBetween(
+      { rrule: COUNT_UNTIL, dtstartUtc: '2026-04-20T09:00:00Z', timezone: 'UTC' },
+      new Date('2026-04-20T00:00:00Z'),
+      new Date('2026-04-24T00:00:00Z'),
+    )
+    expect(occ).toEqual([])
+    const warns = tracked.getCallsByLevel('warn')
+    expect(warns.length).toBeGreaterThanOrEqual(1)
   })
 })

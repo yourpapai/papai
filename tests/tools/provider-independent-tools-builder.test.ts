@@ -7,8 +7,9 @@ import { beforeEach, describe, expect, it } from 'bun:test'
 
 import type { ToolSet } from 'ai'
 
+import { ACTIVITY_NO_INSTANCE_ERROR, ACTIVITY_UNAVAILABLE_ERROR } from '../../src/deferred-prompts/activity-gating.js'
 import { addProviderIndependentTools } from '../../src/tools/provider-independent-tools-builder.js'
-import { mockLogger, setupTestDb } from '../utils/test-helpers.js'
+import { getToolExecutor, mockLogger, setupTestDb } from '../utils/test-helpers.js'
 
 // Unique context per test: the in-memory config cache outlives individual tests.
 const optsFor = (
@@ -65,5 +66,28 @@ describe('search_memory registration', () => {
     const tools: ToolSet = {}
     addProviderIndependentTools(tools, optsFor('pitb-mem-proactive', 'proactive', 'group'))
     expect(tools['search_memory']).toBeDefined()
+  })
+})
+
+describe('create_alert activity gating', () => {
+  beforeEach(async () => {
+    mockLogger()
+    await setupTestDb()
+  })
+
+  it('refuses an activity condition when activityAlertsEnabled is omitted', async () => {
+    const tools: ToolSet = {}
+    addProviderIndependentTools(tools, optsFor('pitb-act-default'))
+    const execute = getToolExecutor(tools['create_alert'])
+    const result = await execute({ prompt: 'Notify me', condition: { kind: 'activity', taskId: 'task-1' } })
+    expect(result).toEqual({ error: ACTIVITY_UNAVAILABLE_ERROR })
+  })
+
+  it('plumbs an explicit activityAlertsEnabled through to the tool', async () => {
+    const tools: ToolSet = {}
+    addProviderIndependentTools(tools, { ...optsFor('pitb-act-on'), activityAlertsEnabled: true })
+    const execute = getToolExecutor(tools['create_alert'])
+    const result = await execute({ prompt: 'Notify me', condition: { kind: 'activity', taskId: 'task-1' } })
+    expect(result).toEqual({ error: ACTIVITY_NO_INSTANCE_ERROR })
   })
 })

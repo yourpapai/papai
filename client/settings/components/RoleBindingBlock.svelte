@@ -6,6 +6,7 @@
 <script lang="ts">
   import Combobox from '../../shared/ui/Combobox.svelte'
   import Select from '../../shared/ui/Select.svelte'
+  import ModelMetadataHint from './ModelMetadataHint.svelte'
   import type { PublicProviderAccount, RoleBinding } from '../fetcher-schemas-llm-providers.js'
 
   interface Props {
@@ -88,6 +89,16 @@
         onInput={onModelInput}
         placeholder="Enter or select model"
         testid={`${testid}-model`} />
+      {#if selectedProvider !== null && (binding?.model ?? '').length > 0}
+        <div class="role-binding__hint">
+          <ModelMetadataHint
+            providerType={selectedProvider.providerType}
+            baseUrl={selectedProvider.baseUrl}
+            baseProvider={selectedProvider.baseProvider}
+            baseModel={selectedProvider.baseModel}
+            model={binding?.model ?? ''} />
+        </div>
+      {/if}
     </div>
   {/if}
 </div>
@@ -98,4 +109,5 @@
   .role-binding__name { font-family: var(--font-mono); font-size: 12px; text-transform: capitalize; color: var(--text-muted); }
   .role-binding__inherit { display: flex; align-items: center; gap: var(--s1); font-size: 11px; color: var(--text-dim); cursor: pointer; }
   .role-binding__controls { display: flex; gap: var(--gap-tight); flex-wrap: wrap; }
+  .role-binding__hint { flex-basis: 100%; }
 </style>

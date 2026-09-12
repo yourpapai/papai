@@ -25,7 +25,8 @@ export const replayLeftoverSteerAsFreshTurn = async (
   args: LeftoverReplayArgs,
 ): Promise<void> => {
   if (leftover.length === 0) return
-  const { reply, contextId, chatUserId, username, contextType, actorRole } = args.invocationSource
+  const { reply, contextId, chatUserId, username, contextType, actorRole, isBotAdmin, platformInstanceId } =
+    args.invocationSource
   const text = leftover.map((m) => m.text).join('\n\n')
   await args.processMessage(
     reply,
@@ -40,5 +41,8 @@ export const replayLeftoverSteerAsFreshTurn = async (
     undefined,
     actorRole,
     [],
+    undefined,
+    isBotAdmin,
+    platformInstanceId,
   )
 }

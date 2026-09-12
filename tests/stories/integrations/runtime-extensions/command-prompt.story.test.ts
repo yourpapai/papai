@@ -32,8 +32,8 @@ scenario(
       nativeContextId: alice.id,
     })
     given.runtimeExtension({
-      start({ record }): void {
-        configureCodingSessionCapability({
+      async start({ record }): Promise<void> {
+        await configureCodingSessionCapability({
           pluginDirectory: 'plugins',
           contextId: aliceContextId,
           magiBaseUrl: MAGI_URL,

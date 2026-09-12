@@ -31,6 +31,8 @@ _None_ — `openspec/specs/` holds no existing capability specs to modify, and t
 ## Non-goals
 
 - Unifying the domain-specific renderers (`LiveRenderer` vs `DynamicRenderer`/`LineRenderer`) — only the shared primitives move.
+
+> **Re-scope note (sdd-runner-simplify):** `sdd-runner/src/live-renderer.ts` (`DynamicRenderer`) has since been deleted — the interactive surface is now an Ink TUI (`run-view.ts`/`tui-gate.ts`) and `LineRenderer` is the one non-TUI renderer. The sdd-runner leg of this change therefore reduces to consuming the shared **format helpers** (`formatDuration`, `truncate`, `formatTokenCount`, `MIDDLE_DOT`) in `renderer.ts`/`run-view.ts`; the block-redraw engine leg only concerns `review-loop` and `mutation-improve`.
 - Changing any terminal output, status-line composition, slot semantics, or verbosity/altitude filtering.
 - Touching the papai runtime (`src/`, `client/`), chat/task providers, or any config-context scope.
 - Migrating the wider cross-workspace borrowing (`RunStats`/`cost`/`diff-stats`, `spawn`/`agent-runner`) noted in `mutation-improve/CLAUDE.md` — those stay by relative import for a later change.

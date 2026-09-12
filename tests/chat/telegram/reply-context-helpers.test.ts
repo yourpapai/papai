@@ -6,6 +6,7 @@
 import { beforeEach, describe, expect, test } from 'bun:test'
 
 import { extractReplyContext } from '../../../src/chat/telegram/reply-context-helpers.js'
+import { logger, logMultistream } from '../../../src/logger.js'
 import { cacheMessage } from '../../../src/message-cache/index.js'
 import { clearMessageCache, mockLogger, mockMessageCache } from '../../utils/test-helpers.js'
 
@@ -306,5 +307,41 @@ describe('extractReplyContext', () => {
     expect(result).toBeDefined()
     expect(result?.text).toBe(longMessage)
     expect(result?.quotedText).toBe(quotedText)
+  })
+})
+
+describe('extractReplyContext log attribution', () => {
+  // No mockLogger here: the module-bound child logger is the real pino instance,
+  // so attribution is asserted against actual egress (see tests/tools/logging-privacy.test.ts).
+  beforeEach(() => {
+    mockMessageCache()
+    clearMessageCache()
+  })
+
+  test('debug entry carries chatUserId so the reply author keeps their previews', () => {
+    const ctx: MockContext = {
+      message: {
+        message_id: 100,
+        text: 'Reply message',
+        reply_to_message: {
+          message_id: 50,
+          from: { id: 123, username: 'originaluser' },
+          text: 'Original message',
+        },
+      },
+    }
+
+    const logLines: string[] = []
+    logMultistream.add({ level: 'debug', stream: { write: (chunk: string): void => void logLines.push(chunk) } })
+    logger.level = 'debug'
+    try {
+      extractReplyContext(ctx, 'chat-1')
+    } finally {
+      logger.level = 'silent'
+    }
+    const entry = logLines.find((line) => line.includes('"msg":"Extracted reply context from Telegram message"'))
+    expect(entry, 'expected an extractReplyContext debug log entry').toBeDefined()
+    expect(entry).toContain('"chatUserId":"123"')
+    expect(entry).toContain('"fullMessagePreview":"Original message"')
   })
 })

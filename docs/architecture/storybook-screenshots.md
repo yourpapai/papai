@@ -120,6 +120,56 @@ unconditionally. Do not drop the `=all`.
 `@crvy/rprtr` is wired in `playwright.config.ts`. Run `bunx crvy-rprtr` to open a
 side-by-side review UI. Drop the reporter line from the config to remove it.
 
+## Syncing stories to Figma
+
+`bun figma:sync` mirrors the baselines into captioned Figma boards (one page per
+area — e.g. "Admin UI — stories", "Settings UI — stories"). The MCP upload path
+this automates is otherwise agent-only; a repo script cannot reach it, so the
+script serves everything from localhost and a small development plugin does the
+writes inside Figma:
+
+1.  One-time: Figma desktop → Plugins → Development → Import plugin from
+    manifest… → `scripts/figma-sync-plugin/manifest.json`. The plugin talks to
+    `http://127.0.0.1:7781` only (declared in `networkAccess`).
+2.  Run `bun figma:sync` (default areas: `admin,settings`; add `--no-shoot` to
+    reuse existing `.storybook-shots/` baselines). It prints `status=ready` and
+    waits.
+3.  In the target Figma file run Plugins → Development → papai story sync. The
+    plugin builds the boards, streams the PNGs into image fills, POSTs a report
+    back, and the script exits `status=ok` / `status=error` with counters.
+
+Idempotency: every story frame carries a `pluginData` key (the PNG's path under
+`.storybook-shots/`), so re-syncs resize, reposition, and refill existing frames
+in place instead of duplicating them; boards created before the plugin existed
+are adopted by frame-name match. Frames whose key no longer exists are counted
+as `stale` and left untouched. Geometry (0.5× scale, 3 columns for `admin`, 4
+elsewhere, 40/60/72/20/8 spacing constants) lives in `scripts/figma-sync-lib.ts`
+with tests in `tests/scripts/figma-sync.test.ts`.
+
+## Verifying generated code against designs
+
+After generating `client/` code from a papai Figma node (the `figma-codegen`
+skill — full flow: `docs/architecture/figma-codegen.md`), compare the
+implemented render against the design render:
+
+1.  Produce the implemented side with the normal shoot loop — a baseline PNG
+    under `.storybook-shots/` for the touched component/section story.
+
+2.  Produce the Figma side: export the corresponding frame via the Figma MCP
+    (`download_assets` on the node id) and save it as a PNG.
+
+3.  Compare (report-only — it never edits code, Figma nodes, or baselines):
+
+        bun run figma:verify --story <baseline.png> --figma <figma.png> [--threshold 0.1]
+
+    `--figma` also accepts a bare node id (`22:198`); the run then reports an
+    explicit `status=skip` naming the missing side instead of a render, since
+    repo scripts cannot reach Figma. Renders at different scales are
+    bilinearly normalized to the smaller size before diffing (`pixelmatch` +
+    `pngjs`, dev-only). Pass/fail is the mismatched-pixel ratio against
+    `--threshold` (default 0.1); a failing run writes the diff image under
+    `reports/figma-verify/` and names it in the report.
+
 ## Structured UX review
 
 To turn a screenshot into a scored, severity-ranked findings document, use the

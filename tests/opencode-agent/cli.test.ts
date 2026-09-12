@@ -9,13 +9,15 @@ import { tmpdir } from 'node:os'
 import path from 'node:path'
 
 import { memoizeAgent } from '../../opencode-agent/src/agent-handle.js'
+import type { RunSpend } from '../../opencode-agent/src/agent-session.js'
 import type { FetchLike } from '../../opencode-agent/src/github.js'
 import { parseArgs, runCli, UsageError } from '../../opencode-agent/src/index.js'
 import { createLogger } from '../../opencode-agent/src/logger.js'
 import type { OpenCodeAgent } from '../../opencode-agent/src/opencode-adapter.js'
 import type { CommandRunner } from '../../opencode-agent/src/shell.js'
 import { REPLY_COMMENT_OUTPUT, REPORTED_OUTPUT } from '../../opencode-agent/src/step-output.js'
-import { silentOctokitLog } from './test-helpers.js'
+import { TOKEN_SCALE } from '../../opencode-agent/src/types.js'
+import { emptyCatalogue, silentOctokitLog } from './test-helpers.js'
 
 const workDir = await mkdtemp(path.join(tmpdir(), 'opencode-agent-cli-'))
 
@@ -92,10 +94,12 @@ describe('parseArgs', () => {
 })
 
 describe('memoizeAgent', () => {
-  const fakeAgent = (closed: { count: number }, tokens = 0): OpenCodeAgent => ({
+  const fakeAgent = (closed: { count: number }, tokens = 0, usd: number | null = 1.25): OpenCodeAgent => ({
     sessionId: 'session-1',
     prompt: (): Promise<{ text: string; sessionId: string }> => Promise.resolve({ text: '', sessionId: 'session-1' }),
     tokensUsed: (): Promise<number> => Promise.resolve(tokens),
+    spend: (): Promise<RunSpend> =>
+      Promise.resolve({ usd, source: usd === null ? 'none' : 'backend', windows: [{ window: 'five_hour' }] }),
     abort: (): Promise<boolean> => Promise.resolve(true),
     close: (): Promise<void> => {
       closed.count += 1
@@ -133,6 +137,31 @@ describe('memoizeAgent', () => {
     await handle.get()
 
     expect(await handle.tokensUsed()).toBe(3602)
+  })
+
+  test('an unopened session is unpriced rather than free, and reports no windows', async () => {
+    // The one place this deliberately differs from `tokensUsed`'s zero: no
+    // tokens is the truth for a job that never prompted, but zero *dollars*
+    // would be a priced claim about work that was never done.
+    let booted = 0
+    const handle = memoizeAgent(() => {
+      booted += 1
+      return Promise.resolve(fakeAgent({ count: 0 }, 900))
+    })
+
+    expect(await handle.spend()).toEqual({ usd: null, source: 'none', windows: [] })
+    expect(booted).toBe(0)
+  })
+
+  test('reports the session’s cost and standing once one has been booted', async () => {
+    const handle = memoizeAgent(() => Promise.resolve(fakeAgent({ count: 0 }, 3602)))
+    await handle.get()
+
+    expect(await handle.spend()).toEqual({
+      usd: 1.25,
+      source: 'backend',
+      windows: [{ window: 'five_hour' }],
+    })
   })
 
   test('boots at most once, however many phases ask for it', async () => {
@@ -340,6 +369,7 @@ describe('runCli', () => {
     })
 
     const result = await runCli({
+      modelCatalogue: emptyCatalogue,
       argv: ['--event-path', eventPath, '--event-name', 'issue_comment'],
       env,
       logger: silentLogger,
@@ -367,6 +397,7 @@ describe('runCli', () => {
     }
 
     await runCli({
+      modelCatalogue: emptyCatalogue,
       argv: ['--event-path', eventPath, '--event-name', 'issue_comment'],
       env: live,
       logger: silentLogger,
@@ -376,6 +407,59 @@ describe('runCli', () => {
     expect(Object.hasOwn(live, 'LLM_API_KEY')).toBe(false)
     expect(Object.hasOwn(live, 'GH_TOKEN')).toBe(false)
     expect(live.PATH).toBe('/usr/bin')
+  })
+
+  test('the claude route runs end to end: no catalogue read, no proxy crash, one comment', async () => {
+    // Design D4/D11 in one drive: a claude-route job must not pay the
+    // models.dev lookup (it exists to feed `buildOpencodeConfig`, which this
+    // route never builds), must start no provider proxy (so teardown gates on
+    // a null one), and still posts its one comment.
+    const prior = [
+      {
+        id: 1,
+        user: { login: 'agent-bot' },
+        body: `stopped\n\n<!-- AGENT_STATE: ${JSON.stringify({
+          v: 3,
+          phase: 'FAILED',
+          issueId: 42,
+          resumeFrom: 'PLANNING',
+          lastError: 'the previous turn broke',
+        })} -->`,
+      },
+    ]
+    const eventPath = await writeEvent('claude-route', {
+      action: 'created',
+      sender: { login: 'maintainer', type: 'User' },
+      issue: { number: 42, title: 't', body: 'b', author_association: 'OWNER' },
+      comment: { id: 2, body: '/cancel', author_association: 'OWNER' },
+      repository: { owner: { login: 'acme' }, name: 'widgets', default_branch: 'master' },
+    })
+
+    const catalogueCalls: string[] = []
+    const github = recordPosts(prior)
+    const result = await runCli({
+      modelCatalogue: (): Promise<Record<string, { models: Record<string, never> }>> => {
+        catalogueCalls.push('read')
+        return Promise.resolve({})
+      },
+      argv: ['--event-path', eventPath, '--event-name', 'issue_comment'],
+      env: {
+        ...env,
+        // The claude route refuses a set gateway credential outright; a real
+        // claude-route job forwards neither gateway variable.
+        LLM_API_KEY: undefined,
+        LLM_BASE_URL: undefined,
+        AGENT_BACKEND: 'claude',
+        ANTHROPIC_API_KEY: 'sk-ant-api03-a-route-credential',
+        LLM_MODEL: 'claude-sonnet-5',
+      },
+      logger: silentLogger,
+      octokit: { fetch: github.fetch },
+    })
+
+    expect(result.status).toBe('completed')
+    expect(catalogueCalls).toEqual([])
+    expect(github.posted).toHaveLength(1)
   })
 
   test('a body posted by a real run carries no credential', async () => {
@@ -406,6 +490,7 @@ describe('runCli', () => {
 
     const github = recordPosts(prior)
     const result = await runCli({
+      modelCatalogue: emptyCatalogue,
       argv: ['--event-path', eventPath, '--event-name', 'issue_comment'],
       env: { ...env, GITHUB_TOKEN: token },
       logger: silentLogger,
@@ -437,6 +522,7 @@ describe('runCli', () => {
 
     const github = recordPosts([])
     const result = await runCli({
+      modelCatalogue: emptyCatalogue,
       argv: ['--event-path', eventPath, '--event-name', 'issue_comment', '--repo-root', workDir],
       env,
       logger: silentLogger,
@@ -473,6 +559,7 @@ describe('runCli', () => {
 
     const github = recordPosts(prior)
     const result = await runCli({
+      modelCatalogue: emptyCatalogue,
       argv: ['--event-path', eventPath, '--event-name', 'issue_comment'],
       env,
       logger: silentLogger,
@@ -516,6 +603,7 @@ describe('runCli', () => {
 
     const github = recordPosts(prior)
     const result = await runCli({
+      modelCatalogue: emptyCatalogue,
       argv: ['--event-path', eventPath, '--event-name', 'issue_comment'],
       env,
       logger: silentLogger,
@@ -558,7 +646,13 @@ describe('runCli', () => {
           v: 3,
           phase: 'DESIGN_SPEC',
           issueId: 42,
+          // The scale a block written by this deploy carries. Without it the
+          // orchestrator reads the figure as the superseded definition's and
+          // resets it — correctly — and the low ceiling below stops stopping.
+          tokenScale: TOKEN_SCALE,
           tokensSpent: 60_000,
+          usdSpent: 0,
+          usdUnpriced: false,
         })} -->`,
       },
     ]
@@ -572,6 +666,7 @@ describe('runCli', () => {
 
     const github = recordPosts(prior)
     const result = await runCli({
+      modelCatalogue: emptyCatalogue,
       argv: ['--event-path', eventPath, '--event-name', 'issue_comment'],
       env: { ...env, GITHUB_RUN_ID: '1482', AGENT_MAX_TOKENS: '50000' },
       logger: silentLogger,
@@ -606,7 +701,13 @@ describe('runCli', () => {
           v: 3,
           phase: 'DESIGN_SPEC',
           issueId: 42,
+          // The scale a block written by this deploy carries. Without it the
+          // orchestrator reads the figure as the superseded definition's and
+          // resets it — correctly — and the low ceiling below stops stopping.
+          tokenScale: TOKEN_SCALE,
           tokensSpent: 60_000,
+          usdSpent: 0,
+          usdUnpriced: false,
         })} -->`,
       },
     ]
@@ -620,6 +721,7 @@ describe('runCli', () => {
 
     const github = recordPosts(prior)
     const result = await runCli({
+      modelCatalogue: emptyCatalogue,
       argv: ['--event-path', eventPath, '--event-name', 'issue_comment'],
       env: { ...env, AGENT_MAX_TOKENS: '50000' },
       logger: silentLogger,
@@ -650,6 +752,7 @@ describe('runCli', () => {
 
     const github = recordPosts(prior)
     const result = await runCli({
+      modelCatalogue: emptyCatalogue,
       argv: ['--event-path', eventPath, '--event-name', 'issue_comment'],
       env: { ...env, AGENT_LABEL_PREFIX: 'none' },
       logger: silentLogger,
@@ -682,6 +785,7 @@ describe('runCli', () => {
 
     const github = recordPosts(prior)
     const result = await runCli({
+      modelCatalogue: emptyCatalogue,
       argv: ['--event-path', eventPath, '--event-name', 'issue_comment'],
       env,
       logger: silentLogger,
@@ -716,6 +820,7 @@ describe('runCli', () => {
 
     const github = recordPosts(prior)
     const result = await runCli({
+      modelCatalogue: emptyCatalogue,
       argv: ['--event-path', eventPath, '--event-name', 'issue_comment'],
       env,
       logger: silentLogger,
@@ -761,6 +866,7 @@ describe('runCli', () => {
 
     const github = recordPosts(prior)
     const result = await runCli({
+      modelCatalogue: emptyCatalogue,
       argv: ['--event-path', eventPath, '--event-name', 'issue_comment'],
       env: { ...env, GITHUB_OUTPUT: output.path },
       logger: silentLogger,
@@ -794,6 +900,7 @@ describe('runCli', () => {
     })
 
     const result = await runCli({
+      modelCatalogue: emptyCatalogue,
       argv: ['--event-path', eventPath, '--event-name', 'issue_comment'],
       env: { ...env, GITHUB_OUTPUT: output.path },
       logger: silentLogger,
@@ -833,6 +940,7 @@ describe('runCli', () => {
 
     const github = recordPosts(prior)
     const result = await runCli({
+      modelCatalogue: emptyCatalogue,
       argv: ['--event-path', eventPath, '--event-name', 'issue_comment'],
       env: { ...env },
       logger: silentLogger,
@@ -860,6 +968,7 @@ describe('runCli', () => {
     }
 
     const result = await runCli({
+      modelCatalogue: emptyCatalogue,
       argv: ['--event-path', eventPath, '--event-name', 'issue_comment'],
       env,
       logger: silentLogger,
@@ -906,6 +1015,7 @@ describe('runCli', () => {
 
     const github = recordPosts(cancelled)
     const result = await runCli({
+      modelCatalogue: emptyCatalogue,
       argv: ['--event-path', eventPath, '--event-name', 'issue_comment'],
       env,
       logger: silentLogger,
@@ -932,6 +1042,7 @@ describe('runCli', () => {
 
     const github = recordPosts(cancelled)
     const result = await runCli({
+      modelCatalogue: emptyCatalogue,
       argv: ['--event-path', eventPath, '--event-name', 'issue_comment'],
       env: { ...env, GITHUB_OUTPUT: output.path },
       logger: silentLogger,
@@ -960,6 +1071,7 @@ describe('runCli', () => {
 
     const github = recordPosts(cancelled, forked)
     const result = await runCli({
+      modelCatalogue: emptyCatalogue,
       argv: ['--event-path', eventPath, '--event-name', 'issue_comment'],
       env,
       logger: silentLogger,
@@ -979,6 +1091,7 @@ describe('runCli', () => {
     const eventPath = await writeEvent('dispatch', { action: 'requested', sender: { login: 'maintainer' } })
 
     const result = await runCli({
+      modelCatalogue: emptyCatalogue,
       argv: ['--event-path', eventPath, '--event-name', 'workflow_dispatch'],
       env,
       logger: silentLogger,
@@ -996,6 +1109,7 @@ describe('runCli', () => {
     })
 
     const result = await runCli({
+      modelCatalogue: emptyCatalogue,
       argv: ['--event-path', eventPath, '--event-name', 'workflow_run'],
       env,
       logger: silentLogger,

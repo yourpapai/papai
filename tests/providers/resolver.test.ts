@@ -275,6 +275,55 @@ describe('TaskProviderResolver', () => {
     await expect(resolver.resolveStrict('ctx-missing')).rejects.toThrow('Context ctx-missing needs /config')
   })
 
+  test('resolveForInstance resolves the pinned instance regardless of the context current assignment', async () => {
+    registerKaneoContributed()
+    registerYouTrackContributed()
+    insertTaskInstance({
+      id: 'yt-current',
+      type: 'youtrack',
+      config: { baseUrl: 'https://yt.invalid' },
+      status: 'active',
+    })
+    insertTaskInstance({
+      id: 'kaneo-pinned',
+      type: 'kaneo',
+      config: { baseUrl: 'https://kaneo.invalid' },
+      status: 'active',
+    })
+    setContextSettings({ contextId: 'ctx-1', taskInstanceId: 'yt-current', platformInstanceId: 'telegram-default' })
+    setConfigValue('ctx-1', 'plugin:task-provider-kaneo:provider:credential', 'kn-key')
+    setConfigValue('ctx-1', 'plugin:task-provider-kaneo:provider:workspaceId', 'workspace-1')
+    const resolver = makeResolver()
+
+    const provider = await resolver.resolveForInstance('ctx-1', 'kaneo-pinned')
+
+    expect(provider?.name).toBe('kaneo')
+    expect(created).toEqual([
+      { name: 'kaneo', config: { baseUrl: 'https://kaneo.invalid', credential: 'kn-key', workspaceId: 'workspace-1' } },
+    ])
+  })
+
+  test('resolveForInstance returns null when the pinned instance is missing', async () => {
+    const resolver = makeResolver()
+
+    expect(await resolver.resolveForInstance('ctx-1', 'ghost-instance')).toBeNull()
+    expect(created).toEqual([])
+  })
+
+  test('resolveForInstance returns null when the pinned instance is not active', async () => {
+    insertTaskInstance({
+      id: 'yt-stopped-pin',
+      type: 'youtrack',
+      config: { baseUrl: 'https://yt.invalid' },
+      status: 'stopped',
+    })
+    setConfigValue('ctx-1', 'plugin:task-provider-youtrack:provider:token', 'perm:abc')
+    const resolver = makeResolver()
+
+    expect(await resolver.resolveForInstance('ctx-1', 'yt-stopped-pin')).toBeNull()
+    expect(created).toEqual([])
+  })
+
   test('resolves a contributed provider type by passing instance config through unchanged', async () => {
     registerContributedTaskProviderType('demo-tracker', {
       pluginId: 'demo-plugin',

@@ -1,11 +1,5 @@
 ---
-description: Run the autonomous SDD pipeline on a task file
+description: Tombstone — the SDD pipeline moved to yourpapai/afk-runner
 ---
 
-Run the autonomous spec-driven development pipeline:
-
-```
-bun run sdd-runner:start -- $ARGUMENTS
-```
-
-Pass a task file path and optional flags: `--depth S|M|L` (skip scope estimation), `--wait` (block on stdin instead of exiting at the gate), `--verbosity brief|normal|debug`.
+This command is retired. The autonomous SDD pipeline moved to `yourpapai/afk-runner` — clone that repository and run the pipeline there. There is no runner in papai.

@@ -14,6 +14,7 @@ import { createPseudonym } from '../identity/pseudonym.js'
 import { createDefaultGovernanceDualWriteResolver } from '../rekey/governance-dual-write.js'
 import type { GovernanceDualWriteResolver } from '../rekey/governance-dual-write.js'
 import type { CollectionEligibilityRef } from './eligibility.js'
+import type { PreferenceLane } from './preference-store.js'
 
 const log = logger.child({ scope: 'analytics:governance:collection-store' })
 
@@ -132,33 +133,6 @@ const upsertEligibilityInTx = (tx: Tx, input: SetEligibilityStateInput, nextGene
     .run()
 }
 
-export const setEligibilityState = (
-  input: SetEligibilityStateInput,
-  deps: CollectionStoreDeps = DEFAULT_DEPS,
-): Readonly<{ generation: number }> => {
-  const db = deps.getDrizzleDb()
-  const resolver = deps.dualWriteResolver ?? createDefaultGovernanceDualWriteResolver(deps.getDrizzleDb)
-  const generation = db.transaction((tx) => {
-    const current = tx
-      .select()
-      .from(analyticsCollectionEligibility)
-      .where(eq(analyticsCollectionEligibility.refKey, input.refKey))
-      .get()
-    const nextGeneration =
-      input.state === 'deny' ? (current === undefined ? 1 : current.generation + 1) : (current?.generation ?? 1)
-    upsertEligibilityInTx(tx, input, nextGeneration)
-    mirrorEligibilityInTx(tx, resolver, input.refKey, {
-      state: input.state,
-      generation: nextGeneration,
-      policyVersion: input.policyVersion,
-      nowMs: input.nowMs,
-    })
-    return nextGeneration
-  })
-  log.info({ state: input.state, generation }, 'collection eligibility updated')
-  return { generation }
-}
-
 const mirrorEligibilityInTx = (
   tx: Tx,
   resolver: GovernanceDualWriteResolver,
@@ -196,6 +170,68 @@ const mirrorEligibilityInTx = (
     })
     .where(eq(analyticsCollectionEligibility.refKey, target.key))
     .run()
+}
+
+/**
+ * The one write both the ordinary setter and the transactional grant share.
+ * Deny advances the generation so events associated under the prior one stay
+ * orphaned; allow keeps it, because a deny row was never associable and so has
+ * no generation to step past.
+ */
+const applyEligibilityStateInTx = (
+  tx: Tx,
+  resolver: GovernanceDualWriteResolver,
+  input: SetEligibilityStateInput,
+): number => {
+  const current = tx
+    .select()
+    .from(analyticsCollectionEligibility)
+    .where(eq(analyticsCollectionEligibility.refKey, input.refKey))
+    .get()
+  const nextGeneration =
+    input.state === 'deny' ? (current === undefined ? 1 : current.generation + 1) : (current?.generation ?? 1)
+  upsertEligibilityInTx(tx, input, nextGeneration)
+  mirrorEligibilityInTx(tx, resolver, input.refKey, {
+    state: input.state,
+    generation: nextGeneration,
+    policyVersion: input.policyVersion,
+    nowMs: input.nowMs,
+  })
+  return nextGeneration
+}
+
+export const setEligibilityState = (
+  input: SetEligibilityStateInput,
+  deps: CollectionStoreDeps = DEFAULT_DEPS,
+): Readonly<{ generation: number }> => {
+  const db = deps.getDrizzleDb()
+  const resolver = deps.dualWriteResolver ?? createDefaultGovernanceDualWriteResolver(deps.getDrizzleDb)
+  const generation = db.transaction((tx) => applyEligibilityStateInTx(tx, resolver, input))
+  log.info({ state: input.state, generation }, 'collection eligibility updated')
+  return { generation }
+}
+
+/**
+ * Grants collection eligibility inside the caller's transaction, so a consent
+ * record and its ref commit or roll back as one. The transactional twin of
+ * `revokeEligibilityInTx`; `setEligibilityState` remains the standalone
+ * primitive for callers that own no transaction.
+ *
+ * `lane` is recorded on the log line only: it names the consent that produced
+ * the ref, which is what lets an operator reconcile the record against the
+ * eligibility table. The ref itself is lane-agnostic.
+ */
+export const grantEligibilityInTx = (
+  tx: Tx,
+  input: Readonly<{ refKey: string; keyVersion: string; lane: PreferenceLane; policyVersion: number; nowMs: number }>,
+  resolver: GovernanceDualWriteResolver = () => null,
+): Readonly<{ generation: number }> => {
+  const { lane, ...state } = input
+  const generation = applyEligibilityStateInTx(tx, resolver, { ...state, state: 'allow' })
+  // refKey is a derived pseudonym, so the record stays free of raw subject
+  // identifiers and of keyring material.
+  log.info({ state: 'allow', generation, lane, refKey: input.refKey }, 'collection eligibility granted')
+  return { generation }
 }
 
 export const recheckAndAssociateEvent = (

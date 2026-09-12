@@ -32,9 +32,11 @@ import {
   type ReplyDeliveryTracker,
 } from './bot-reply-tracking.js'
 import { replyToUnauthorized } from './bot-unauthorized-reply.js'
+import { maybePostLanguagePicker } from './chat/language-picker.js'
 import type { ChatParticipantResolver } from './chat/participants/roster.js'
 import { maybeSeedContextAssignment } from './chat/seed-context-assignment.js'
 import type { AuthorizationResult, ChatProvider, IncomingMessage, ReplyFn } from './chat/types.js'
+import { t } from './i18n/index.js'
 import type { ProcessMessageFn } from './llm-orchestrator-process-args.js'
 import { defaultDeps } from './llm-orchestrator.js'
 import { logger } from './logger.js'
@@ -42,6 +44,7 @@ import { enqueueMessage, type CoalescedItem as QueuedCoalescedItem } from './mes
 import { buildPromptWithReplyContext } from './reply-context.js'
 import { runRegistry } from './run-control/registry.js'
 import type { RunControl } from './run-control/types.js'
+import { getContextLanguage } from './utils/config-language.js'
 
 export type BotDeps = Readonly<{ processMessage: ProcessMessageFn }> &
   Readonly<
@@ -133,6 +136,8 @@ async function runTurnProcess(coalescedItem: QueuedCoalescedItem, deps: BotDeps,
     coalescedItem.actorRole,
     coalescedItem.messageIds,
     coalescedItem.segments,
+    coalescedItem.isBotAdmin,
+    coalescedItem.platformInstanceId,
   )
 }
 
@@ -206,7 +211,7 @@ async function steerActiveRun(
     { storageContextId: auth.storageContextId, turnId: activeRun.turnId },
     'Mid-run message routed to steer queue',
   )
-  await reply.text('✋ folding that into the current run…')
+  await reply.text(t('steer.ack', getContextLanguage(auth.configContextId ?? auth.storageContextId)))
   if (observer === undefined || seed === undefined) return
   observer.observe(
     buildTurnSteeredFact(
@@ -218,6 +223,39 @@ async function steerActiveRun(
         ackSent: true,
       },
     ),
+  )
+}
+
+/** Enqueue a new turn for the message (the non-steering path of `handleAuthorizedMessage`). */
+function enqueueTurn(
+  deps: BotDeps,
+  msg: IncomingMessage,
+  reply: ReplyFn,
+  auth: AuthorizationResult,
+  steerText: string,
+  newAttachmentIds: readonly string[],
+  voiceStagedIds: readonly string[],
+  seed: AuthorizedTurnSeed | undefined,
+): void {
+  const queueMessage = deps.enqueueMessage ?? enqueueMessage
+  queueMessage(
+    {
+      text: steerText,
+      userId: msg.user.id,
+      username: msg.user.username,
+      storageContextId: auth.storageContextId,
+      configContextId: auth.configContextId,
+      contextType: msg.contextType,
+      newAttachmentIds,
+      voiceStagedIds,
+      actorRole: auth.isGuest === true ? 'guest' : 'member',
+      isBotAdmin: auth.isBotAdmin,
+      platformInstanceId: msg.platformInstanceId,
+      messageId: msg.messageId,
+      analyticsTurnSeed: seed,
+    },
+    reply,
+    (coalescedItem): Promise<void> => processQueuedTurn(coalescedItem, deps),
   )
 }
 
@@ -234,6 +272,7 @@ export async function handleAuthorizedMessage(
   }
   if (shouldIgnoreGroupMessage(msg)) return
   maybeSeedContextAssignment(auth, msg.platformInstanceId)
+  await maybePostLanguagePicker(chat, msg, reply, auth)
   const voiceStagedIds = msg.contextType === 'group' ? findVoiceStagedIds(auth.storageContextId, msg.messageId) : []
   const { newAttachmentIds, activeAttachments } = await resolveMessageAttachments(chat, msg, auth.storageContextId)
   const newAttachmentIdSet = new Set(newAttachmentIds)
@@ -252,22 +291,5 @@ export async function handleAuthorizedMessage(
     return
   }
 
-  const queueMessage = deps.enqueueMessage ?? enqueueMessage
-  queueMessage(
-    {
-      text: steerText,
-      userId: msg.user.id,
-      username: msg.user.username,
-      storageContextId: auth.storageContextId,
-      configContextId: auth.configContextId,
-      contextType: msg.contextType,
-      newAttachmentIds,
-      voiceStagedIds,
-      actorRole: auth.isGuest === true ? 'guest' : 'member',
-      messageId: msg.messageId,
-      analyticsTurnSeed: seed,
-    },
-    reply,
-    (coalescedItem): Promise<void> => processQueuedTurn(coalescedItem, deps),
-  )
+  enqueueTurn(deps, msg, reply, auth, steerText, newAttachmentIds, voiceStagedIds, seed)
 }

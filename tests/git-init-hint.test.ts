@@ -14,11 +14,10 @@ import path from 'node:path'
  * with a ten-line advice block on stderr — roughly a hundred lines, a fifth of everything
  * a near-green full-suite run prints, and nothing a console mock can reach.
  *
- * The fix cannot live in `tests/setup.ts`. Bun does not propagate later `process.env`
- * mutations to subprocesses the way Node does, so a preload assignment is invisible to
- * every git child (the first test below pins that behaviour, because it is the whole
- * reason the fix lives where it does). `scripts/test/run.ts` puts the pinned config on
- * the child's *startup* environment instead, which every descendant inherits normally.
+ * The fix still lives in `scripts/test/run.ts` (it is explicit and order-independent),
+ * but for a different reason than it used to. Through bun 1.3, runtime `process.env`
+ * mutations did not reach subprocesses the way they do in Node, so a preload assignment
+ * was invisible to every git child; bun 1.4 fixed that (pinned by the first test below).
  */
 
 const REPO_ROOT = path.resolve(import.meta.dir, '..')
@@ -66,14 +65,16 @@ describe('git advice suppression', () => {
     expect(head.stdout.trim()).toBe('refs/heads/master')
   })
 
-  test('bun does not propagate a runtime env assignment to a child process', () => {
-    // The constraint that decides where the fix lives. If this ever starts passing,
-    // `tests/setup.ts` becomes a viable home again and this file can be revisited.
+  test('bun propagates a runtime env assignment to a child process (fixed in 1.4)', () => {
+    // Through bun 1.3 a var assigned at runtime was invisible to child processes,
+    // which forced the git config pin onto the child's startup environment. Bun 1.4
+    // aligns with Node here; pin the fix so a regression cannot silently strand the
+    // ~20 git-shelling suites again.
     process.env['PAPAI_ENV_PROPAGATION_PROBE'] = 'set-at-runtime'
     try {
       const seen = spawnSync('sh', ['-c', 'printf %s "$PAPAI_ENV_PROPAGATION_PROBE"'], { encoding: 'utf8' })
 
-      expect(seen.stdout).toBe('')
+      expect(seen.stdout).toBe('set-at-runtime')
     } finally {
       delete process.env['PAPAI_ENV_PROPAGATION_PROBE']
     }

@@ -3,18 +3,28 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
+import { runWithProviderRequestScope, NO_ANALYTICS_SCOPE } from './analytics/provider-request-scope.js'
+import type { ProviderRequestScope } from './analytics/provider-request-scope.js'
+import { resolveSchedulerProviderRequestScope } from './analytics/provider-scope-factory.js'
 import type { ChatProvider } from './chat/types.js'
 import { emitGlobal } from './debug/event-bus.js'
 import { logger } from './logger.js'
 import { defaultTaskProviderResolver } from './providers/resolver.js'
 import type { TaskProvider } from './providers/types.js'
-import { recordOccurrence, type RecurringTaskRecord, getDueRecurringTasks, getRecurringTask } from './recurring.js'
+import {
+  recordOccurrence,
+  recordFailedExecution,
+  type RecurringTaskRecord,
+  getDueRecurringTasks,
+  getRecurringTask,
+} from './recurring.js'
 import { scheduler } from './scheduler-instance.js'
 import {
   applyLabels,
   buildRecurringTaskInput,
   canRouteRecurringNotification,
   finalizeCreatedRecurringTask,
+  notifyRecurringFailure,
 } from './scheduler-recurring.js'
 
 const log = logger.child({ scope: 'scheduler' })
@@ -22,11 +32,16 @@ const log = logger.child({ scope: 'scheduler' })
 export interface SchedulerDeps {
   resolve: (contextId: string) => Promise<TaskProvider | null> | TaskProvider | null
   chat?: ChatProvider | null
+  /** Per-task provider request scope; defaults to the scheduler scope resolver. */
+  resolveScope?: (task: RecurringTaskRecord) => ProviderRequestScope
 }
 
 const defaultSchedulerDeps: SchedulerDeps = {
   resolve: (contextId): Promise<TaskProvider | null> => defaultTaskProviderResolver.resolve(contextId),
 }
+
+const defaultResolveScope = (task: RecurringTaskRecord): ProviderRequestScope =>
+  resolveSchedulerProviderRequestScope({ recurringTaskId: task.id, userId: task.userId })
 
 const TICK_INTERVAL_MS = 60 * 1000
 
@@ -36,8 +51,40 @@ let tickCount = 0
 
 const HEARTBEAT_INTERVAL = 60
 
+/** Permanent-failure policy (spec: recurring-failure-handling): a provider-classified
+ * missing project consumes the scheduled slot (stopping the per-tick retry storm),
+ * then notifies the owner. Schedule advances before the notice so a send failure can
+ * never resurrect the storm. */
+const handlePermanentRecurringFailure = async (
+  task: RecurringTaskRecord,
+  chat: ChatProvider | null,
+  classifiedCode: string,
+): Promise<void> => {
+  if (classifiedCode !== 'project-not-found') return
+  recordFailedExecution(task.id)
+  await notifyRecurringFailure(chat, task.userId, task)
+}
+
+/** Scope resolution must never block execution (spec: recurring-task-provider-scope):
+ * a throwing resolver degrades to the explicit unobserved sentinel. */
+const resolveTaskScope = (task: RecurringTaskRecord, deps: SchedulerDeps): ProviderRequestScope => {
+  const resolveScope = deps.resolveScope ?? defaultResolveScope
+  try {
+    return resolveScope(task)
+  } catch (scopeError) {
+    log.warn(
+      { taskId: task.id, error: scopeError instanceof Error ? scopeError.message : String(scopeError) },
+      'Scheduler scope resolution failed; proceeding unobserved',
+    )
+    return NO_ANALYTICS_SCOPE
+  }
+}
+
 const executeRecurringTask = async (task: RecurringTaskRecord, deps: SchedulerDeps): Promise<void> => {
-  log.debug({ taskId: task.id, title: task.title, userId: task.userId }, 'Executing recurring task')
+  log.debug(
+    { taskId: task.id, title: task.title, userId: task.userId, chatUserId: task.userId },
+    'Executing recurring task',
+  )
 
   const chat = deps.chat ?? chatProviderRef
   if (!canRouteRecurringNotification(chat, task.userId)) {
@@ -45,20 +92,32 @@ const executeRecurringTask = async (task: RecurringTaskRecord, deps: SchedulerDe
     return
   }
 
-  const provider = await deps.resolve(task.userId)
-  if (provider === null) {
-    log.warn({ taskId: task.id, contextId: task.userId }, 'Skipping recurring task: task provider unavailable')
-    return
-  }
+  const scope = resolveTaskScope(task, deps)
 
+  const providerRef: { current: TaskProvider | null } = { current: null }
   try {
-    const created = await provider.createTask(buildRecurringTaskInput(task))
-    await finalizeCreatedRecurringTask(task, provider, created, chat)
+    // Provider resolution, task creation, and finalization (label application)
+    // all settle inside this one per-task scope lease (design D2).
+    const providerAvailable = await runWithProviderRequestScope(scope, async (): Promise<boolean> => {
+      const provider = await deps.resolve(task.userId)
+      providerRef.current = provider
+      if (provider === null) return false
+      const created = await provider.createTask(buildRecurringTaskInput(task))
+      await finalizeCreatedRecurringTask(task, provider, created, chat)
+      return true
+    })
+    if (!providerAvailable) {
+      log.warn({ taskId: task.id, contextId: task.userId }, 'Skipping recurring task: task provider unavailable')
+    }
   } catch (error) {
     log.error(
       { taskId: task.id, error: error instanceof Error ? error.message : String(error) },
       'Failed to create recurring task instance',
     )
+    const failedProvider: TaskProvider | null = providerRef.current
+    if (failedProvider !== null) {
+      await handlePermanentRecurringFailure(task, chat, failedProvider.classifyError(error).code)
+    }
   }
 }
 

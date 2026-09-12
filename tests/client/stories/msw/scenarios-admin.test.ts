@@ -110,4 +110,15 @@ describe('msw admin scenarios', () => {
     // admin handlers are now empty (System / LLM section removed)
     expect(adminScenarios['admin-populated'].length).toBe(15)
   })
+
+  test('release-notes populated scenario carries per-locale bodies, not a single body', async () => {
+    const { adminReleaseNotesHandlers, adminReleaseNotesPopulatedFixture } =
+      await import('../../../../client/stories/msw/settings-handlers-admin-2.js')
+    const handler = adminReleaseNotesHandlers.populated[0]
+    expect(handler).toBeDefined()
+    expect(handler?.info.path).toBe('/settings/api/admin/release-notes')
+    expect(typeof adminReleaseNotesPopulatedFixture.bodies.en).toBe('string')
+    expect(typeof adminReleaseNotesPopulatedFixture.bodies.ru).toBe('string')
+    expect((adminReleaseNotesPopulatedFixture as Record<string, unknown>)['body']).toBeUndefined()
+  })
 })

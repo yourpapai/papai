@@ -125,6 +125,21 @@ describe('mapTaskListItem', () => {
 
     expect(result.dueDate).toBe(null)
   })
+
+  test('preserves createdAt from the list item', () => {
+    const item: KaneoTaskListItem = {
+      id: 't-6',
+      title: 'List item',
+      number: 6,
+      status: 'in progress',
+      priority: 'high',
+      dueDate: '2024-04-04T00:00:00.000Z',
+      createdAt: '2024-01-01T00:00:00.000Z',
+    }
+    const result = mapTaskListItem(item, URL)
+
+    expect(result.createdAt).toBe('2024-01-01T00:00:00.000Z')
+  })
 })
 
 describe('mapProject', () => {

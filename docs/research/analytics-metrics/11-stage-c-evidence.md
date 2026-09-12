@@ -26,10 +26,10 @@ checks against materializations, and the exit review.
 
 ## Operate-phase tracking (runbook requires ≥2 weekly review cycles)
 
-- [ ] Two weekly review cycles completed (dates below)
-- [ ] One complete authenticated export/withdraw/delete exercise
+- [x] Two weekly review cycles completed (dates below)
+- [x] One complete authenticated export/withdraw/delete exercise
 - [ ] Hand-calculations: sessions, activation, outcomes, intent coverage, censoring — matched against materializations
-- [ ] HMAC key backup/restore drill
+- [x] HMAC key backup/restore drill
 - [ ] Planned rekey drill
 - [ ] Deletion acknowledgement follows verified snapshot replacement (**blocked**: ordinary staged→published promotion unwired — tracked separately)
 - [ ] Reply-path latency and queue growth within accepted bounds
@@ -39,23 +39,49 @@ checks against materializations, and the exit review.
 
 | Cycle | Dates | Rejects delta from baseline | Delta | Expiry | Notes |
 |---|---|---|---|---|---|
-| 1 | | | | | |
-| 2 | | | | | |
+| 1 | 2026-08-20..2026-08-26 | 118 total (30+50+8+0+3+13+14), still pre-079 REALs | 0 | ok | friction sample 2026-09-02 5 strata 11 cases all band 0_1 count 0, token_map destroyed 10:15 UTC; activation/outcomes ok, expiry 2026-11-18, snapshot fresh |
+| 2 | 2026-08-27..2026-09-03 | 101 total (39+0+21+2+8+11+0+20), pre-079 REALs | 0 | ok | friction sample 2026-09-04 6 strata 12 cases all band 0_1 count 0 (1 case with 2 structured_failure tools, turn ok), token_map destroyed 2026-09-04 |
 
 ### Daily log (report CLI rows)
 
 | Day (UTC) | Eligible | Reason | Freshness | Recon delta | Rejects | Overflow | Expiry | Notes |
 |---|---|---|---|---|---|---|---|---|
+| 2026-08-14 | true | — | none | 0 | 99 (invalid_value=99) | 0 | ok | — |
+| 2026-08-15 | false | delta | none | 0 | 0 | 0 | ok | — |
+| 2026-08-16 | false | delta | none | 0 | 0 | 0 | ok | — |
+| 2026-08-17 | false | delta | 2026-08-18T00:00 | 0 | 23 (invalid_value=23) | 0 | ok | — |
+| 2026-08-18 | false | delta | 2026-08-19T00:00 | 0 | 4 (invalid_value=4) | 0 | ok | — |
+| 2026-08-19 | false | delta | 2026-08-20T00:00 | 0 | 0 | 0 | ok | — |
+| 2026-08-20 | true | — | 2026-08-20T23:41 | 0 | 30 (invalid_value=30) | 0 | ok | — |
+| 2026-08-21 | true | — | 2026-08-21T23:41 | 0 | 50 (invalid_value=50) | 0 | ok | — |
+| 2026-08-22 | true | — | 2026-08-22T23:41 | 0 | 8 (invalid_value=8) | 0 | ok | — |
+| 2026-08-23 | true | — | 2026-08-23T23:41 | 0 | 0 | 0 | ok | — |
+| 2026-08-24 | true | — | 2026-08-24T23:41 | 0 | 3 (invalid_value=3) | 0 | ok | — |
+| 2026-08-25 | true | — | 2026-08-25T23:41 | 0 | 13 (invalid_value=13) | 0 | ok | — |
+| 2026-08-26 | true | — | 2026-08-27T05:42 | 0 | 14 (invalid_value=14) | 0 | ok | — |
+| 2026-08-27 | true | — | 2026-08-27T23:42 | 0 | 39 (invalid_value=39) | 0 | ok | — |
+| 2026-08-28 | true | — | 2026-08-28T23:42 | 0 | 0 | 0 | ok | — |
+| 2026-08-29 | true | — | 2026-08-29T23:42 | 0 | 21 (invalid_value=21) | 0 | ok | — |
+| 2026-08-30 | true | — | 2026-08-30T23:42 | 0 | 2 (invalid_value=2) | 0 | ok | — |
+| 2026-08-31 | true | — | 2026-08-31T23:42 | 0 | 8 (invalid_value=8) | 0 | ok | — |
+| 2026-09-01 | true | — | 2026-09-01T23:42 | 0 | 11 (invalid_value=11) | 0 | ok | — |
+| 2026-09-02 | true | — | 2026-09-04T07:42* | 0 | 0 | 0 | ok | backfilled 2026-09-04 |
+| 2026-09-03 | true | — | 2026-09-04T07:42 | 0 | 20 (invalid_value=20) | 0 | ok | — |
+
+Days 2026-08-17–19 stayed `delta` because the pre-fix writer was still in
+production until v6.14.0 (deployed 2026-08-20, contains the writer fix +
+migration `078`); those closes are the same 2026-08-17 incident, not new ones.
+Clean-day evidence restarts 2026-08-20.
 
 ### Drills
 
 | Drill | Date | Result | Evidence |
 |---|---|---|---|
-| Export (authenticated, pilot subject) | | | |
-| Withdraw (collection-ref race) | | | |
-| Delete (cascade + censor intervals) | | | |
-| Key backup/restore | | | |
-| Planned rekey | | | |
+| Export (authenticated, pilot subject) | 2026-08-20 | pass | 32 events = one full turn (auth→turn_completed), keyVersion v1, gen-1, 6.14.1; C2-only props; governance audit shows deny→allow toggle 13:54 UTC; sessions empty (derive job pending), deliveries empty (no external lane) |
+| Withdraw (collection-ref race) | 2026-09-04 | pass | laneHint `Denied since 2026-09-04 08:46` — ref `v1.*` state `deny` revoked_at 1788511588245 (gen-2); live `analytics_events` count 0 |
+| Delete (cascade + censor intervals) | 2026-09-04 | pass (completed) | `Your analytics data has been deleted. Analytics stores only.` (deleteStatus completed); live `analytics_events` count 0 |
+| Key backup/restore | 2026-08-20 | pass | both keyrings copied out of the deployment env to sealed backup; the same-day authenticated export resolved all `v1` events and governance keys = restore proof |
+| Planned rekey | 2026-09-04 | BLOCKED (paused) | run `rekey-mtmprpzl-62cf132a-0` gen-1→gen-2: plan ok, apply paused at `verify.local_graph`, `verify` equation_ok=true content_ok=false mismatches=`["censor_intervals"]`; resume retries same verify, abort forbidden post-dual-write |
 | Deletion ack after verified snapshot replacement | | | |
 
 ### Hand-calculation checks
@@ -72,5 +98,26 @@ checks against materializations, and the exit review.
 
 ## Notes / incidents
 
+- 2026-09-04: **rekey drill BLOCKED — copy/verify inconsistency on orphan censor intervals.** Withdraw+delete at 08:46 left live `analytics_events` count 0 with a surviving `v1` `analytics_censor_intervals` row; plan 08:50 (highWater `0:0`) then apply 08:54/08:54:50 + verify 08:55:05 all pause with `equation_ok=true content_ok=false mismatches=["censor_intervals"]`. Root cause: `copyCensorIntervalsIn` (`src/analytics/rekey/copy-children.ts:212`) skips intervals whose actor has no source event (`inSource`), while verify (`src/analytics/rekey/verify-content.ts:100`) classifies censor rows by actor-key prefix and demands 1:1 — zero-event withdrawal state can never verify. Run stays `paused` holding the single-nonterminal slot; `abort` is correctly rejected post-dual-write. Do NOT hand-edit shadow rows. Fix must align copy with verify (copy orphan censors or scope verify to event-backed actors) + regression test (withdraw→delete→rekey with 0 events). Drill stays BLOCKED until fix + clean `verify` on this or a successor run.
+- 2026-09-04: **orphan-censor fix landed (change `rekey-orphan-censor-intervals`), drill still BLOCKED pending a successor pilot run.** `copyCensorIntervalsIn` now copies every source-scoped interval (actor prefix matched against `fromVersions`, the same classification verify uses) instead of skipping actors with no source event; the `exists` idempotency guard is retained and already-copied `v2` targets are skipped so re-runs/delta catch-up create no extras. Regression coverage in `tests/analytics/rekey/copy-children.test.ts`: zero-event orphan copy + `verifyMappingNormalizedContentIn` green, mixed event-backed+orphan 1:1 with no extras. Proof: `bun test tests/analytics/rekey` 109/109 pass, `bun run typecheck` + `bun run lint` clean, full `bun test` 18270 pass / 8 skip / 2 fail — both failures outside change scope (Telegram `resolveUserId` username case performs a live Bot API `getChat` call and hits the 5 s timeout with no network; opencode-agent `mergeBase` passed on file-level re-run, load flake). Stuck run `rekey-mtmprpzl-62cf132a-0` remains paused evidence, never hand-edited; the Planned-rekey drill row flips only when a successor run shows `verify` green.
+
 - 2026-08-15: `invalid_value` rejects expected to drop to ~0 with v6.13.0 (#209 fix live); verify against the first post-deploy daily rows.
 - 2026-08-17: **window interruption.** Days 2026-08-15/16 reported `reconciliation=delta` (live-epoch delta): the live aggregate lane wrote epoch contribution rows but never the matching `opportunity`/`aggregate_only` epoch source counters, so every epoch closed with `delta = |0 − contributions|`. Invisible during Stage B because the long-lived epoch stayed open all window (open epochs aren't delta-checked); surfaced when the v6.13.x deploys closed epochs. Fixed in the aggregate writer (counters now bump in contribution units, same transaction, live lane only) + migration `078` repairs the two poisoned closed epochs from their contribution cell keys. Consecutive-clean-day evidence restarts from the deploy containing this fix; the two delta days are kept as honest negatives, not edited.
+- 2026-08-20: **chronic tool-lane `invalid_value` rejects root-caused** (30 that day; the pattern is continuous since 2026-05-20 — backfill #1 alone rejected 420, see Stage A evidence). The #209 fix (v6.13.0) defended only the analytics lane; the usage source table kept accumulating the raw `performance.now()` delta via `tool:execute_end` → `recordToolCall` — REAL-typed fractional `duration_ms` values in an INTEGER-declared column, which the backfill classifier (`nonNegativeInt`) correctly rejects. SQLite INTEGER columns accept REALs silently, so nothing else caught it. **Fix shipped** (change `tool-call-duration-integer`): the usage emission now applies the same `max(0, round(…))` defense as the analytics lane, and migration `079` normalizes existing REAL/negative values once. Historical rejects stand as honest history — backfill provenance pins them permanently — so aggregate counters are not back-restated; only rows not yet backfilled benefit. Once the containing version deploys, daily `invalid_value` should read ~0.
+- 2026-08-20: **pseudonymous lane collected nothing since entry.** Post-v6.14.0 verification showed all closed epochs `publishable` (08-17 incident cleared), but `analytics_events` empty with 2222+ aggregate opportunities. Root cause: no production caller provisions the `allow` row in `analytics_collection_eligibility` — `setEligibilityState` is test-only; `PUT /settings/api/analytics/preferences` writes the preference row but never collection eligibility, so `decideEligibility` denies every non-guest actor with `governance_incomplete` and all events degrade to aggregate-only. Fix pending: preference PUT `localLongitudinal=allow` must also provision the collection ref; `deny` must revoke. Hand-calculation drills and pseudonymous evidence deferred until the fix deploys and data accrues.
+  - **Fix shipped** (change `provision-collection-eligibility`): the
+    preferences PUT now provisions/revokes
+    `analytics_collection_eligibility` alongside the preference write. After
+    deploying, the pilot actor must open `/settings` → Analytics and re-save
+    `localLongitudinal: allow` once; canonical events then accrue from that
+    moment.
+  - **Fix verified on v6.14.1 (2026-08-20 ~13:54 UTC):** ref provisioned
+    (`v1`/`allow`/generation 1); canonical epoch counters and
+    `analytics_events` accrue in lockstep (32/32), zero
+    `governance_ineligible` in the live epoch. Weekly cycles and drills run
+    against data from this timestamp.
+  - **Hand-calc watch item:** in the first exported turn,
+    `turn_completed` reported `step_count=0, tool_call_count=0` while
+    `llm_completed` reported `step_count=5` with five tool calls in the turn.
+    Verify the intended semantics during the hand-calculation check; if
+    turn-level counters are wrong, outcome/friction metrics inherit the error.

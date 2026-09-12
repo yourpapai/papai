@@ -136,8 +136,13 @@ describe.skipIf(!DOCKER)('T2 container P — process-real smoke', () => {
         toolResponse('call_list', 'list_memory', {}),
         textResponse('You have no saved memories yet.'),
       ])
+      const picker = handle!.mm.waitForPost()
       const status = handle!.mm.waitForPost()
       handle!.mm.deliverMessage({ channelId: 'dm-chat', message: 'list my memories please', userId: ADMIN_USER_ID })
+      // This is the first authorized non-command message from the config context, so the
+      // first-interaction language picker (src/chat/language-picker.ts) posts before the
+      // turn starts; /config above is a command and never triggered it.
+      expect((await picker).message).toContain('Choose the language I will talk to you in:')
       // Live status posts an ephemeral "💭 Thinking…" message before the real reply, then
       // edits/deletes it via PUT/DELETE (docs/architecture/behaviors.md § Live task status)
       // — only the initial status and the final reply are new POST /api/v4/posts calls.

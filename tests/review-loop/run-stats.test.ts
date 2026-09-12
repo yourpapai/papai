@@ -5,7 +5,7 @@
 
 import { describe, expect, test } from 'bun:test'
 
-import { RunStats } from '../../review-loop/src/run-stats.js'
+import { RunStats, PersistedStatsSchema } from '../../review-loop/src/run-stats.js'
 
 describe('RunStats', () => {
   test('accumulates usage per label and in totals', () => {
@@ -70,6 +70,28 @@ describe('RunStats', () => {
     expect(stats.snapshot().totals.estimatedCostUsd).toBeCloseTo(3, 10)
   })
 
+  test('prices cached deltas at cache rates; missing rates contribute 0', () => {
+    const stats = new RunStats({
+      pricing: { 'm-*': { input: 3, output: 15, cacheRead: 0.3, cacheWrite: 3.75 } },
+      model: 'm-x',
+      startedAt: 0,
+      now: (): number => 0,
+    })
+    stats.addUsage('a', { input: 1_000_000, output: 0, reasoning: 0, cachedRead: 2_000_000, cachedWrite: 1_000_000 })
+    expect(stats.snapshot().totals.estimatedCostUsd).toBeCloseTo(3 + 0.6 + 3.75, 10)
+  })
+
+  test('cached deltas add no cost when no cache rates are published', () => {
+    const stats = new RunStats({
+      pricing: { 'm-*': { input: 3, output: 15 } },
+      model: 'm-x',
+      startedAt: 0,
+      now: (): number => 0,
+    })
+    stats.addUsage('a', { input: 1_000_000, output: 0, reasoning: 0, cachedRead: 5_000_000, cachedWrite: 0 })
+    expect(stats.snapshot().totals.estimatedCostUsd).toBeCloseTo(3, 10)
+  })
+
   test('snapshot returns fresh objects each call', () => {
     const stats = new RunStats({ startedAt: 0, now: (): number => 0 })
     stats.addUsage('a', { input: 1, output: 1, reasoning: 0 })
@@ -100,5 +122,55 @@ describe('RunStats', () => {
   test('rehydrate with undefined starts empty', () => {
     const stats = RunStats.rehydrate(undefined, {})
     expect(stats.snapshot().totals.input).toBe(0)
+  })
+
+  test('accumulates cached tokens separately per label and in totals', () => {
+    const stats = new RunStats({ startedAt: 0, now: (): number => 0 })
+    stats.addUsage('select', { input: 100, output: 10, reasoning: 5, cachedRead: 8320, cachedWrite: 4096 })
+    stats.addUsage('improve', { input: 200, output: 20, reasoning: 0, cachedRead: 1200, cachedWrite: 0 })
+    const snap = stats.snapshot()
+    expect(snap.totals.input).toBe(300)
+    expect(snap.totals.cachedRead).toBe(9520)
+    expect(snap.totals.cachedWrite).toBe(4096)
+    expect(snap.perLabel['select']).toMatchObject({ input: 100, cachedRead: 8320, cachedWrite: 4096 })
+    expect(snap.perLabel['improve']).toMatchObject({ input: 200, cachedRead: 1200, cachedWrite: 0 })
+  })
+
+  test('addUsage without cache fields leaves cached counters at 0', () => {
+    const stats = new RunStats({ startedAt: 0, now: (): number => 0 })
+    stats.addUsage('a', { input: 100, output: 10, reasoning: 5 })
+    expect(stats.snapshot().totals.cachedRead).toBe(0)
+    expect(stats.snapshot().totals.cachedWrite).toBe(0)
+  })
+
+  test('clamps malformed cache deltas to zero', () => {
+    const stats = new RunStats({ startedAt: 0, now: (): number => 0 })
+    stats.addUsage('a', { input: 10, output: 1, reasoning: 0, cachedRead: Number.NaN, cachedWrite: -7 })
+    const snap = stats.snapshot()
+    expect(snap.totals.cachedRead).toBe(0)
+    expect(snap.totals.cachedWrite).toBe(0)
+  })
+
+  test('persist + rehydrate round-trips cached counters', () => {
+    const stats = new RunStats({ startedAt: 0, now: (): number => 0 })
+    stats.addUsage('a', { input: 10, output: 1, reasoning: 0, cachedRead: 8320, cachedWrite: 4096 })
+    const restored = RunStats.rehydrate(stats.persist(), {})
+    const snap = restored.snapshot()
+    expect(snap.totals.cachedRead).toBe(8320)
+    expect(snap.totals.cachedWrite).toBe(4096)
+    expect(snap.perLabel['a']).toMatchObject({ cachedRead: 8320, cachedWrite: 4096 })
+  })
+
+  test('rehydrating a pre-change metrics.json without cache fields yields 0 without error', () => {
+    const pre = {
+      totals: { input: 42, output: 4, reasoning: 0, toolCalls: 1, added: 1, removed: 0, estimatedCostUsd: 0.01 },
+      perLabel: { a: { input: 42, output: 4, reasoning: 0, toolCalls: 1, added: 1, removed: 0 } },
+    }
+    const parsed = PersistedStatsSchema.parse(pre)
+    const restored = RunStats.rehydrate(parsed, {})
+    const snap = restored.snapshot()
+    expect(snap.totals.cachedRead).toBe(0)
+    expect(snap.totals.cachedWrite).toBe(0)
+    expect(snap.perLabel['a']?.cachedRead).toBe(0)
   })
 })

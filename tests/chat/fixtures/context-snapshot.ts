@@ -10,25 +10,38 @@ export const standardContextSnapshot: ContextSnapshot = {
   totalTokens: 6_770,
   maxTokens: 128_000,
   approximate: false,
+  locale: 'en',
   sections: [
     {
+      id: 'system_prompt',
       label: 'System prompt',
       tokens: 820,
       children: [
-        { label: 'Base instructions', tokens: 650 },
-        { label: 'Custom instructions', tokens: 120 },
-        { label: 'Provider addendum', tokens: 50 },
+        { id: 'base_instructions', label: 'Base instructions', tokens: 650 },
+        { id: 'custom_instructions', label: 'Custom instructions', tokens: 120 },
+        { id: 'provider_addendum', label: 'Provider addendum', tokens: 50 },
       ],
     },
     {
+      id: 'memory_context',
       label: 'Memory context',
       tokens: 350,
       children: [
-        { label: 'Summary', tokens: 180 },
-        { label: 'Known entities', tokens: 170, detail: '12 facts' },
+        { id: 'summary', label: 'Summary', tokens: 180 },
+        { id: 'known_entities', label: 'Known entities', tokens: 170, detail: '12 facts' },
       ],
     },
-    { label: 'Conversation history', tokens: 2_400, detail: '34 messages' },
-    { label: 'Tools', tokens: 3_200, detail: '4 active · 18 available (progressive disclosure)' },
+    {
+      id: 'conversation_history',
+      label: 'Conversation history',
+      tokens: 2_400,
+      detail: '34 messages',
+    },
+    {
+      id: 'tools',
+      label: 'Tools',
+      tokens: 3_200,
+      detail: '4 active · 18 available (progressive disclosure)',
+    },
   ],
 }

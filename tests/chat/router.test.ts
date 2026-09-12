@@ -66,6 +66,7 @@ const contextSnapshot: ContextSnapshot = {
   totalTokens: 0,
   maxTokens: null,
   approximate: false,
+  locale: 'en',
 }
 
 const telegramTraits: ChatProviderTraits = { observedGroupMessages: 'all' }

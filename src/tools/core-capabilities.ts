@@ -96,6 +96,7 @@ export const CORE_TOOL_CAPABILITIES = Object.freeze({
   'deferred.update': 'update_reminder',
   'deferred.cancel': 'cancel_reminder',
   'web.fetch': 'web_fetch',
+  'chat.participants.resolve': 'resolve_chat_participant',
 } as const)
 
 export function registerOfferedCoreToolCapabilities(tools: ToolSet, catalog: ToolCapabilityCatalog): void {

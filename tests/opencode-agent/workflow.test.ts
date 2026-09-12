@@ -59,6 +59,10 @@ const resolveJobSchema = z.object({
 const agentJobSchema = z.object({
   needs: z.string(),
   if: z.string(),
+  // Present since the backend selector landed: `AGENT_BACKEND` is declared
+  // once at job level so the install step's `if:` and the pipeline step's
+  // forwarding gates read one value.
+  env: z.record(z.string(), z.string()).default({}),
   // A string, not a number: the ceiling is a repository variable read by this
   // field *and* forwarded to the pipeline, which is what makes it one value rather
   // than two kept in step by hand. `vars` is available here and workflow `env` is
@@ -340,6 +344,9 @@ const step = (fragment: string): WorkflowStep => stepOf(steps, fragment)
 
 const checkoutStep = steps.find((candidate) => candidate.uses.startsWith('actions/checkout')) ?? NO_STEP
 
+/** Where the codeindex sibling is checked out before it is moved to ../codeindex. */
+const SIBLING_CHECKOUT_PATH = '.codeindex-sibling'
+
 /** The two steps whose bodies are executed below, rather than only read. */
 const resolveStep = stepOf(resolveJob.steps, 'resolve the issue number')
 const cleanupStep = step('working label')
@@ -432,6 +439,18 @@ const DELIBERATELY_ABSENT: ReadonlySet<string> = new Set([
   // Read from the payload's `repository.default_branch`; forwarding it would
   // mask that resolution path and let it rot untested. See S2-5.
   'AGENT_BASE_BRANCH',
+  // Declared once at the job level rather than forwarded step-by-step (the
+  // install step's `if:` and the pipeline step's forwarding gates read the one
+  // value), so it never appears in the pipeline step's own env keys. Documented
+  // as a README table row like every other knob; the row resolves through here.
+  'AGENT_BACKEND',
+  // Pending a maintainer's hand-applied forwarding (issue #388): the agent's
+  // token cannot push `.github/workflows/`, so the two `env:` lines beside the
+  // existing AGENT_EFFORT_PLAN / AGENT_EFFORT_BUILD pair travel in the pull
+  // request body instead. Once they land, remove both entries — the test then
+  // enforces the forwarding like every other knob's.
+  'AGENT_EFFORT',
+  'AGENT_EFFORT_PROPOSE',
 ])
 
 /** Documented knobs the workflow neither forwards nor excuses. The filtering
@@ -475,6 +494,35 @@ describe('steps', () => {
     for (const candidate of steps.filter((entry) => entry.uses.startsWith('actions/checkout'))) {
       expect(candidate.with['persist-credentials']).toBe(false)
     }
+  })
+
+  test('never gives a checkout a path above the workspace', () => {
+    // actions/checkout validates `path` against GITHUB_WORKSPACE and refuses
+    // anything above it: `path: ../codeindex` failed the whole job with
+    // "Repository path '/home/runner/work/papai/codeindex' is not under
+    // '/home/runner/work/papai/papai'", before any agent work — every issue
+    // trigger, for as long as AGENT_MCP_SERVERS named codeindex. A sibling
+    // tree is reached by checking out inside the workspace and moving it.
+    const targets = steps
+      .filter((entry) => entry.uses.startsWith('actions/checkout'))
+      .map((entry) => entry.with['path'])
+      .filter((target) => typeof target === 'string')
+
+    expect(targets.filter((target) => /^(?:\.\.|\/)/u.test(target))).toEqual([])
+  })
+
+  test('lands the codeindex sibling outside the workspace, where the shim resolves it', () => {
+    // scripts/codeindex-cli.ts resolves <repoRoot>/../codeindex with no
+    // CODEINDEX_DIR override on CI, and the implement phase's `git add --all`
+    // must never see the tree — so the move out of the workspace is as
+    // load-bearing as the checkout itself, and both carry the same gate.
+    const checkout = step('check out the codeindex sibling')
+    const move = step('move the codeindex sibling')
+
+    expect(checkout.with['path']).toBe(SIBLING_CHECKOUT_PATH)
+    expect(move.if).toBe(checkout.if)
+    expect(move.run).toContain(SIBLING_CHECKOUT_PATH)
+    expect(move.run).toContain('"$GITHUB_WORKSPACE/../codeindex"')
   })
 
   test('fetches the superpowers skills from a pinned commit, not a branch', () => {
@@ -523,14 +571,63 @@ describe('steps', () => {
     expect(step('opencode cli').run).toContain('opencode-ai')
   })
 
-  test('passes only the single LLM endpoint credentials to the pipeline', () => {
+  test('forwards each route only its own credentials, through per-line gates', () => {
+    // The superseded shape of this pin asserted no `ANTHROPIC*` reached the
+    // pipeline step at all; the claude route made that false by design. What
+    // must hold instead is the gate: the Anthropic lines forward only when
+    // AGENT_BACKEND is claude, the gateway pair only when it is not, and the
+    // model knobs name the model either backend runs, ungated.
     const env = step('agent pipeline').env
 
-    expect(Object.keys(env)).toContain('LLM_API_KEY')
-    expect(Object.keys(env)).toContain('LLM_BASE_URL')
-    expect(Object.keys(env)).toContain('LLM_MODEL')
-    expect(Object.keys(env).join(' ')).not.toContain('ANTHROPIC')
+    expect(env['ANTHROPIC_API_KEY']).toBe("${{ env.AGENT_BACKEND == 'claude' && secrets.ANTHROPIC_API_KEY || '' }}")
+    expect(env['CLAUDE_CODE_OAUTH_TOKEN']).toBe(
+      "${{ env.AGENT_BACKEND == 'claude' && secrets.CLAUDE_CODE_OAUTH_TOKEN || '' }}",
+    )
+    expect(env['LLM_API_KEY']).toBe("${{ env.AGENT_BACKEND != 'claude' && secrets.LLM_API_KEY || '' }}")
+    expect(env['LLM_BASE_URL']).toBe("${{ env.AGENT_BACKEND != 'claude' && vars.LLM_BASE_URL || '' }}")
+
+    // The model knobs ride both routes: they name the model, not a credential.
+    expect(env['LLM_MODEL']).toBe('${{ vars.LLM_MODEL }}')
+    expect(env['LLM_MODEL_LIGHT']).toBe('${{ vars.LLM_MODEL_LIGHT }}')
+    expect(env['AGENT_EFFORT_PLAN']).toBe('${{ vars.AGENT_EFFORT_PLAN }}')
+    expect(env['AGENT_EFFORT_BUILD']).toBe('${{ vars.AGENT_EFFORT_BUILD }}')
+    // And no other credential spelling rides along ungated.
     expect(Object.keys(env).join(' ')).not.toContain('OPENCODE_API_KEY')
+  })
+
+  test('declares AGENT_BACKEND once, at job level, from the repository variables', () => {
+    // One value, two readers (the install step's `if:` and the forwarding
+    // gates above); declared at job level because a step-level copy would be a
+    // second spelling the two could drift on. Unset forwards as '', which the
+    // pipeline's config reads as the `opencode` default.
+    expect(agentJob.env['AGENT_BACKEND']).toBe('${{ vars.AGENT_BACKEND }}')
+  })
+
+  test('declares AGENT_MCP_SERVERS once, at job level, secret winning over variable', () => {
+    // One value, every reader: the pipeline step inherits it, and the gated
+    // codeindex steps' `if:` reads it — a step `if:` may read `env` but not
+    // `secrets`, so the job level is the only place the secret spelling can
+    // reach a gate. The secret wins, like AGENT_GITHUB_TOKEN; this repository
+    // carries the knob as a secret.
+    expect(agentJob.env['AGENT_MCP_SERVERS']).toBe('${{ secrets.AGENT_MCP_SERVERS || vars.AGENT_MCP_SERVERS }}')
+    expect(step('agent pipeline').env['AGENT_MCP_SERVERS']).toBeUndefined()
+  })
+
+  test('installs the claude CLI only when the claude backend is selected, pinned exactly', () => {
+    const install = step('claude cli')
+
+    expect(install.if).toBe("env.AGENT_BACKEND == 'claude'")
+    // Pinned exact — no floating tag and no `latest` — so any two runners
+    // execute the same binary the recorded fixture corpus was shaped by.
+    expect(pinnedVersion(install.run)).toMatch(/^\d+\.\d+\.\d+$/u)
+    expect(install.run).not.toContain('claude-code@latest')
+    expect(install.run).toContain('GITHUB_PATH')
+
+    const names = steps.map((candidate) => candidate.name.toLowerCase())
+    expect(names.findIndex((name) => name.includes('claude cli'))).toBeGreaterThan(-1)
+    expect(names.findIndex((name) => name.includes('claude cli'))).toBeLessThan(
+      names.findIndex((name) => name.includes('agent pipeline')),
+    )
   })
 
   test('tells the pipeline its own workflow name, for the CI recursion guard', () => {
@@ -562,7 +659,10 @@ describe('steps', () => {
     // kept in step by hand does not stay in step — so the README table is the
     // source of truth and the gap is a test failure.
     const documented = documentedKnobs()
-    const missing = notForwarded(documented, Object.keys(step('agent pipeline').env))
+    // A knob declared at job level is forwarded too — the pipeline step
+    // inherits the job's env — so both spellings count. AGENT_MCP_SERVERS
+    // lives there because a step `if:` may read `env` but not `secrets`.
+    const missing = notForwarded(documented, [...Object.keys(step('agent pipeline').env), ...Object.keys(agentJob.env)])
 
     expect(documented.length).toBeGreaterThan(10)
     expect(missing).toEqual([])
@@ -574,7 +674,17 @@ describe('steps', () => {
     // hand — and a live run died 30 minutes into a healthy turn with 59 minutes of
     // runner it was never allowed to use. Byte-for-byte the same expression, so a
     // change to one is a change to both.
-    expect(agentJob['timeout-minutes']).toBe('${{ vars.AGENT_JOB_TIMEOUT_MINUTES || 300 }}')
+    //
+    // `fromJSON` is load-bearing, not decoration: `vars.*` is typed string, and a
+    // **set** `AGENT_JOB_TIMEOUT_MINUTES` makes `|| 300` yield that string —
+    // `'350'` — which GitHub rejects at job planning with "Error when evaluating
+    // 'timeout-minutes' … Unexpected value '350'". The `agent` job is then never
+    // created: no pipeline, no feedback step, the trigger silently swallowed. Runs
+    // 32964525166, 32955595991 and 32987078259 all died this way between 2026-08-26
+    // 09:53 and the fix, while the workflow file itself never changed. Unset, the
+    // expression still yields the numeric fallback '300' → 300, which is why the
+    // earlier "GitHub coerces" belief looked true until somebody set the variable.
+    expect(agentJob['timeout-minutes']).toBe("${{ fromJSON(vars.AGENT_JOB_TIMEOUT_MINUTES || '300') }}")
     expect(step('agent pipeline').env['AGENT_JOB_TIMEOUT_MINUTES']).toBe(agentJob['timeout-minutes'])
   })
 
@@ -586,7 +696,7 @@ describe('steps', () => {
     // built from a step that runs a few seconds after the job did, so at 360 the
     // pipeline's own clock would sit *behind* the runner's and the stop would be
     // cut off doing the one thing it exists to do.
-    const fallback = Number(/\|\|\s*(\d+)\s*\}\}/u.exec(agentJob['timeout-minutes'])?.[1])
+    const fallback = Number(/\|\|\s*'(\d+)'\s*\)\s*\}\}/u.exec(agentJob['timeout-minutes'])?.[1])
 
     expect(fallback).toBeGreaterThan(0)
     expect(fallback).toBeLessThanOrEqual(330)
@@ -812,11 +922,19 @@ describe('the working-label cleanup', () => {
 })
 
 describe('permissions', () => {
-  test('grants exactly what the pipeline writes, and nothing more', () => {
+  test('grants exactly what the pipeline writes and reads, and nothing more', () => {
     expect(workflow.permissions).toEqual({
       contents: 'write',
       issues: 'write',
       'pull-requests': 'write',
+      // Read-only, for the CI-fix round's failed jobs and logs. A write here
+      // would let a model-influenced commit re-run or cancel runs.
+      actions: 'read',
+      // Read-only, for a command-bought CI-fix round's head check runs — the
+      // Checks API's own permission class, which `actions: read` does not
+      // cover. Without it every /fix round 403s into the readError path and
+      // spends its attempt for nothing.
+      checks: 'read',
     })
   })
 })
@@ -949,6 +1067,39 @@ describe('the infrastructure-failure notice', () => {
     expect(transcriptComment.env['VIEWER_URL']).toContain('github.repository_owner')
     expect(transcriptComment.env['VIEWER_URL']).toContain('github.event.repository.name')
   })
+})
+
+/**
+ * The claude fixture corpus's version stamp: written by the credentialed
+ * recorder run (`bun run opencode-agent:test:claude-live`), absent until that
+ * run happens. When it exists it must equal the workflow's install pin, so
+ * fixture and binary cannot silently skew; while the recording is pending the
+ * provisional corpus's README is the honest record of its own provenance.
+ */
+const CLAUDE_STAMP_PATH = path.join(import.meta.dir, 'fixtures', 'claude-cli', 'VERSION')
+
+/** The exact version the claude install step pins, read off its run body. */
+const pinnedVersion = (run: string): string => /@anthropic-ai\/claude-code@([\d.]+)$/mu.exec(run)?.[1] ?? ''
+
+describe('the claude fixture corpus and the workflow pin', () => {
+  // `.if` rather than a body-side branch: the equality claim only exists once
+  // the credentialed recorder run has stamped a version, and the pending-state
+  // claim only while it has not.
+  test.if(existsSync(CLAUDE_STAMP_PATH))('the recorded stamp equals the workflow install pin', () => {
+    expect(pinnedVersion(step('claude cli').run)).toMatch(/^\d+\.\d+\.\d+$/u)
+    const stamped = readFileSync(CLAUDE_STAMP_PATH, 'utf8').trim()
+
+    expect(stamped).toBe(pinnedVersion(step('claude cli').run))
+  })
+
+  test.if(!existsSync(CLAUDE_STAMP_PATH))(
+    'documents its pending state while the credentialed recording is outstanding',
+    () => {
+      // Nothing to assert while the stamp is absent — the block exists so the
+      // state is visible in the suite's output rather than silent.
+      expect(existsSync(path.join(import.meta.dir, 'fixtures', 'claude-cli', 'README.md'))).toBe(true)
+    },
+  )
 })
 
 const PAGES_PATH = path.join(import.meta.dir, '..', '..', '.github', 'workflows', 'transcript-viewer-pages.yml')

@@ -38,6 +38,36 @@ import type { IntRange } from './config-values.js'
 export const TIMEOUT_RANGE: IntRange = { min: 1_000, max: 7_200_000 }
 
 /**
+ * The stall bound's accepted window, when it is on.
+ *
+ * The floor is one retry cycle, and it is not arbitrary: the incident that
+ * added this knob watched a sibling run recover from every provider episode
+ * of ≤9 attempts — about 4.5 minutes at the observed ~30 s per attempt —
+ * while the dead spirals ran 57–90 minutes. A window under one retry cycle
+ * fires on the recovering blips, which are healthy, and a window over the
+ * whole-turn cap above can never fire at all, which removes the bound by
+ * setting it. Between those two the number is a tuning decision an operator
+ * may make; outside them it is a bug in the configuration.
+ *
+ * `0` is **not** in this range and is handled by the reader: it is the
+ * explicit off switch, and giving it a place here would mean refusing every
+ * other small window in its honour.
+ */
+export const STALL_RANGE: IntRange = { min: 60_000, max: 7_200_000 }
+
+/**
+ * Five minutes of no progress while the provider keeps failing the request.
+ *
+ * Chosen from the same incident data as the range's floor, on the other side
+ * of it: comfortably above the recovering-blip ceiling (~4.5 min) so an
+ * ordinary wave episode never trips it, far below the dead-spiral floor
+ * (57–90 min) so a spiral costs one turn of salvage rather than most of a
+ * job. If a rare long-but-recovering episode does trip it, the cost is one
+ * salvaged attempt of five — never a 90-minute dead burn.
+ */
+export const DEFAULT_STALL_TIMEOUT_MS = 300_000
+
+/**
  * Ninety minutes for one model turn, and for each subprocess.
  *
  * A constant beside its range rather than a literal at the call site, because the

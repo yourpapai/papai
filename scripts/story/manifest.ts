@@ -9,6 +9,7 @@ import path from 'node:path'
 
 import { z } from 'zod'
 
+import { withSourceParser } from '../../src/ts-ast/source-parser.js'
 import {
   currentStoryManifestCommit,
   loadBaselineRuntimeInputs,
@@ -21,7 +22,7 @@ import { loadCandidateStoryFiles, type LoadedStoryFile } from './inputs.js'
 import { removeStoryReport } from './reports.js'
 import { hashRuntimeTree, loadCandidateRuntimeInputTree, type LoadedRuntimeInput } from './runtime-inputs.js'
 import { selectStorySandboxBackend, type StorySandboxBackend } from './sandbox.js'
-import { extractStoryScenarios } from './scenarios.js'
+import { extractStoryScenarios, type ExtractedStoryScenario } from './scenarios.js'
 
 export type { CandidateStoryManifestDependencies } from './dependencies.js'
 export type { LoadedStoryFile } from './inputs.js'
@@ -158,7 +159,11 @@ function candidateManifestEvidence(metadata: CandidateEvidenceMetadata): Readonl
   return { ...dependencySnapshot, ...sandboxBackend }
 }
 
-function assembleManifest(
+function collectStoryScenarios(loaded: readonly LoadedStoryFile[]): Promise<readonly ExtractedStoryScenario[]> {
+  return withSourceParser((parser) => extractStoryScenarios(parser, loaded))
+}
+
+async function assembleManifest(
   loaded: readonly LoadedStoryFile[],
   runtimeInputFiles: readonly LoadedRuntimeInput[],
   runtimeDirectories: readonly string[],
@@ -169,14 +174,13 @@ function assembleManifest(
     dependencySnapshot?: StoryDependencySnapshot
     sandboxBackend?: StorySandboxBackend
   }>,
-): StoryManifest {
+): Promise<StoryManifest> {
   const files = loaded.map((file): StoryFile => ({ path: file.path, sha256: sha256(file.bytes) }))
   const runtimeFiles = runtimeInputFiles.map((file): StoryManifest['runtimeInputs']['files'][number] => {
     if (file.kind === 'file') return { kind: 'file', path: file.path, sha256: sha256(file.bytes) }
     return { kind: 'symlink', path: file.path, sha256: sha256(file.target), target: file.target }
   })
-  const scenarios: StoryScenario[] = loaded
-    .flatMap((file) => extractStoryScenarios(file.path, file.bytes))
+  const scenarios: StoryScenario[] = (await collectStoryScenarios(loaded))
     .map((scenario) => ({ ...scenario, checkpoints: [...scenario.checkpoints] }))
     .sort((left, right) => compareText(left.id, right.id))
   for (let index = 1; index < scenarios.length; index += 1) {
@@ -216,7 +220,7 @@ export async function captureCandidateStoryInputs(
     loadCandidateRuntimeInputTree(options.root),
     acquireCandidateDependencySnapshot(options.root, bunVersion, dependencies),
   ])
-  const manifest = assembleManifest(files, runtimeInputs.files, runtimeInputs.directories, {
+  const manifest = await assembleManifest(files, runtimeInputs.files, runtimeInputs.directories, {
     commit,
     bunVersion,
     seed: options.seed,

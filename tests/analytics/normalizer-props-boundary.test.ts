@@ -28,6 +28,33 @@ const source: AnalyticsSourceContext = {
 const keys = createFactKeyDeriver({ key: Buffer.alloc(32, 7), keyVersion: 'v1' })
 
 describe('normalizer-props-boundary', () => {
+  test('provider_request_completed accepts the github provider', () => {
+    const fact: ProviderRequestCompletedFact = {
+      version: 1,
+      type: 'provider_request_completed',
+      sourceEventId: 'se-prc-github',
+      occurredAtMs: 1_700_000_001_600,
+      source,
+      provider: 'github',
+      operation: 'read',
+      durationMs: 10,
+      outcome: 'success',
+      statusClass: '2xx',
+      retryable: null,
+    }
+    expect(buildBoundaryFamilyProps(fact, keys)).toEqual({
+      ok: true,
+      props: {
+        provider: 'github',
+        operation: 'read',
+        duration_ms: 10,
+        outcome: 'success',
+        status_class: '2xx',
+        retryable: null,
+      },
+    })
+  })
+
   test('provider_request_completed rejects an unknown status class', () => {
     const fact: ProviderRequestCompletedFact = {
       version: 1,

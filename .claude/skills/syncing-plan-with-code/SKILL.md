@@ -60,6 +60,10 @@ Read `proposal.md`, `design.md` (if present), and `tasks.md` end to end. Pull ou
 - **Anchors** — every line number, function name, snippet
 - **Verification commands** — every `bun test ...`, `bun lint`, etc.
 
+Locate symbols, definitions, and callers for the anchors with the `codeindex`
+MCP tools (`code_symbol` / `code_search` / `code_impact`) — the Codebase
+Search Protocol in `CLAUDE.md` carries the full rules.
+
 ### Step 3: Build the discrepancy table
 
 Coverage check is mandatory: every changed file in the diff **and** every change task lands in exactly one row.

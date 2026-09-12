@@ -21,7 +21,7 @@
     refreshAdminProviderModels,
     updateAdminProvider,
   } from '../../admin-fetchers.js'
-  import type { LlmProviderType, ProviderPatch, PublicProviderAccount } from '../../fetcher-schemas-llm-providers.js'
+  import type { LlmProviderType, ModelHints, ProviderPatch, PublicProviderAccount } from '../../fetcher-schemas-llm-providers.js'
 
   let providers: PublicProviderAccount[] = $state([])
   let error: string | null = $state(null)
@@ -52,6 +52,8 @@
     providerType: string
     baseUrl: string
     apiKey: string
+    baseProvider: string | null
+    baseModel: string | null
   }): Promise<boolean> {
     saving = true
     try {
@@ -100,9 +102,24 @@
 
   async function onEdit(
     id: string,
-    input: { label: string; providerType: LlmProviderType; baseUrl: string; apiKey: string },
+    input: {
+      label: string
+      providerType: LlmProviderType
+      baseUrl: string
+      apiKey: string
+      baseProvider: string | null
+      baseModel: string | null
+      modelHints?: ModelHints
+    },
   ): Promise<boolean> {
-    const patch: ProviderPatch = { label: input.label, providerType: input.providerType, baseUrl: input.baseUrl }
+    const patch: ProviderPatch = {
+      label: input.label,
+      providerType: input.providerType,
+      baseUrl: input.baseUrl,
+      baseProvider: input.baseProvider,
+      baseModel: input.baseModel,
+      modelHints: input.modelHints,
+    }
     if (input.apiKey.length > 0) patch.apiKey = input.apiKey
     const ok = await patchAndReload(id, patch)
     if (ok) editTarget = null
@@ -129,6 +146,7 @@
   }
 
   function startEdit(provider: PublicProviderAccount): void {
+    error = null
     editTarget = provider
     modelsTarget = null
   }
@@ -234,11 +252,22 @@
                 <td colspan="7">
                   <ProviderForm
                     editMode={true}
-                    initial={{ label: provider.label, providerType: provider.providerType, baseUrl: provider.baseUrl }}
+                    initial={{
+                      label: provider.label,
+                      providerType: provider.providerType,
+                      baseUrl: provider.baseUrl,
+                      baseProvider: provider.baseProvider,
+                      baseModel: provider.baseModel,
+                      modelHints: provider.modelHints,
+                    }}
+                    enumeratedModels={provider.verification.models}
                     onSave={(input) => onEdit(provider.id, input)}
                     onCancel={() => (editTarget = null)}
                     busy={saving}
                     testidPrefix="provider-edit-form" />
+                  {#if error !== null}
+                    <p class="status-error" data-testid="provider-edit-form-error">{error}</p>
+                  {/if}
                 </td>
               </tr>
             {/if}

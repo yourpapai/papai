@@ -81,10 +81,11 @@ export const PLUGIN_MANIFEST_PROVIDER_TRAITS = [
 type ManifestValidationInput = {
   permissions: readonly string[]
   providerCapabilities: readonly unknown[]
-  providerConfigSchema: readonly unknown[]
+  providerConfigSchema: readonly { key: string }[]
   providerContextConfigSchema?: readonly unknown[]
   providerAllowedHosts: readonly string[]
   providerAllowedHostsFromConfig: readonly string[]
+  providerAllowedInstanceHostsFromConfig: readonly string[]
   providerConfigValidator?: string
   contributes: {
     configKeys: readonly string[]
@@ -145,6 +146,12 @@ export function hasAttachmentTransformerPermission(m: ManifestValidationInput): 
 
 export function hasProviderAllowedHostsFromConfig(m: ManifestValidationInput): boolean {
   return m.providerAllowedHostsFromConfig.every((key) => m.configRequirements.some((req) => req.key === key))
+}
+
+export function hasProviderAllowedInstanceHostsFromConfig(m: ManifestValidationInput): boolean {
+  return m.providerAllowedInstanceHostsFromConfig.every((key) =>
+    m.providerConfigSchema.some((field) => field.key === key),
+  )
 }
 
 export function hasRequiredMainForManifest(m: ManifestValidationInput): boolean {

@@ -9,6 +9,9 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
+import type { ModelMetadata } from '../models-dev/resolve.js'
+import type { ModelHints } from './model-hints.js'
+
 export const LLM_PROVIDER_TYPES = ['openai', 'anthropic', 'google', 'openrouter', 'ollama', 'groq', 'custom'] as const
 export type LlmProviderType = (typeof LLM_PROVIDER_TYPES)[number]
 
@@ -30,6 +33,9 @@ export type LlmProviderAccount = {
   readonly providerType: LlmProviderType
   readonly baseUrl: string
   readonly apiKey: string
+  readonly baseProvider: string | null
+  readonly baseModel: string | null
+  readonly modelHints?: ModelHints
   readonly verification: Verification
 }
 
@@ -46,6 +52,7 @@ export type ResolvedRole = {
   readonly baseUrl: string
   readonly model: string
   readonly source: 'global' | 'byok'
+  readonly metadata: ModelMetadata
 }
 
 export type EffectiveLlmConfig = {

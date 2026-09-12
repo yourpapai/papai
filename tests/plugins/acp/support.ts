@@ -52,6 +52,7 @@ export function activate(httpFetch: HttpFetch): ActivateResult {
     },
     providerRuntime: {
       httpFetch,
+      forInstance: () => httpFetch,
       allowedHosts: new Set<string>(),
       logger: { debug: () => {}, info: () => {}, warn: () => {}, error: () => {} },
     },

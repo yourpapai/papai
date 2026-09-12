@@ -11,11 +11,23 @@ import type { AgentState, TransitionSignal } from './types.js'
  *
  * `/continue` is deliberately not a second spelling of `/retry`. That one means
  * "the thing that broke, again" and is accepted in `FAILED`; this one means "you
- * were not finished" and is accepted only in `INCOMPLETE`, where a wall-clock
- * stop parks. One command for both would need the state to say which kind of park
- * it is carrying, and every reader of the phase would have to ask.
+ * were not finished" and is accepted in `INCOMPLETE`, where a wall-clock stop
+ * parks, and in `INIT_OR_CLARIFY`, where it re-runs triage where the issue
+ * stands (issue #438) rather than resuming anything. One command for both parks
+ * would need the state to say which kind of park it is carrying, and every
+ * reader of the phase would have to ask.
  */
-export const SLASH_COMMANDS = ['/approve', '/changes', '/ask', '/retry', '/cancel', '/review', '/continue'] as const
+export const SLASH_COMMANDS = [
+  '/approve',
+  '/changes',
+  '/ask',
+  '/retry',
+  '/cancel',
+  '/review',
+  '/continue',
+  '/sync',
+  '/fix',
+] as const
 
 export type SlashCommand = (typeof SLASH_COMMANDS)[number]
 
@@ -107,24 +119,46 @@ export const COMMAND_SIGNALS: Partial<Record<SlashCommand, TransitionSignal>> = 
   '/cancel': 'CANCELLED',
   '/review': 'REVIEW_REQUESTED',
   '/continue': 'CONTINUE',
+  // The `/review` shape, not the `/sync` one: `/fix` moves the machine, through
+  // the same `CI_FAILED` transition the red-run door applies — one signal, one
+  // `ciAttempts` increment site, one budget shared by both doors.
+  '/fix': 'CI_FAILED',
 }
 
 /**
  * Commands whose availability the transition table cannot decide alone.
  *
- * There is one, and `COMPLETE` is why. That phase is where a **delivered** issue
- * and a **cancelled** one both live, and the phase alone cannot tell them apart:
- * `presentationKey` already splits them on the pull request, because a delivered
- * issue and an abandoned one are not the same outcome. `/review` needs the same
- * split — on a cancelled issue it would name a branch nobody asked for and
- * report against a pull request that does not exist.
+ * There are three. `/sync` is the `/ask` shape — no signal, so the table is never
+ * asked — and applies wherever the **agent branch exists**: `changeName !== null`
+ * is that fact by the workspace's own doctrine (a `changeName === null` state
+ * has no folder to read and no branch to switch to), with `prNumber` named
+ * beside it because a delivered state is the other spelling of the same fact.
+ * The one branch-less state that still names a change is a **cancelled** one —
+ * `/cancel` deletes the branch (D9) and parks in `COMPLETE` with no pull
+ * request, the same split `presentationKey` makes — and `/sync` must refuse it
+ * or `ensureBranch` would resurrect the branch the cleanup deleted. It used to
+ * key on `prNumber` alone, which issue #323 broke: the drift refusal parked the
+ * issue `FAILED` with no pull request, named `/sync` as the remedy, and the
+ * gate refused it — a remedy the state it was prescribed for could not take,
+ * with the hand merge as the only way out. `COMPLETE` is the phase where
+ * a table cannot decide for `/review` at all: that is where a **delivered**
+ * issue and a **cancelled** one both live, and the phase alone cannot tell them
+ * apart: `presentationKey` already splits them on the pull request, because a
+ * delivered issue and an abandoned one are not the same outcome. `/review`
+ * needs the same split — on a cancelled issue it would name a branch nobody
+ * asked for and report against a pull request that does not exist. `/fix`
+ * keeps the `prNumber` predicate: its round repairs the checks of a pull
+ * request, and a state naming none has nothing for it to read.
  *
- * One predicate with two readers rather than two spellings of one rule:
+ * One predicate table with two readers rather than two spellings of one rule:
  * {@link acceptedCommands} shows a maintainer the list, `triggers.ts` enforces
  * it before applying the signal, and the offer and the gate cannot drift apart.
  */
 const COMMAND_APPLIES: Partial<Record<SlashCommand, (state: AgentState) => boolean>> = {
   '/review': (state) => state.prNumber !== null,
+  '/sync': (state) =>
+    state.prNumber !== null || (state.changeName !== null && !(state.phase === 'COMPLETE' && state.prUrl === null)),
+  '/fix': (state) => state.prNumber !== null,
 }
 
 /** Whether `command` applies to this state, over and above what the phase takes. */
@@ -135,9 +169,12 @@ export const commandApplies = (command: SlashCommand, state: AgentState): boolea
 
 const accepts = (state: AgentState, command: SlashCommand): boolean => {
   const signal = COMMAND_SIGNALS[command]
-  // `/ask` is the command with no signal, and it needs no special case here:
-  // answering asks nothing of the state machine, so there is nothing to refuse.
-  if (signal === undefined) return true
+  // `/ask` and `/sync` are the commands with no signal, and neither needs the
+  // transition table: answering and syncing ask nothing of the state machine,
+  // so there is no phase to refuse them. `/sync` still asks the predicate above
+  // — before capture there is no branch to merge base into — while `/ask` has
+  // no row there and is accepted everywhere, exactly as before.
+  if (signal === undefined) return commandApplies(command, state)
   return canTransition(state.phase, signal) && commandApplies(command, state)
 }
 

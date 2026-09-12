@@ -8,10 +8,13 @@ import { createServer } from 'node:net'
 import { createOpencodeClient, createOpencodeServer } from '@opencode-ai/sdk'
 
 import { withDeadline } from './deadline.js'
+import type { Logger } from './logger.js'
 import { buildOpencodeConfig } from './openai-config.js'
 import type { OpenAiSettings } from './openai-config.js'
 import type { OpenCodeConnection } from './opencode-adapter.js'
-import { decodeSessionId, decodeSessionUsage } from './sdk-contract.js'
+import { decodeSessionChildren, decodeSessionId, decodeSessionUsage, sumSessionUsage } from './sdk-contract.js'
+import type { SessionUsage } from './sdk-contract.js'
+import { errorMessage } from './types.js'
 
 /**
  * Booting a headless OpenCode server and wiring one client to it.
@@ -92,7 +95,153 @@ const probeAlive = (
     () => false,
   )
 
-export const connectSdk = async (directory: string, openai: OpenAiSettings): Promise<OpenCodeConnection> => {
+/**
+ * How far the session tree walk may reach. A subagent tree is shallow and
+ * narrow, and the caps exist so a server reporting a pathological graph costs
+ * a bounded number of requests, never the run. The parent sits at depth 0 and
+ * counts toward the node cap.
+ */
+const SESSION_TREE_MAX_DEPTH = 8
+const SESSION_TREE_MAX_NODES = 32
+
+/**
+ * The whole walk's bound — generous against loopback requests that answer in
+ * milliseconds, hard against a server that has wedged mid-tree.
+ */
+const SESSION_TREE_TIMEOUT_MS = 2_000
+
+/**
+ * The slice of the SDK client the walk reads — the recorded `session.get` and
+ * `session.children` paths, addressed with the directory on every call. The
+ * envelope decoders do the rest.
+ */
+interface SessionTreeClient {
+  session: {
+    get: (args: { path: { id: string }; query: { directory: string } }) => Promise<unknown>
+    children: (args: { path: { id: string }; query: { directory: string } }) => Promise<unknown>
+  }
+}
+
+/**
+ * The breadth-first walk behind `usage`: the session's own account plus every
+ * subagent session beneath it, summed into one `SessionUsage` — the same shape
+ * one `session.get` read answers, so nothing downstream changes.
+ *
+ * A visited set counts a cycle or a repeated id once, and the depth and node
+ * caps end a walk a pathological graph would keep going — keeping the sessions
+ * already gathered, a figure that cannot sum below the parent-only one, behind
+ * one warning of their own. Anything else that stops the tree being read
+ * whole — a children call that throws, one that never
+ * settles (the whole walk sits under one deadline), one that decodes as
+ * unrecognised — degrades the answer to the parent's own figure, the one the
+ * budget already knew, behind one warning and no failure: the walk decorates
+ * the spend read and never fails the turn or the phase. `SessionUsage` carries
+ * no marker of the degradation on purpose — a partial tree that read as
+ * complete would under-charge a subagent-heavy run while looking exact, and
+ * absent is not zero one seam over.
+ */
+export const sessionTreeUsage = async (
+  client: SessionTreeClient,
+  directory: string,
+  sessionId: string,
+  log: Logger,
+): Promise<SessionUsage | null> => {
+  try {
+    const truncated = { value: false }
+    const usages = await withDeadline(
+      gatherTree(client, directory, [{ id: sessionId, depth: 0 }], new Set<string>([sessionId]), [], truncated),
+      SESSION_TREE_TIMEOUT_MS,
+      (elapsedMs) => new Error(`the session tree walk did not settle within ${elapsedMs}ms`),
+    )
+    if (truncated.value)
+      log.warn({ sessionId }, 'the session tree walk hit its depth or node cap; this run reports the sessions it read')
+    return sumSessionUsage(usages)
+  } catch (error) {
+    // The degraded figure is the session's own account, re-read rather than
+    // remembered: whatever the walk gathered is discarded, and the one read
+    // the budget has always made is the one the answer keeps. Bounded like
+    // every other read on this path — the wedge the walk deadline exists for
+    // would otherwise hang the degradation itself, and a hang is not a
+    // rejection, so the callers' `.catch(() => null)` never fires. Expired or
+    // unreadable, the answer is absent, which the callers already warn on.
+    const parent = await withDeadline(
+      client.session.get({ path: { id: sessionId }, query: { directory } }),
+      SESSION_TREE_TIMEOUT_MS,
+      (elapsedMs) => new Error(`the degraded usage read did not settle within ${elapsedMs}ms`),
+    ).then(
+      (fetched) => decodeSessionUsage(fetched),
+      () => null,
+    )
+    if (parent === null) return null
+    log.warn(
+      { sessionId, error: errorMessage(error) },
+      'the session tree could not be read whole; this run reports the session’s own usage',
+    )
+    return parent
+  }
+}
+
+/** Reads one session's usage and children listing off the recorded paths. */
+const readNode = async (
+  client: SessionTreeClient,
+  directory: string,
+  id: string,
+): Promise<{ usage: SessionUsage; childIds: readonly string[] }> => {
+  const usage = decodeSessionUsage(await client.session.get({ path: { id }, query: { directory } }))
+  if (usage === null) throw new Error(`the usage read for ${id} did not decode`)
+  const childIds = decodeSessionChildren(await client.session.children({ path: { id }, query: { directory } }))
+  if (childIds === null) throw new Error(`the children listing for ${id} did not decode`)
+  return { usage, childIds }
+}
+
+/** One node waiting to be read: its id and its depth under the root. */
+interface TreeNode {
+  readonly id: string
+  readonly depth: number
+}
+
+/**
+ * The walk itself: breadth-first from the root, the visited set counting a
+ * cycle or a repeated id once, the caps ending it — recording the truncation
+ * rather than degrading, since the sessions already gathered cannot sum below
+ * the parent-only figure. Any other degradation throws to
+ * {@link sessionTreeUsage}'s catch, which degrades to parent-only. The queue
+ * is walked by recursion rather than a loop — one node per step, so the caps
+ * are checked between requests and nothing reads ahead of them.
+ */
+const gatherTree = async (
+  client: SessionTreeClient,
+  directory: string,
+  queue: readonly TreeNode[],
+  visited: Set<string>,
+  usages: SessionUsage[],
+  truncated: { value: boolean },
+): Promise<SessionUsage[]> => {
+  const head = queue[0]
+  if (head === undefined) return usages
+  if (usages.length >= SESSION_TREE_MAX_NODES || head.depth >= SESSION_TREE_MAX_DEPTH) {
+    truncated.value = true
+    return usages
+  }
+
+  const { usage, childIds } = await readNode(client, directory, head.id)
+  usages.push(usage)
+
+  const enqueued: TreeNode[] = []
+  for (const childId of childIds) {
+    if (!visited.has(childId)) {
+      visited.add(childId)
+      enqueued.push({ id: childId, depth: head.depth + 1 })
+    }
+  }
+  return gatherTree(client, directory, [...queue.slice(1), ...enqueued], visited, usages, truncated)
+}
+
+export const connectSdk = async (
+  directory: string,
+  openai: OpenAiSettings,
+  log: Logger,
+): Promise<OpenCodeConnection> => {
   // The provider, endpoint and model are pinned in the server's own config, so
   // the session cannot fall back to whatever credentials happen to be in env.
   // The SDK delivers this to `opencode serve` through OPENCODE_CONFIG_CONTENT —
@@ -121,8 +270,7 @@ export const connectSdk = async (directory: string, openai: OpenAiSettings): Pro
     // still open eight seconds after the server was closed, and a teardown that
     // waited on it hung the job until its own timeout.
     events: async () => (await client.event.subscribe({ sseMaxRetryAttempts: 0 })).stream,
-    usage: async (sessionId) =>
-      decodeSessionUsage(await client.session.get({ path: { id: sessionId }, query: { directory } })),
+    usage: (sessionId) => sessionTreeUsage(client, directory, sessionId, log),
     alive: (sessionId) => probeAlive(client, directory, sessionId),
     // The stop. Measured against a live server: this kills the tool child the
     // model is running and leaves the server itself up — which is the opposite of

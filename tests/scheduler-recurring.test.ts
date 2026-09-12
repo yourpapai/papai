@@ -7,8 +7,10 @@ import { afterEach, describe, expect, spyOn, test } from 'bun:test'
 
 import { toScopedContextId } from '../src/chat/scoped-context.js'
 import type { ChatProvider } from '../src/chat/types.js'
+import { logger, logMultistream } from '../src/logger.js'
 import * as proactiveHistoryModule from '../src/proactive-history.js'
 import type { Task } from '../src/providers/types.js'
+import { createMockProvider } from './tools/mock-provider.js'
 import { mockLogger } from './utils/test-helpers.js'
 
 const USER_ID = 'user-1'
@@ -154,5 +156,36 @@ describe('scheduler-recurring notifyUser — proactive history recording', () =>
     await notifyUser(chat, scopedUserId, weeklyReportTask)
 
     expect(recordCalls).toHaveLength(0)
+  })
+})
+
+describe('finalizeCreatedRecurringTask log attribution', () => {
+  // No mockLogger here: the module-bound child logger is the real pino instance,
+  // so attribution is asserted against actual egress (see tests/reply-context.test.ts).
+  test('recurring-instance-created info entry carries chatUserId so the owner keeps their titles', async () => {
+    const { setupTestDb } = await import('./utils/test-helpers.js')
+    const { createRecurringTask } = await import('../src/recurring.js')
+    const { finalizeCreatedRecurringTask } = await import('../src/scheduler-recurring.js')
+    await setupTestDb()
+    const task = createRecurringTask({
+      userId: USER_ID,
+      projectId: 'project-1',
+      title: 'Weekly report',
+      triggerType: 'on_complete',
+    })
+
+    const logLines: string[] = []
+    logMultistream.add({ level: 'info', stream: { write: (chunk: string): void => void logLines.push(chunk) } })
+    logger.level = 'info'
+    try {
+      await finalizeCreatedRecurringTask(task, createMockProvider(), createdTask, null)
+    } finally {
+      logger.level = 'silent'
+    }
+
+    const entry = logLines.find((line) => line.includes('"msg":"Recurring task instance created"'))
+    expect(entry, 'expected a recurring-instance-created log entry').toBeDefined()
+    expect(entry).toContain('"chatUserId":"user-1"')
+    expect(entry).toContain('"title":"Weekly report"')
   })
 })

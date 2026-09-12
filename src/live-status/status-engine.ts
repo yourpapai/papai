@@ -9,13 +9,13 @@
  * tools never flicker. All scheduling and clocks are injectable.
  */
 
-export const THINKING = '💭 Thinking…'
-
 export type StatusEngineDeps = {
   /** Send a (deduped) text to the live status message; a no-op when no message is active. */
   emit: (text: string) => void
   /** Whether a status message currently exists; gates whether work is scheduled at all. */
   isActive: () => boolean
+  /** Idle text (localized "Thinking…"); used for `lastStartLabel` init, `reset()`, and revert identity. */
+  idleText: string
   minLabelMs: number
   now: () => number
   schedule: (fn: () => void, ms: number) => () => void
@@ -24,9 +24,9 @@ export type StatusEngineDeps = {
 export type StatusEngine = {
   onToolStart: (label: string) => void
   onToolFinish: () => void
-  /** Re-baseline the rendered text to Thinking once the status message exists. */
+  /** Re-baseline the rendered text to the idle text once the status message exists. */
   reset: () => void
-  /** Cancel any pending Thinking revert. */
+  /** Cancel any pending idle-text revert. */
   stop: () => void
 }
 
@@ -47,7 +47,7 @@ const stopTimer = (state: EngineState): void => {
 const pushText = (state: EngineState, deps: StatusEngineDeps, text: string): void => {
   if (text === state.lastRendered) return
   state.lastRendered = text
-  if (text !== THINKING) state.labelShownAt = deps.now()
+  if (text !== deps.idleText) state.labelShownAt = deps.now()
   deps.emit(text)
 }
 
@@ -62,26 +62,26 @@ const applyState = (state: EngineState, deps: StatusEngineDeps): void => {
     pushText(state, deps, activeText(state))
     return
   }
-  // No tool in flight: revert to Thinking, but hold a live tool label minLabelMs to avoid fast-tool flicker.
-  if (state.lastRendered !== undefined && state.lastRendered !== THINKING) {
+  // No tool in flight: revert to the idle text, but hold a live tool label minLabelMs to avoid fast-tool flicker.
+  if (state.lastRendered !== undefined && state.lastRendered !== deps.idleText) {
     const remaining = deps.minLabelMs - (deps.now() - state.labelShownAt)
     if (remaining > 0) {
       state.cancelPending ??= deps.schedule((): void => {
         state.cancelPending = undefined
-        if (state.inFlight <= 0) pushText(state, deps, THINKING)
+        if (state.inFlight <= 0) pushText(state, deps, deps.idleText)
       }, remaining)
       return
     }
   }
   stopTimer(state)
-  pushText(state, deps, THINKING)
+  pushText(state, deps, deps.idleText)
 }
 
-/** Drives the in-flight count → status text, holding a tool label for `minLabelMs` before reverting to Thinking. */
+/** Drives the in-flight count → status text, holding a tool label for `minLabelMs` before reverting to the idle text. */
 export const createStatusEngine = (deps: StatusEngineDeps): StatusEngine => {
   const state: EngineState = {
     inFlight: 0,
-    lastStartLabel: THINKING,
+    lastStartLabel: deps.idleText,
     lastRendered: undefined,
     labelShownAt: 0,
     cancelPending: undefined,
@@ -97,7 +97,7 @@ export const createStatusEngine = (deps: StatusEngineDeps): StatusEngine => {
       applyState(state, deps)
     },
     reset: (): void => {
-      state.lastRendered = THINKING
+      state.lastRendered = deps.idleText
     },
     stop: (): void => {
       stopTimer(state)

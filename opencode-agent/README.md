@@ -84,19 +84,19 @@ value to point elsewhere.
 
 ## Phases
 
-| Phase               | Trigger                                   | What happens                                                     | Ends at                                   |
-| ------------------- | ----------------------------------------- | ---------------------------------------------------------------- | ----------------------------------------- |
-| `INIT_OR_CLARIFY`   | issue opened, or a reply while clarifying | Reads the issue and thread, explores the repo                    | Questions (stays here) or a design spec   |
-| `DESIGN_SPEC`       | —                                         | Waiting. The spec is under review                                | `/approve`, `/changes`, `/ask`, `/cancel` |
-| `PLANNING`          | spec approved                             | Planning skills produce a step breakdown; cuts `agent/issue-<n>` | Plan posted                               |
-| `PLAN_REVIEW`       | —                                         | Waiting. The plan is under review                                | `/approve`, `/changes`, `/ask`, `/cancel` |
-| `REVIEW_AND_MUTATE` | plan approved                             | One turn per plan step, each committed **and pushed**            | Changes pushed                            |
-| `PR_DELIVERY`       | automatic                                 | Opens or refreshes the PR with `Closes #<n>`                     | PR opened                                 |
-| `CODE_REVIEW`       | `/review`, on the issue or its PR         | Runs the `review-loop/` workspace over the pushed branch         | Findings pushed, review reported          |
-| `CI_FIX`            | a red check run on `agent/issue-<n>`      | Reproduces CI locally, repairs, pushes                           | Fix pushed                                |
-| `COMPLETE`          | —                                         | Terminal, but re-enterable from `CI_FIX` and `CODE_REVIEW`       | —                                         |
-| `FAILED`            | any _phase_ handler throwing              | Failure comment posted, `resumeFrom` recorded                    | `/retry` or `/cancel`                     |
-| `INCOMPLETE`        | the job running out of wall clock         | Time notice posted, `resumeFrom` recorded, no attempt spent      | `/continue` or `/cancel`                  |
+| Phase               | Trigger                                                                          | What happens                                                     | Ends at                                                                                           |
+| ------------------- | -------------------------------------------------------------------------------- | ---------------------------------------------------------------- | ------------------------------------------------------------------------------------------------- |
+| `INIT_OR_CLARIFY`   | issue opened, a reply while clarifying, or the `/approve` / `/continue` re-entry | Reads the issue and thread, explores the repo                    | Questions (stays here) or a design spec; while parked: `/approve`, `/ask`, `/cancel`, `/continue` |
+| `DESIGN_SPEC`       | —                                                                                | Waiting. The spec is under review                                | `/approve`, `/changes`, `/ask`, `/cancel`                                                         |
+| `PLANNING`          | spec approved                                                                    | Planning skills produce a step breakdown; cuts `agent/issue-<n>` | Plan posted                                                                                       |
+| `PLAN_REVIEW`       | —                                                                                | Waiting. The plan is under review                                | `/approve`, `/changes`, `/ask`, `/cancel`                                                         |
+| `REVIEW_AND_MUTATE` | plan approved                                                                    | One turn per plan step, each committed **and pushed**            | Changes pushed                                                                                    |
+| `PR_DELIVERY`       | automatic                                                                        | Opens or refreshes the PR with `Closes #<n>`                     | PR opened                                                                                         |
+| `CODE_REVIEW`       | `/review`, on the issue or its PR                                                | Runs the `review-loop/` workspace over the pushed branch         | Findings pushed, review reported                                                                  |
+| `CI_FIX`            | a red check run on `agent/issue-<n>`, or `/fix` on its PR                        | Reproduces CI locally, repairs, pushes                           | Fix pushed                                                                                        |
+| `COMPLETE`          | —                                                                                | Terminal, but re-enterable from `CI_FIX` and `CODE_REVIEW`       | —                                                                                                 |
+| `FAILED`            | any _phase_ handler throwing                                                     | Failure comment posted, `resumeFrom` recorded                    | `/retry` or `/cancel`                                                                             |
+| `INCOMPLETE`        | the job running out of wall clock                                                | Time notice posted, `resumeFrom` recorded, no attempt spent      | `/continue` or `/cancel`                                                                          |
 
 There are two review gates, not one. The spec and the plan are each parked in
 front of a human before anything downstream is spent.
@@ -116,15 +116,68 @@ moves the phase and the handler runs behind it in the same job, exactly as
 
 ## Talking to the agent
 
-| Command                     | Valid in                     | Effect                                                         |
-| --------------------------- | ---------------------------- | -------------------------------------------------------------- |
-| `/approve`                  | `DESIGN_SPEC`, `PLAN_REVIEW` | Proceed to the next phase                                      |
-| `/changes <what to change>` | `DESIGN_SPEC`, `PLAN_REVIEW` | Rewrite the spec or plan, with your feedback in the prompt     |
-| `/ask <question>`           | anywhere                     | Answer, grounded in the repo, without moving the state machine |
-| `/review`                   | a **delivered** `COMPLETE`   | Run the review loop over the branch and push what it finds     |
-| `/retry`                    | `FAILED`                     | Resume the exact phase that failed                             |
-| `/continue`                 | `INCOMPLETE`                 | Pick up the phase the job ran out of time for                  |
-| `/cancel`                   | anything but `COMPLETE`      | Stop for good — a cancelled issue cannot be restarted          |
+| Command                     | Valid in                                                     | Effect                                                                                                                                    |
+| --------------------------- | ------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------- |
+| `/approve`                  | `DESIGN_SPEC`, `PLAN_REVIEW`; `INIT_OR_CLARIFY` (re-entry)   | Proceed to the next phase — from a parked triage, re-run triage where the issue stands                                                    |
+| `/changes <what to change>` | `DESIGN_SPEC`, `PLAN_REVIEW`                                 | Rewrite the spec or plan, with your feedback in the prompt                                                                                |
+| `/ask <question>`           | anywhere                                                     | Answer, grounded in the repo, without moving the state machine                                                                            |
+| `/review`                   | a **delivered** `COMPLETE`                                   | Run the review loop over the branch and push what it finds                                                                                |
+| `/retry [note]`             | `FAILED`                                                     | Resume the exact phase that failed; the note rides the prompt                                                                             |
+| `/continue [note]`          | `INCOMPLETE`; `INIT_OR_CLARIFY` (re-entry)                   | Pick up the phase the job ran out of time for; from a parked triage, re-run triage; note as above                                         |
+| `/cancel`                   | anything but `COMPLETE`                                      | Stop for good — a cancelled issue cannot be restarted                                                                                     |
+| `/sync`                     | any state whose agent branch exists                          | Merge the base branch into `agent/issue-<n>` and push                                                                                     |
+| `/fix`                      | a delivered `COMPLETE` or `PR_DELIVERY`, with a pull request | Run a CI-fix round on the pull request's own red checks — the same repair run the red-run door buys, reading the head's failed check runs |
+
+A maintainer can also drive a parked triage forward without being asked: in
+`INIT_OR_CLARIFY`, both `/approve` and `/continue` are re-entries rather than
+moves — the phase does not change, and triage runs again where the issue
+stands, exactly as a plain reply does.
+
+A `/retry` or `/continue` **note** is maintainer guidance, not a re-plan. When
+the command resumes stopped implementation work, the note is enveloped into the
+resumed handler's prompt under a fixed framing: the plan and change folder remain
+the source of truth, and `/changes` on the issue is the channel for changing what
+is being built. From a parked triage (`INIT_OR_CLARIFY`), the note rides as
+ordinary thread text instead — triage reads the whole conversation, so no framing
+is added. Either way it is never persisted: its lifetime is the prompt it rode
+in. An argument-less `/retry` or `/continue` behaves exactly as before.
+
+### `/sync`
+
+A branch that falls behind its base shows GitHub's conflict banner and, before
+this command, had no machine remedy — the only fix was a human with a local
+checkout. `/sync` runs `git merge origin/<base>` into the agent branch, in any
+state whose agent branch exists: on the pull request once one is open, and on
+the issue before that (from capture on — the one branch-less state still naming
+a change, a cancelled issue, refuses it, so it cannot resurrect the branch
+`/cancel` deleted). That pre-pull-request reach is issue #323's lesson: the
+dependency-drift refusal parks an issue `FAILED` naming `/sync` as the remedy,
+and a `/sync` gated behind a pull request that would never open was a remedy
+the state it was prescribed for could not take.
+
+- **Clean merge** — the merge commit is pushed and reported; no model turn is
+  spent. An up-to-date branch is reported and nothing is pushed.
+- **Conflict** — bounded repair rounds (`AGENT_SYNC_REPAIR_MAX_ROUNDS`,
+  default 3): each round's prompt names the conflicted paths and carries the
+  markers; the model edits the files and is forbidden git; the pipeline
+  completes the merge and pushes. Resolution is reported as unverified by
+  checks — they run on the push.
+- **Rounds exhausted or at the token ceiling** — the merge is aborted leaving
+  the branch exactly as it was, and the reply names the human remedy: the code
+  host's own **Update branch** control, which performs the same merge with a
+  maintainer's permissions.
+- **Push refused for base's own workflow edits** — translated the same way:
+  the reply names the cause and the update-branch remedy, never the raw error.
+
+`/sync` is a **non-moving side operation** in the `/ask` shape: whatever the
+outcome, `phase`, `attempts`, `resumeFrom` and every per-PR budget are left
+exactly as they were, so every existing trigger still works and typing `/sync`
+again is always available. The merge is its own git operation and never passes
+through the commit path's caps or protected-path dropping — base's
+already-reviewed content (including its `.github/workflows/` edits) is carried
+verbatim. The reply is a plain comment on the trigger surface carrying no
+state block; a repair turn's spend is the one thing that changes, recorded by
+rewriting the running token total in place.
 
 **Where a command is typed depends on whether a pull request exists.** Until one
 does, the issue is the only surface and every command is typed there. From the
@@ -300,10 +353,16 @@ raw text in the failure comment.
    request.
 8. CI runs on the branch — only if `AGENT_GITHUB_TOKEN` is configured, see
    **Red pull requests** below — and comes back red. The `workflow_run` event
-   brings the agent back into `CI_FIX`: it checks out the branch, reproduces
-   the failing checks locally, hands the real output to the model, and
-   pushes a fix. This repeats, bounded by `AGENT_CI_FIX_MAX_ROUNDS` and
-   `AGENT_MAX_CI_ATTEMPTS`, until CI is green or the budget runs out.
+   brings the agent back into `CI_FIX`: the round reads the failed jobs and
+   logs of **that run** through the Actions API (no configured check list —
+   nothing to keep in step with CI), asks one diagnosis turn for a verdict,
+   and repairs under it. A reproduced failure enters a bounded loop against
+   the command derived from the repository's own CI files; a failure that
+   cannot be reproduced is fixed from the log with its weaker proof named; a
+   verdict of needs-human reports the job, the reason and the remedy and
+   pushes nothing. This repeats, bounded by `AGENT_CI_FIX_MAX_ROUNDS` and
+   `AGENT_MAX_CI_ATTEMPTS`, until CI is green, a human is asked for, or the
+   budget runs out.
 9. A maintainer merges the pull request like any other. `COMPLETE` stays
    re-enterable from `CI_FIX` and `CODE_REVIEW`, in case a later push
    retriggers a check or somebody wants a second pass over the diff.
@@ -367,6 +426,11 @@ agent's own workflow is excluded, so its failures never feed itself.
 When that lifetime budget runs out the agent says so on the issue, once, naming
 the pull request — it does not simply stop. Later red runs are then ignored
 silently, because CI fires on every push and repeating the notice would be spam.
+A `/fix` typed past the same ceiling is answered instead of ignored: it is a
+command somebody asked, so the refusal (`CI-fix budget exhausted`, naming
+`AGENT_MAX_CI_ATTEMPTS` and the fresh budget a new pull request earns) posts
+every time it is typed — and it leaves the state untouched, so raising the
+ceiling and replying `/fix` again works immediately.
 
 That budget is **per pull request**, not per issue: opening a _new_ pull request
 resets both the spent rounds and the "I have stopped trying" flag, so the second
@@ -443,16 +507,41 @@ cover it.
 
 ## What bounds a run
 
-Six bounds, each on a different kind of runaway.
+Seven bounds, each on a different kind of runaway.
 
-| Bound            | Where                                                                                                          | What it stops                                                                                                      |
-| ---------------- | -------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------ |
-| Prompt size      | `prompt-budget.ts`                                                                                             | 12k characters of thread, and 12k across _all_ failing checks, per prompt                                          |
-| Turn duration    | `AGENT_TIMEOUT_MS`, applied in `deadline.ts`                                                                   | A turn that never answers — and one merely too slow, whose work is kept                                            |
-| Job wall clock   | `AGENT_JOB_TIMEOUT_MINUTES`, applied in `time-budget.ts`                                                       | A job dying on `timeout-minutes` with nothing posted at all — and it is the review loop's only ceiling too         |
-| Provider hiccups | `provider-proxy.ts` — 3 attempts, with backoff                                                                 | A single 429 or 5xx failing the phase                                                                              |
-| Rounds           | `AGENT_MAX_ATTEMPTS`, `AGENT_CI_FIX_MAX_ROUNDS`, `AGENT_MAX_REVIEW_ATTEMPTS`, `AGENT_COMMIT_REPAIR_MAX_ROUNDS` | An agent and CI bouncing off each other, a review nothing else bounds, and a tree the repository will never accept |
-| Total spend      | `AGENT_MAX_TOKENS`, per **issue**                                                                              | An issue quietly costing more than it is worth                                                                     |
+| Bound            | Where                                                                                                                                          | What it stops                                                                                                                                                    |
+| ---------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Prompt size      | `prompt-budget.ts`                                                                                                                             | 12k characters of thread, and 12k across _all_ failing checks, per prompt                                                                                        |
+| Turn duration    | `AGENT_TIMEOUT_MS`, applied in `deadline.ts`                                                                                                   | A turn that never answers — and one merely too slow, whose work is kept                                                                                          |
+| Provider stalls  | `AGENT_STALL_TIMEOUT_MS`, applied in `turn-run.ts` on the heartbeat tick                                                                       | A turn the provider stopped serving — no progress for the window while retries pile up — burned to the turn deadline; `0` disables                               |
+| Job wall clock   | `AGENT_JOB_TIMEOUT_MINUTES`, applied in `time-budget.ts`                                                                                       | A job dying on `timeout-minutes` with nothing posted at all — and it is the review loop's only ceiling too                                                       |
+| Provider hiccups | `provider-proxy.ts` — 3 attempts, with backoff                                                                                                 | A single 429 or 5xx failing the phase                                                                                                                            |
+| Rounds           | `AGENT_MAX_ATTEMPTS`, `AGENT_CI_FIX_MAX_ROUNDS`, `AGENT_MAX_REVIEW_ATTEMPTS`, `AGENT_COMMIT_REPAIR_MAX_ROUNDS`, `AGENT_SYNC_REPAIR_MAX_ROUNDS` | An agent and CI bouncing off each other, a review nothing else bounds, a tree the repository will never accept, and a `/sync` conflict whose markers never clear |
+| Total spend      | `AGENT_MAX_TOKENS`, per **issue**                                                                                                              | An issue quietly costing more than it is worth                                                                                                                   |
+
+What that ceiling **counts** is one definition on both routes: uncached input,
+output, reasoning and cache **writes** — every token that entered the
+conversation once. Cache **reads** are excluded and priced. A cache read is the
+conversation re-sent to the provider on the next step of a turn, and a provider
+sums it across every step before reporting it, so counting it makes the figure
+grow as _steps × context_ — the same content charged once per assistant step —
+and the ceiling ends up measuring how hard a turn thought rather than what it
+spent. Issue #385 parked at 6,835,879 of 5,000,000 having cost $9.23 and used a
+tenth of a five-hour window. A cache write is content arriving for the first
+time, which is what an uncached input token is, so it counts.
+
+The `**Cost:**` line is unaffected: cache reads are priced at their own rate and
+are in every dollar figure the run reports. That asymmetry is the point — the
+ceiling and the price are asked different questions of the same buckets, which
+is also why an absent bucket counts as zero here and still reports unpriced
+there.
+
+Because the two definitions were once different per backend, a state block
+records which one produced its figure (`tokenScale`). A carried total on the
+superseded scale is reset to zero once, on the next job's restore, so no issue's
+total is the sum of two definitions; nothing else in the block moves, the cost
+totals included. It is not a `STATE_VERSION` bump — that means stranding, and
+this is a counter.
 
 The prompt caps are on the **finished prompt**, not on any one input: a per-input
 cap bounds one log and nothing else, and three red checks at 8k each still put
@@ -465,6 +554,23 @@ The turn deadline bounds the **waiting**, not the work — nothing can cancel an
 in-flight request. What it buys is which failure happens: an error the pipeline
 can post to the issue, rather than a runner vanishing at `timeout-minutes` with
 no comment, no state block, and the issue left in whatever phase it started in.
+
+The stall bound is a health check beside that clock, and the two questions are
+different: the deadline asks _how long has this turn been outstanding_, the
+stall bound asks _is the provider still serving it_. It fires only when both
+are true — no finished model step and no newly started tool call for
+`AGENT_STALL_TIMEOUT_MS` (default five minutes), **and** provider retries or
+session errors accumulating the whole while. The retry evidence is what
+separates a provider wave from one very long generation, which is the
+deadline's business and must keep being. A turn it aborts is salvaged like a
+deadline's — whatever the tree holds is committed and pushed — minus the
+wrap-up ask, whose premise of an idle session that can still answer is exactly
+what a stall disproves; the run then parks in `FAILED` and `/retry` resumes it
+once the wave has passed. `0` switches the bound off and restores the
+turn-deadline-only behaviour. Each provider retry and session error also leaves
+its own message — the provider's own text — in the encrypted debug transcript,
+one row per occurrence; the public Actions log keeps carrying names, statuses
+and counts only.
 
 Retries live at the provider proxy rather than in the adapter. It is the layer
 that sees an actual HTTP status, so nothing has to guess which SDK error means
@@ -1386,9 +1492,42 @@ say.
 `AGENT_GITHUB_TOKEN` the `workflows: write` permission, re-install it, and drop
 the prefix from `PROTECTED_PREFIXES`. Weigh it first: an agent that can rewrite
 `agent-pipeline.yml` can rewrite the permissions, the concurrency group, the
-guardrails and the secret wiring that bound it, from inside a job that file
+guardrails and the secret wiring that bounded it, from inside a job that file
 defines. The alternative costs a maintainer one commit — the agent says in its
 reply exactly what to apply.
+
+### Branches the job cannot serve
+
+The workflow runs `bun install --frozen-lockfile` on the **base** checkout and
+`ensureBranch` switches onto `agent/issue-<n>` afterwards, with no second
+install — so a branch whose install state diverged from base would run every
+check against a `node_modules` that cannot serve it. The dependency-drift guard
+(`src/git-drift.ts`) refuses such a branch at the switch, before any model turn
+or check is paid for.
+
+What counts as drift is decided by **content, not file paths**:
+
+- `bun.lock` refuses on any byte change — every byte of it is install state.
+- A `package.json` (root or any workspace) refuses only when an
+  install-relevant top-level field moved: the four dependency maps,
+  `resolutions` / `overrides`, `workspaces`, `trustedDependencies`,
+  `patchedDependencies` — the `INSTALL_FIELDS` constant beside the guard. Both
+  sides are parsed and compared field by field, so a re-serialized but
+  identical dependencies map passes, and edits to `scripts`, `name`,
+  `version`, `packageManager` or custom fields pass. Issue #360 is why: a
+  one-line `scripts` edit was a change's whole deliverable, and the older
+  path-based refusal parked the finished branch where `/retry` reproduced the
+  refusal, `/sync` had nothing to merge, and `/review` was refused.
+- Unknown shapes **fail closed**: a manifest that will not parse as JSON on
+  either side refuses, and a manifest that exists on only one side (an added
+  or deleted workspace) refuses when the side that exists carries any install
+  field.
+
+The refusal names the drifted fields per file (`package.json
+(devDependencies, resolutions)`), names `/sync` or a hand merge as the
+remedies, and spends no retry attempt. A branch that _intentionally_ changed
+dependencies is maintainer territory by design: the job never installs from
+the agent branch, so no command can reconcile it for you.
 
 ### Capability containment
 
@@ -1507,41 +1646,233 @@ used by the in-process SDK session _and_, via `OPENCODE_CONFIG_CONTENT`, by the
 `opencode run` subprocesses the review loop spawns — one definition, so the two
 cannot drift.
 
-| Variable                                   | Required | Default                              | Purpose                                                |
-| ------------------------------------------ | -------- | ------------------------------------ | ------------------------------------------------------ |
-| `LLM_API_KEY`                              | yes      | —                                    | Model credentials                                      |
-| `LLM_MODEL`                                | yes      | —                                    | Model name, e.g. `gpt-5`                               |
-| `LLM_BASE_URL`                             | yes      | —                                    | Any OpenAI-compatible endpoint                         |
-| `GITHUB_TOKEN`                             | no       | the job's own `secrets.GITHUB_TOKEN` | Comments, branches, pull requests; see below           |
-| `GITHUB_REPOSITORY`                        | no       | the job's own `owner/repo`           | `owner/repo`; see below                                |
-| `AGENT_SELF_LOGIN`                         | no       | derived from the token               | Login the agent posts as; see above                    |
-| `AGENT_WORKFLOW_NAME`                      | no       | `OpenCode Issue Agent`               | This workflow's name, for the CI recursion guard       |
-| `AGENT_BASE_BRANCH`                        | no       | detected                             | Branch the PR targets; see below                       |
-| `AGENT_CHECK_COMMAND`                      | no       | `bun check:full`                     | review-loop's build gate                               |
-| `AGENT_REVIEW_COMMAND`                     | no       | detected                             | JSON argv running the review loop; `none` disables it  |
-| `AGENT_CHECKS`                             | no       | `bun run` lint / typecheck / test    | JSON `[{ "name", "argv" }]` the CI-fix phase runs      |
-| `AGENT_REVIEW_MAX_ROUNDS`                  | no       | `4`                                  | review-loop rounds                                     |
-| `AGENT_REVIEW_POOL_SIZE`                   | no       | `1`                                  | review-loop worker pool                                |
-| `AGENT_CI_FIX_MAX_ROUNDS`                  | no       | `2`                                  | Repair rounds per CI-fix job                           |
-| `AGENT_COMMIT_REPAIR_MAX_ROUNDS`           | no       | `3`                                  | Commit attempts when the repo's own checks refuse one  |
-| `AGENT_MAX_CI_ATTEMPTS`                    | no       | `3`                                  | CI-fix jobs per pull request                           |
-| `AGENT_MAX_REVIEW_ATTEMPTS`                | no       | `3`                                  | `/review` rounds per pull request                      |
-| `AGENT_REVIEW_HINT_LINES`                  | no       | `200`                                | Diff size at which a delivery recommends `/review`     |
-| `AGENT_MAX_ATTEMPTS`                       | no       | `5`                                  | Failures before `/retry` stops resuming                |
-| `AGENT_MAX_CHANGED_FILES`                  | no       | `100`                                | Files one commit may carry                             |
-| `AGENT_MAX_CHANGED_LINES`                  | no       | `20000`                              | Lines one commit may change                            |
-| `AGENT_TIMEOUT_MS`                         | no       | `5400000`                            | Timeout for one model turn, and for each subprocess    |
-| `AGENT_JOB_STARTED_MS`                     | no       | unset — no job deadline              | Epoch ms this job began; the workflow's first step     |
-| `AGENT_JOB_TIMEOUT_MINUTES`                | no       | unset here; `300` from the workflow  | The job's own ceiling, shared with `timeout-minutes:`  |
-| `AGENT_TEARDOWN_RESERVE_MS`                | no       | `180000`                             | Held back from the job so a time stop can report       |
-| `AGENT_WRAP_UP_MS`                         | no       | `120000`                             | The model's slice of a stop: finish up and hand over   |
-| `AGENT_MAX_TOKENS`                         | no       | `5000000`                            | Model tokens one issue may spend, across all its jobs  |
-| `AGENT_COMMIT_NAME` / `AGENT_COMMIT_EMAIL` | no       | `opencode-agent[bot]`                | Commit identity                                        |
-| `AGENT_LABEL_PREFIX`                       | no       | `agent:`                             | Namespace for the status labels; `none` disables them  |
-| `AGENT_LOG_LEVEL`                          | no       | `info`                               | `debug`, `info`, `warn`, `error`                       |
-| `AGENT_LOG_KEY`                            | no       | unset — no transcript                | Secret: base64 32 bytes; encrypts the debug transcript |
+| Variable                                   | Required                             | Default                                                                         | Purpose                                                                                                                                                                                                                                                                                   |
+| ------------------------------------------ | ------------------------------------ | ------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `AGENT_BACKEND`                            | no                                   | `opencode`                                                                      | Which backend serves every model turn: `opencode` (headless server, gateway credentials) or `claude` (the official CLI, Anthropic credentials); see [Backend selection](#backend-selection-the-claude-cli-route)                                                                          |
+| `LLM_API_KEY`                              | claude route: refused; otherwise yes | —                                                                               | Model credentials for the OpenAI-compatible gateway                                                                                                                                                                                                                                       |
+| `LLM_MODEL`                                | yes                                  | —                                                                               | Model name, e.g. `gpt-5` on the gateway route, `claude-sonnet-5` on the claude route (a `provider/` prefix is stripped)                                                                                                                                                                   |
+| `LLM_BASE_URL`                             | claude route: unused; otherwise yes  | —                                                                               | Any OpenAI-compatible endpoint; never reaches the claude CLI's environment                                                                                                                                                                                                                |
+| `ANTHROPIC_API_KEY`                        | claude route: one of two             | —                                                                               | Secret. Anthropic Console API key — selects the **bare** profile (Commercial Terms, predictable per-token billing)                                                                                                                                                                        |
+| `CLAUDE_CODE_OAUTH_TOKEN`                  | claude route: one of two             | —                                                                               | Secret. Subscription OAuth token — selects the **native** profile (Pro/Max/Team/Enterprise subscription billing, five-hour windows); see [Backend selection](#backend-selection-the-claude-cli-route)                                                                                     |
+| `LLM_PROVIDER`                             | no                                   | `openai`                                                                        | models.dev id `LLM_MODEL` resolves under; see below                                                                                                                                                                                                                                       |
+| `GITHUB_TOKEN`                             | no                                   | the job's own `secrets.GITHUB_TOKEN`                                            | Comments, branches, pull requests; see below                                                                                                                                                                                                                                              |
+| `GITHUB_REPOSITORY`                        | no                                   | the job's own `owner/repo`                                                      | `owner/repo`; see below                                                                                                                                                                                                                                                                   |
+| `AGENT_SELF_LOGIN`                         | no                                   | derived from the token                                                          | Login the agent posts as; see above                                                                                                                                                                                                                                                       |
+| `AGENT_WORKFLOW_NAME`                      | no                                   | `OpenCode Issue Agent`                                                          | This workflow's name, for the CI recursion guard                                                                                                                                                                                                                                          |
+| `AGENT_BASE_BRANCH`                        | no                                   | detected                                                                        | Branch the PR targets; see below                                                                                                                                                                                                                                                          |
+| `AGENT_CHECK_COMMAND`                      | no                                   | `bun check:full`                                                                | review-loop's build gate                                                                                                                                                                                                                                                                  |
+| `AGENT_REVIEW_COMMAND`                     | no                                   | detected                                                                        | JSON argv running the review loop; `none` disables it                                                                                                                                                                                                                                     |
+| `AGENT_MCP_SERVERS`                        | no                                   | unset — no MCP servers                                                          | Secret or variable: JSON map of MCP servers; see below                                                                                                                                                                                                                                    |
+| `AGENT_REVIEW_MAX_ROUNDS`                  | no                                   | `4`                                                                             | review-loop rounds                                                                                                                                                                                                                                                                        |
+| `AGENT_REVIEW_POOL_SIZE`                   | no                                   | `1`                                                                             | review-loop worker pool                                                                                                                                                                                                                                                                   |
+| `AGENT_CI_FIX_MAX_ROUNDS`                  | no                                   | `2`                                                                             | Repair rounds per CI-fix job                                                                                                                                                                                                                                                              |
+| `AGENT_COMMIT_REPAIR_MAX_ROUNDS`           | no                                   | `3`                                                                             | Commit attempts when the repo's own checks refuse one                                                                                                                                                                                                                                     |
+| `AGENT_MAX_CI_ATTEMPTS`                    | no                                   | `3`                                                                             | CI-fix jobs per pull request                                                                                                                                                                                                                                                              |
+| `AGENT_MAX_REVIEW_ATTEMPTS`                | no                                   | `3`                                                                             | `/review` rounds per pull request                                                                                                                                                                                                                                                         |
+| `AGENT_REVIEW_HINT_LINES`                  | no                                   | `200`                                                                           | Diff size at which a delivery recommends `/review`                                                                                                                                                                                                                                        |
+| `AGENT_MAX_ATTEMPTS`                       | no                                   | `5`                                                                             | Failures before `/retry` stops resuming                                                                                                                                                                                                                                                   |
+| `AGENT_MAX_CHANGED_FILES`                  | no                                   | `100`                                                                           | Files one commit may carry                                                                                                                                                                                                                                                                |
+| `AGENT_MAX_CHANGED_LINES`                  | no                                   | `20000`                                                                         | Lines one commit may change                                                                                                                                                                                                                                                               |
+| `AGENT_TIMEOUT_MS`                         | no                                   | `5400000`                                                                       | Timeout for one model turn, and for each subprocess                                                                                                                                                                                                                                       |
+| `AGENT_STALL_TIMEOUT_MS`                   | no                                   | `300000`                                                                        | No-progress window that aborts a turn the provider stopped serving; `0` disables                                                                                                                                                                                                          |
+| `AGENT_JOB_STARTED_MS`                     | no                                   | unset — no job deadline                                                         | Epoch ms this job began; the workflow's first step                                                                                                                                                                                                                                        |
+| `AGENT_JOB_TIMEOUT_MINUTES`                | no                                   | unset here; `300` from the workflow                                             | The job's own ceiling, shared with `timeout-minutes:`                                                                                                                                                                                                                                     |
+| `AGENT_TEARDOWN_RESERVE_MS`                | no                                   | `180000`                                                                        | Held back from the job so a time stop can report                                                                                                                                                                                                                                          |
+| `AGENT_WRAP_UP_MS`                         | no                                   | `120000`                                                                        | The model's slice of a stop: finish up and hand over                                                                                                                                                                                                                                      |
+| `AGENT_MAX_TOKENS`                         | no                                   | `5000000`                                                                       | Model tokens one issue may spend, across all its jobs — input, output, reasoning and cache writes; cache reads are priced but not counted                                                                                                                                                 |
+| `AGENT_MODEL_CONTEXT`                      | no                                   | unset — ask the catalogue                                                       | Context window, for a model no catalogue carries                                                                                                                                                                                                                                          |
+| `AGENT_MODEL_OUTPUT`                       | no                                   | unset — ask the catalogue                                                       | Output cap, same case                                                                                                                                                                                                                                                                     |
+| `AGENT_MODEL_REASONING`                    | no                                   | unset — ask the catalogue                                                       | `true`/`false`: does this model support reasoning                                                                                                                                                                                                                                         |
+| `LLM_MODEL_LIGHT`                          | no                                   | unset — the main model                                                          | Cheaper model for the read-only phases; see below                                                                                                                                                                                                                                         |
+| `AGENT_EFFORT`                             | no                                   | unset — no shared tier                                                          | Shared reasoning effort for every profile that names none of its own; a tier only reaches a model that reasons (see below)                                                                                                                                                                |
+| `AGENT_EFFORT_PLAN`                        | no                                   | unset — falls back to `AGENT_EFFORT`                                            | Reasoning effort for the read-only profile                                                                                                                                                                                                                                                |
+| `AGENT_EFFORT_PROPOSE`                     | no                                   | unset — falls back to `AGENT_EFFORT`                                            | Reasoning effort for the drafting profile                                                                                                                                                                                                                                                 |
+| `AGENT_EFFORT_BUILD`                       | no                                   | unset — falls back to `AGENT_EFFORT`                                            | Reasoning effort for implement / CI-fix / review                                                                                                                                                                                                                                          |
+| `AGENT_COMMIT_NAME` / `AGENT_COMMIT_EMAIL` | no                                   | `github-actions[bot]` / `41898282+github-actions[bot]@users.noreply.github.com` | Commit identity — explicit pin wins per field; otherwise author is the per-run actor (`issue`/`pull-request` → `senderLogin` via `GET /users/:login`, `id+login` noreply) and committer is `github-actions[bot]`; `ci`/`pr-merged` and lookup failures fall back to `github-actions[bot]` |
+| `AGENT_LABEL_PREFIX`                       | no                                   | `agent:`                                                                        | Namespace for the status labels; `none` disables them                                                                                                                                                                                                                                     |
+| `AGENT_LOG_LEVEL`                          | no                                   | `info`                                                                          | `debug`, `info`, `warn`, `error`                                                                                                                                                                                                                                                          |
+| `AGENT_LOG_KEY`                            | no                                   | unset — no transcript                                                           | Secret: base64 32 bytes; encrypts the debug transcript                                                                                                                                                                                                                                    |
 
-`LLM_MODEL` and `LLM_BASE_URL` are both required rather than defaulted: with a
+## Backend selection: the claude CLI route
+
+`AGENT_BACKEND=claude` points every model turn of the job at the official
+`claude` CLI instead of the headless OpenCode server: one `claude -p` process
+per turn, pinned per-profile `--allowedTools` allowlists under
+`--permission-mode default`, the prompt on stdin, and the session chained
+through `--resume`. The workflow installs the CLI at one pinned exact version —
+**`@anthropic-ai/claude-code@2.1.251`** — only when the backend is selected;
+the default route is byte-identical to the pre-knob pipeline.
+
+That version is a **floor**, not a routine pin. 2.1.239 emits no
+`unifiedWindows` on its `rate_limit_event` line, so the run detail's
+`**Claude limits:**` row would be silently empty on it. The two shapes differ
+more than by an added field: 2.1.239 names one window as `rateLimitType` and
+publishes no figure for it, while 2.1.251 carries per-window `utilization` and
+**no `rateLimitType` at all**. The decoder reads both.
+
+The route runs **one of two invocation profiles, selected by which credential
+secret is set — the spelling, not a knob** (there is no `AGENT_CLAUDE_PROFILE`;
+two switches for one fork would admit nonsense states the guard would then
+have to refuse):
+
+- **`ANTHROPIC_API_KEY` → the bare profile.** Every invocation carries
+  `--bare`, the API key rides the child environment, and the shape is
+  byte-identical to the route's original form. Per-token Console billing.
+- **`CLAUDE_CODE_OAUTH_TOKEN` → the native profile.** No `--bare`; every
+  invocation carries `--setting-sources ''` plus `--strict-mcp-config
+--mcp-config <an empty JSON document>` — the neutralization pair that keeps
+  repository state (`.mcp.json` auto-connect, repository skill discovery,
+  settings files) out of the job — and the OAuth token rides the child
+  environment as the CLI's native path expects. Subscription billing, and
+  **supported only as far as the recorder has proven it**: until a
+  credentialed run has landed the `rate_limit_event` five-hour signature on
+  the pinned CLI version, treat the profile as unproven.
+
+Exactly one spelling may be set — both set fails at startup, neither set fails
+naming both — and a set `LLM_API_KEY` is refused outright on this route: with
+no provider proxy in front of the review loop's `opencode run` children, a
+present gateway key would reach a subprocess whose children the model controls.
+
+The route's trade-offs, so an operator sees them before choosing:
+
+- **No retry layer.** The pipeline cannot see the HTTP status behind an exit
+  code, so it treats every exit as a verdict: a transient provider wave fails
+  the turn (`CLAUDE_EXIT`), the phase parks `FAILED`, and a human `/retry`
+  resumes it. Whatever the CLI absorbs internally is all there is.
+- **Billing follows the spelling — Console per-token, or subscription
+  five-hour windows.** The API key bills predictably per token under the
+  Commercial Terms; the OAuth token bills against the subscription's rate
+  limits, which arrive in five-hour windows. A quota exhausted mid-job is a
+  **turn failure** under the same families (`CLAUDE_RESULT`/`CLAUDE_EXIT`),
+  not a pipeline state — there is deliberately no retry or queueing around
+  the window, and the failure comment's `/retry` advice is time-based
+  recovery: wait out the window, then retry.
+- **`AGENT_STALL_TIMEOUT_MS` is inert.** The mid-turn stall watcher's second
+  condition — retry evidence accumulated since the last progress — is an
+  OpenCode event-stream fact with no analog in a CLI child, and synthesizing
+  fake evidence would manufacture false stalls on long generations. The
+  whole-turn `AGENT_TIMEOUT_MS` deadline remains the only bound.
+- **Killed turns are invisible to the token budget.** A turn stopped before its
+  `result` line has no usage carrier on this route — unlike the OpenCode
+  server, whose session usage survives an abort — so deadline-looping issues
+  burn spend `AGENT_MAX_TOKENS` never sees.
+- **A turn's `result` line reports usage per invocation, aggregated across every
+  API iteration inside it.** So its `cache_read_input_tokens` is the turn's
+  context multiplied by its step count, which is why the ceiling excludes that
+  bucket (see _Budgets_ above). Accumulation **across** turns is a plain sum:
+  `--resume` does not make the CLI report cumulatively, recorded by the
+  credential-free `claude-stub` lane rather than assumed.
+- **Sub-agent spend is under-counted.** The CLI's top-level `result.usage` omits
+  what a `Task` sub-agent spent, though its own `modelUsage` map reports it —
+  an under-count in the opposite direction to the killed-turn one above, and
+  unmeasured.
+- **The review loop rides the same route.** `/review` hands the loop its own
+  claude backend (design D9): the generated loop config stamps
+  `backend: "claude"` into every agent block, and the loop's env carries
+  exactly this job's selected Anthropic credential — no
+  `OPENCODE_CONFIG_CONTENT`, no gateway settings. A claude-route `/review`
+  runs its reviewer/fixer/matcher/inspector as `claude -p` subprocesses with
+  per-role allowlists and run-scoped CLI state, instead of failing at its own
+  boundary. The loop's own trade-offs on the route (Bash-less analysis roles
+  eating the prompt's refused `git diff`/`rg` calls, killed-turn usage
+  under-count, no retry layer, the OAuth five-hour window) are documented
+  operator-facing in `review-loop/CLAUDE.md`.
+- **The chosen credential is readable by the CLI's own `Bash` children.** The
+  CLI cannot authenticate without the credential in its environment, and every
+  `Bash` tool child inherits that environment — so a prompt-injected build turn
+  can exfiltrate it with one `env | curl`. Unavoidable under first-party-CLI
+  exclusivity, unchanged by the profile split (the OAuth token has exactly the
+  same residual), and part of why the bare profile's credential is the
+  revocable, spend-capped Console API key — a subscription token spent here
+  draws on the operator's own plan.
+- **The CLI is this route's model oracle.** An `LLM_MODEL` value the CLI does
+  not recognize fails the first turn loudly (`CLAUDE_EXIT` with a redacted
+  stderr tail) rather than at config load.
+- **The native profile keeps the CLI's built-in skills in context (~1.5k
+  tokens, recorded).** `--setting-sources ''` removes repository skill
+  discovery but not the CLI's own shipped skills; the census pins them at
+  ~1.5k tokens (1,469 recorded on 2.1.239, when there were 15 of them). They
+  are CLI-shipped, not repository-controlled — a documented residual, not
+  neutralized. The **count** moved with the pin: the hermetic census
+  (`stub-facts.json`) reads 17 on 2.1.251, so the token figure above is a
+  2.1.239 measurement awaiting a re-measure rather than a current one. The
+  residual grows with the CLI, which is the reason the census pins it at all.
+- **The env token is authoritative over the local keychain.** The CLI's native
+  path reads `CLAUDE_CODE_OAUTH_TOKEN` from the environment before any local
+  keychain, pinned by the recorder's dummy-token leg: a deliberately invalid
+  token fails fast with the recorded 401 `api_error` shape rather than
+  succeeding through whatever login the machine happens to hold — a local
+  recording cannot silently authenticate through the operator's own
+  credentials.
+- **The OAuth-over-helper dead end is recorded, not live.** The pinned CLI's
+  `--bare` never reads the env token, and its `apiKeyHelper` mechanism loads
+  the token but the API refuses the call (401 `authentication_failed`,
+  recorded on 2.1.239 and kept as the `oauth-helper-init.ndjson` provenance).
+  No credential file is ever materialized on either profile; the recorder's
+  dummy-helper leg re-asserts the dead end at every CLI pin move.
+
+The claude fixtures and their provenance live under
+`tests/opencode-agent/fixtures/claude-cli/`; the recorder is the only writer.
+
+### The custom child environment: `AGENT_CLAUDE_ENV`
+
+On this route — and only on this route — the repository **variable**
+`AGENT_CLAUDE_ENV` carries a JSON object mapping environment-variable names to
+string values, validated at job start before any turn, and every entry reaches
+every `claude -p` child environment of the job:
+
+```json
+{
+  "CLAUDE_CODE_DISABLE_ADAPTIVE_THINKING": "1",
+  "CLAUDE_CODE_SUBAGENT_MODEL": "claude-haiku-4-5"
+}
+```
+
+Names the route strips from or injects into the child environment itself are
+refused at startup, whichever backend the job selected: `ANTHROPIC_API_KEY` and
+`CLAUDE_CODE_OAUTH_TOKEN` (a custom entry can never shadow the credential that
+selects the invocation profile), `CLAUDE_CONFIG_DIR` and `DISABLE_AUTOUPDATER`
+(the route writes both itself), `LLM_BASE_URL` and `AGENT_MCP_SERVERS`.
+Everything else is passed through as spelled — the pipeline refuses only the
+names it owns, and which `CLAUDE_CODE_*` variables the pinned CLI honours is
+the CLI's business; the two examples above are guidance, not an allowlist.
+
+Three boundaries to read before using it:
+
+- **The values are readable by the CLI's `Bash` children.** Every value joins
+  the pipeline's credential list — scrubbed from every other spawned
+  environment, and redacted from everything the pipeline posts and from the
+  debug transcript — but the `claude` child receives them through its
+  environment by design, and that child's `Bash` tool children inherit it. The
+  model can read them with one `env`: the same residual the credential itself
+  carries above.
+- **Secrets do not belong here.** Only the Actions **variable** spelling
+  reaches the job — a same-named Actions secret is never forwarded — and
+  anything placed in a variable is readable by every maintainer and rides the
+  run's own environment. Credentials keep their dedicated secret spellings.
+- **The review loop's claude subprocesses are out of scope.** A claude-route
+  `/review` runs its roles as `claude -p` children whose environments carry
+  exactly what they carry today; the knob reaches this route's turn spawns
+  alone, and extending it there is a later change's decision.
+
+Until the workflow forwards the variable, the knob is unset and the route is
+byte-identical to the pipeline before it existed. A maintainer applies the one
+line this pipeline cannot write itself, beside the other `vars.*` forwardings
+in the pipeline step's `env:` block:
+
+```yaml
+env:
+  AGENT_EFFORT_PLAN: ${{ vars.AGENT_EFFORT_PLAN }}
+  AGENT_CLAUDE_ENV: ${{ vars.AGENT_CLAUDE_ENV }}
+```
+
+Parsing is route-independent: a malformed document fails startup on the
+OpenCode backend too, so an operator flipping `AGENT_BACKEND` later cannot
+inherit a document that was never validated.
+
+`LLM_MODEL` and `LLM_BASE_URL` are both required rather than defaulted (on the
+claude route both become optional-empty and the gateway credential is refused
+instead — see [Backend selection](#backend-selection-the-claude-cli-route)); with a
 model gateway that is not necessarily OpenAI's own, there is no base URL or
 model name that is right by default, and a wrong guess surfaces deep inside the
 first model call instead of at config load. A default of
@@ -1549,6 +1880,161 @@ first model call instead of at config load. A default of
 forgotten value indistinguishable from a deliberate one; this pipeline is built
 around one arbitrary configured endpoint, not OpenAI specifically, so there is
 no endpoint that is right unless someone said so.
+
+`LLM_PROVIDER` is a **catalogue key, not a transport**, and it is the one
+variable here whose default is wrong for most gateways. OpenCode builds its
+model database from models.dev and merges this pipeline's config provider _over_
+it, keyed by this id and then by `LLM_MODEL`. A row it does not find contributes
+nothing, and the two defaults that follow are silent:
+
+- `limit.context` becomes `0`, and `isOverflow` opens with
+  `if (model.limit.context === 0) return false` — so **auto-compaction never
+  fires** and a long implement turn grows until the provider rejects it.
+- `reasoning` becomes `false`, and `ProviderTransform.variants()` opens with
+  `if (!model.capabilities.reasoning) return {}` — so no reasoning effort is
+  selectable, for any phase.
+
+Leave it unset when `LLM_MODEL` is an OpenAI model id. Set it to the model's own
+provider — `anthropic`, `alibaba`, `zai`, `deepseek` — when `LLM_BASE_URL` is a
+gateway serving somebody else's model, so the lookup reaches a real row. The
+transport is unaffected either way: the emitted config pins
+`npm: "@ai-sdk/openai-compatible"`, which wins over the borrowed row's own
+package in OpenCode's resolution order, and the key still reaches the endpoint
+through the provider proxy. The run log names the reference it resolved at
+`debug`. The variable is **route-scoped**: it is the catalogue key on this
+route only, and the claude route prices under `anthropic` whatever it says.
+
+A model no catalogue carries at all — a self-hosted alias, a fine-tune — has no
+id that helps here. The three `AGENT_MODEL_*` variables state those facts
+outright, and they sit at the top of a four-rung ladder:
+
+```
+AGENT_MODEL_CONTEXT / _OUTPUT / _REASONING   an operator said so → always wins
+        ↓ (unset)
+the models.dev row for <LLM_PROVIDER>/<LLM_MODEL>
+        ↓ (miss, or the catalogue could not be read)
+nothing emitted            → OpenCode's own catalogue merge stays free to answer
+        ↓ (miss there too)
+OpenCode's zero defaults   → compaction off, no effort variants
+```
+
+Each rung is per field, so declaring only `AGENT_MODEL_CONTEXT` still takes the
+output cap and the capability flags from the row. An unresolved fact is
+**omitted** from the emitted config rather than written as a zero — a written
+`limit.context` of `0` would pin the broken value instead of leaving the merge to
+answer.
+
+Reading the catalogue is best-effort and bounded: the run fetches
+`https://models.dev/api.json` once on the boot path through the workspace's own
+cached, timeout-bounded reader (`src/pricing.ts`), after the guardrail door so a
+payload the pipeline is about to drop never pays for it. An unreachable host warns and
+falls to the next rung; it never fails a run. The `debug` line names the model,
+the resolved context window and **which rung answered**, so "why did this run
+never compact" is a log read rather than a rerun.
+
+The pipeline runs three **agent profiles**, which already differ by what they
+may do and now differ by what they cost:
+
+| Profile   | Phases                                                    | Model             | Effort                 |
+| --------- | --------------------------------------------------------- | ----------------- | ---------------------- |
+| `plan`    | triage, comment classification, `/ask`, both review gates | `LLM_MODEL_LIGHT` | `AGENT_EFFORT_PLAN`    |
+| `propose` | drafting proposal / spec / design / tasks                 | `LLM_MODEL`       | `AGENT_EFFORT_PROPOSE` |
+| `build`   | implement, CI fix, and the review loop's workers          | `LLM_MODEL`       | `AGENT_EFFORT_BUILD`   |
+
+`LLM_MODEL_LIGHT` is a model on the **same** endpoint and key — not a second
+provider — and it reaches `plan` and OpenCode's `small_model` (title and summary
+generation) and nothing else. `propose` and `build` deliberately keep the main
+model: a weak spec is the input to every later phase, and the gates that would
+catch one cost wall clock rather than tokens.
+
+The effort variables take whatever tier the model offers — `minimal`, `none`,
+`low`, `medium`, `high`, `xhigh`, `max` depending on the family and its release
+date. They are **not** validated against a list here, because the valid set is
+computed per model: a list copied into this pipeline would reject tiers that work
+and be wrong on the next model. A malformed value is refused at load; an
+unknown-but-well-formed one is refused by OpenCode at the first prompt, which is
+where that knowledge lives. An effort tier only exists at all when the model is
+known to support reasoning — see `LLM_PROVIDER` and `AGENT_MODEL_REASONING`
+above. That caveat applies to the shared variable exactly as to the per-profile
+ones: a catalogue row with `reasoning: false` empties every profile's variants,
+whatever variable named the tier.
+
+One variable serves every profile: `AGENT_EFFORT` sets a shared tier, and each
+per-profile variable — `AGENT_EFFORT_PLAN`, `AGENT_EFFORT_PROPOSE`,
+`AGENT_EFFORT_BUILD` — wins over it where that profile is named. The fold
+happens once, at config load, so nothing downstream knows a shared variable
+exists; every emit site reads a resolved tier or none.
+
+Each resolved tier is set as `agent.<name>.variant` in the generated config
+rather than per call, which is what makes them reach the review loop: it shells
+out to `opencode run` with no `--agent`, so its workers resolve to `build` and
+pick the variant up from the same config the in-process session reads.
+
+### MCP servers
+
+`AGENT_MCP_SERVERS` declares MCP servers for the whole pipeline — one JSON map
+of server names to declarations, validated at job start before any model turn:
+
+```json
+{
+  "fetcher": {
+    "type": "local",
+    "command": ["bunx", "mcp-server-fetch@1.0.0"],
+    "environment": { "FETCH_TIMEOUT": "5000" }
+  },
+  "index": {
+    "type": "remote",
+    "url": "https://mcp.example.com/sse",
+    "headers": { "Authorization": "Bearer <token>" }
+  }
+}
+```
+
+A local entry carries a non-empty `command` array and may carry `environment`;
+a remote carries a `url` and may carry `headers`. Pin exact versions in
+`command` — the ephemeral runner refetches every job either way, and an
+unpinned `bunx` is a moving third-party dependency in a job holding every
+repository secret. An `oauth` key is refused outright: an unattended job can
+complete no browser flow, and an OAuth remote parks at `needs_auth` for ever.
+Remotes are always emitted with OAuth disabled — a failing endpoint degrades to
+its HTTP error rather than a silent stall.
+
+Server names must match `[A-Za-z0-9_-]+`, because OpenCode surfaces a server's
+tools as `<name>_<tool>` and the pipeline generates the matching
+`"<name>_*": "allow"` permission keys in the `plan` and `build` profiles and
+the global default. Grants are generated, never hand-keyed — a bare server
+name as a permission key is a silent no-op — and are `allow` only; the
+drafting (`propose`) profile gets none, keeping it the most confined surface
+the pipeline prompts. A server that fails to start or connect does not fail
+the job: its tools are simply absent, bounded by OpenCode's own 30-second
+client timeout, and the run proceeds.
+
+The knob takes **two spellings** — `secrets.AGENT_MCP_SERVERS` (which wins) or
+the `AGENT_MCP_SERVERS` variable. A declaration whose `headers` or
+`environment` carry a token belongs in the secret, which GitHub masks in logs
+and encrypts at rest; a token-free declaration may live in the variable, which
+non-admin maintainers can read and diff. Every `headers` and `environment`
+value joins the pipeline's credential list, so the environment scrub removes
+them from anything the model's shell can read and outbound text is redacted by
+value.
+
+One residual risk scrubbing cannot close: the generated config itself is
+delivered through `OPENCODE_CONFIG_CONTENT`, which the write-capable profile
+can read with one `echo`. A credential in the knob is reachable by the model
+regardless of scrubbing — declare unauthenticated local servers, or remote
+headers whose static tokens you can afford to expose. And each review-loop
+worker is its own `opencode run` subprocess, so every local server is booted
+once per concurrent worker — one more reason `AGENT_REVIEW_POOL_SIZE` defaults
+to `1`.
+
+The one declared server today is the `codeindex` experiment: a token-free
+local declaration whose provisioning (a pinned sibling checkout at
+`../codeindex`, an index prebuild, a canary query, and a per-job usage
+report) is gated in `agent-pipeline.yml` on the same knob declaring a
+`codeindex` server — remove that entry and every added step goes inert
+without a commit. The operating procedures (enable, revert, read the
+statistics, decide keep-vs-revert) live in
+[`docs/operations/codeindex-ci-experiment.md`](../docs/operations/codeindex-ci-experiment.md).
 
 `GITHUB_TOKEN` and `GITHUB_REPOSITORY` need no operator setup on GitHub
 Actions, unlike the variables above. `GITHUB_REPOSITORY` is one of the
@@ -1720,6 +2206,46 @@ Nothing to configure for `GITHUB_TOKEN` or `GITHUB_REPOSITORY` — see
 
 The workflow lives at `.github/workflows/agent-pipeline.yml`.
 
+### Switching the model backend to the claude CLI
+
+No workflow edit — the workflow on this branch reads the variable and does the
+rest: installs the pinned `@anthropic-ai/claude-code` CLI only when the backend
+is selected, and forwards the gateway credentials to the job only when it is
+not. To switch (Settings → Secrets and variables → Actions):
+
+1. **Variables** — set `AGENT_BACKEND` to `claude`. Unset or empty is the
+   default `opencode` route; clearing the variable switches back with the
+   gateway secrets untouched.
+2. **Secrets** — set exactly one Anthropic credential. The spelling selects the
+   invocation profile; there is no separate profile knob. `ANTHROPIC_API_KEY`
+   runs the **bare** profile (per-token Console billing);
+   `CLAUDE_CODE_OAUTH_TOKEN` runs the **native** profile (Pro/Max/Team/
+   Enterprise subscription billing, five-hour windows). Both set fails job
+   startup with `CLAUDE_CREDENTIALS`; neither set fails naming both.
+3. `LLM_MODEL` must name a model the CLI recognizes — `claude-sonnet-5`, say
+   (a `provider/` prefix is stripped). An unrecognized name fails the first
+   turn loudly (`CLAUDE_EXIT`), not config load.
+4. `LLM_API_KEY` and `LLM_BASE_URL` can stay exactly as they are: the workflow
+   forwards both empty on the claude route, and the route's guard never sees
+   them.
+5. `LLM_PROVIDER` and the `AGENT_MODEL_*` overrides are unused here — the
+   claude route skips the boot-time **model-facts** catalogue read, which is
+   what they feed. It does still price a run against models.dev when the CLI
+   reports no cost of its own, and there it resolves the model under
+   `anthropic` and under the same id the CLI was invoked with (the `provider/`
+   prefix stripped) — never under `LLM_PROVIDER`, whose value belongs to the
+   gateway route. A leftover id there is harmless. `LLM_MODEL_LIGHT` and the
+   effort variables still apply, per profile (`AGENT_EFFORT` shared,
+   `AGENT_EFFORT_PLAN` / `AGENT_EFFORT_PROPOSE` / `AGENT_EFFORT_BUILD` winning
+   per profile): a resolved tier composes `--effort` immediately after
+   `--model`, and the review loop's claude subprocesses carry it the same way
+   through the per-role config this pipeline writes them.
+
+Read [Backend selection](#backend-selection-the-claude-cli-route) before
+pointing a credential at it — the route's trade-offs (no retry layer, the
+`/review` residual, the credential readable by the CLI's own `Bash` children)
+are operator-facing decisions, not footnotes.
+
 ### The fallback comment for a job that never spoke
 
 The workflow posts an "Agent job did not finish" comment saying the issue state
@@ -1879,8 +2405,7 @@ under **Setup** is simply not written. Nothing else changes.
 | `src/protected-paths.ts`                      | Paths a push by this pipeline cannot carry, dropped before the commit   |
 | `src/sdk-contract.ts`                         | The recorded request and response shapes the SDK speaks                 |
 | `src/config-values.ts`                        | Reading and range-checking one scalar from the environment              |
-| `src/check-spec.ts`                           | `AGENT_CHECKS`, the one config reading that parses a document           |
-| `src/config-discovery.ts`                     | The two settings asked of the checkout and the event, not the env       |
+| `src/check-spec.ts`                           | `src/config-discovery.ts`                                               | The two settings asked of the checkout and the event, not the env |
 | `src/deadline.ts`                             | The upper bound on waiting for work that has none of its own            |
 | `src/provider-proxy.ts`                       | Holds the provider key, and retries a transient upstream failure        |
 | `src/obra-skills.ts`                          | Superpowers skill loading and system-prompt composition                 |

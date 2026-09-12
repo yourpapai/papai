@@ -8,8 +8,9 @@ import { recordFixAttempt, recordNeedsHuman, type LedgerIssueRecord } from './is
 import { sanitizeSubject, shortTitle } from './issue-processor.js'
 import type { IssueProcessorDeps } from './issue-processor.js'
 import type { FixerResult } from './issue-schema.js'
+import { emitFixComplete } from './loop-trace.js'
+import { emitDecision } from './progress-log.js'
 import {
-  emitFixComplete,
   exposureKind,
   tallyCheckBehind,
   tallyDecision,
@@ -17,8 +18,7 @@ import {
   tallyFixerSeverity,
   tallyPhaseMs,
   type RoundCollector,
-} from './loop-trace.js'
-import { emitDecision } from './progress-log.js'
+} from './round-collector.js'
 import type { Worker } from './worker-pool.js'
 import { execGit } from './worktree.js'
 

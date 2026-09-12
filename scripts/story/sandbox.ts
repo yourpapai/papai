@@ -40,7 +40,7 @@ function loadStorySandboxLinuxImage(): string {
 
 export const STORY_SANDBOX_LINUX_IMAGE = loadStorySandboxLinuxImage()
 
-const REQUIRED_BUN_VERSION = '1.3.13'
+const REQUIRED_BUN_VERSION = '1.4.0'
 
 export type StorySandboxProcessResult = Readonly<{
   exitCode: number

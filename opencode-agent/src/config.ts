@@ -8,11 +8,17 @@ import { existsSync } from 'node:fs'
 import { resolveReviewCommand } from './config-discovery.js'
 import type { PipelineConfig } from './config-shape.js'
 import {
+  backendSelection,
   boundedInt,
   boundedIntOrNull,
+  boolOrNull,
   buildDiffLimits,
+  claudeCredential,
+  CONTEXT_RANGE,
   DEFAULT_REVIEW_POOL_SIZE,
+  DEFAULT_STALL_TIMEOUT_MS,
   DEFAULT_TURN_TIMEOUT_MS,
+  effortTier,
   EPOCH_MS_RANGE,
   JOB_MINUTES_RANGE,
   labelPrefix,
@@ -20,25 +26,29 @@ import {
   logKey,
   optional,
   optionalOrNull,
-  parseChecks,
+  OUTPUT_RANGE,
+  parseClaudeEnv,
+  parseMcpServers,
   POOL_RANGE,
+  providerId,
+  refuseGatewayKeyOnClaude,
   required,
   RESERVE_RANGE,
   ROUND_RANGE,
+  STALL_RANGE,
+  stallTimeoutMs as stallTimeout,
   TIMEOUT_RANGE,
   TOKEN_RANGE,
   WRAP_UP_RANGE,
 } from './config-values.js'
-import type { Env } from './config-values.js'
+import type { BackendSelection, ClaudeCredential, Env } from './config-values.js'
+import { DEFAULT_PROVIDER_ID } from './openai-config.js'
 import type { OpenAiSettings } from './openai-config.js'
 import { parseRepository } from './repository.js'
 
 // Re-exported so the many modules that already import them from here keep
 // working; they are declared next to the validators that raise and consume them.
-// `parseChecks` is *imported* as well as re-exported, and has to be: a bare re-export
-// binds no local name, and `loadConfig` calls it — which typechecks and then throws
-// `ReferenceError` at runtime.
-export { DEFAULT_CHECKS, ConfigError, parseChecks } from './config-values.js'
+export { ConfigError } from './config-values.js'
 export type { Env } from './config-values.js'
 export type { PipelineConfig } from './config-shape.js'
 
@@ -62,12 +72,54 @@ export const DEFAULT_LABEL_PREFIX = 'agent:'
  * value look like a deliberate choice instead of a misconfiguration, and this
  * pipeline is built around one arbitrary configured endpoint, not OpenAI
  * specifically.
+ *
+ * On the claude route the two gateway reads become optional-empty instead:
+ * the endpoint and its credential are unused there and must not be
+ * load-bearing, while `config.openai` keeps its type (its `profiles` half
+ * carries the model knobs both routes read, and the review runner still
+ * consumes it).
  */
-export const loadOpenAiSettings = (env: Env): OpenAiSettings => ({
-  apiKey: required(env, 'LLM_API_KEY'),
-  baseUrl: required(env, 'LLM_BASE_URL'),
-  model: required(env, 'LLM_MODEL'),
-})
+export const loadOpenAiSettings = (env: Env, backend: BackendSelection = 'opencode'): OpenAiSettings => {
+  // The shared tier (design D1/D2), read once: a per-profile variable wins,
+  // `AGENT_EFFORT` fills the profiles the operator has not named a tier for,
+  // and `null` — both absent — leaves the profile's tier out of the emitted
+  // config entirely. Nothing below this fold ever learns a shared variable
+  // exists; every emit site reads a resolved `string | null`.
+  const sharedEffort = effortTier(env, 'AGENT_EFFORT')
+  return {
+    apiKey: backend === 'claude' ? '' : required(env, 'LLM_API_KEY'),
+    baseUrl: backend === 'claude' ? '' : required(env, 'LLM_BASE_URL'),
+    model: required(env, 'LLM_MODEL'),
+    // Optional and defaulted, unlike the three above, because the default is
+    // exactly today's behaviour: `openai` is the id the pipeline hardcoded before
+    // this knob existed, so an unset variable emits the same config it always did.
+    provider: providerId(env, 'LLM_PROVIDER', DEFAULT_PROVIDER_ID),
+    // Read as three separate absences rather than one defaulted block: each is a
+    // fact about somebody else's server that only an operator can state, and a
+    // guessed default is either a window that compacts every turn or one that
+    // never compacts at all.
+    overrides: {
+      context: boundedIntOrNull(env, 'AGENT_MODEL_CONTEXT', CONTEXT_RANGE),
+      output: boundedIntOrNull(env, 'AGENT_MODEL_OUTPUT', OUTPUT_RANGE),
+      reasoning: boolOrNull(env, 'AGENT_MODEL_REASONING'),
+    },
+    // Which profile gets which model and how much effort. All four absent by
+    // default, so a repository that sets none of them emits the config it always
+    // did — the light model is only the read-only profile's, never `build`'s.
+    // Each per-profile variable wins over the shared tier read above.
+    profiles: {
+      light: optionalOrNull(env, 'LLM_MODEL_LIGHT'),
+      planEffort: effortTier(env, 'AGENT_EFFORT_PLAN') ?? sharedEffort,
+      proposeEffort: effortTier(env, 'AGENT_EFFORT_PROPOSE') ?? sharedEffort,
+      buildEffort: effortTier(env, 'AGENT_EFFORT_BUILD') ?? sharedEffort,
+    },
+    // The second non-scalar knob, read here so an unloadable value fails at job
+    // start — before any model turn is spent — and riding the settings so the
+    // one config builder both execution paths read carries it by construction.
+    // Unset is the ordinary case and emits nothing at all.
+    mcpServers: parseMcpServers(env['AGENT_MCP_SERVERS']),
+  }
+}
 
 /** Loader roots, first-hit-wins (D11): in-repo OpenSpec trees first, then the pinned superpowers checkout. */
 const DEFAULT_SKILL_ROOTS = ['.opencode/skills', '.agents/skills', '.superpowers/skills', '.claude/skills'] as const
@@ -119,8 +171,40 @@ const buildJobDeadline = (env: Env): number | null => {
   return startedMs + timeoutMinutes * 60_000
 }
 
+/**
+ * The backend reads that precede everything else (design D4/D5).
+ *
+ * Its own function so `loadConfig` stays inside `max-lines-per-function`, and
+ * because the ordering is the contract: the claude route's startup guards fire
+ * before the gateway block, so an unusable claude configuration fails with its
+ * own story rather than a missing-gateway complaint that route cannot have.
+ * That is also what keeps "before any model spend" true by construction —
+ * config loads ahead of the logger, the scrub, every GitHub call and every
+ * spawn.
+ */
+const loadBackend = (
+  env: Env,
+): {
+  backend: BackendSelection
+  claudeCredential: ClaudeCredential | null
+  claudeEnv: Record<string, string> | null
+} => {
+  const backend = backendSelection(env, 'AGENT_BACKEND')
+  // Parsed on both routes (design D1 of `claude-route-custom-env`: parse
+  // always, apply on the claude route only) — the knob's one validation point,
+  // ahead of every spawn and every model spend, beside the reads it is scoped
+  // like. `undefined` for unset converts to the house absence shape.
+  const claudeEnv = parseClaudeEnv(env['AGENT_CLAUDE_ENV']) ?? null
+  if (backend !== 'claude') return { backend, claudeCredential: null, claudeEnv }
+
+  return { backend, claudeCredential: claudeCredential(env), claudeEnv }
+}
+
 /** Builds the pipeline config from the runner environment. */
 export const loadConfig = (env: Env, repoRoot: string): PipelineConfig => {
+  const backend = loadBackend(env)
+  if (backend.backend === 'claude') refuseGatewayKeyOnClaude(env)
+
   const { owner, repo } = parseRepository(required(env, 'GITHUB_REPOSITORY'))
   const gitRemoteBase = optional(env, 'GITHUB_SERVER_URL', 'https://github.com').replace(/\/*$/u, '/')
 
@@ -129,26 +213,30 @@ export const loadConfig = (env: Env, repoRoot: string): PipelineConfig => {
     owner,
     repo,
     githubToken: required(env, 'GITHUB_TOKEN'),
+    backend: backend.backend,
+    claudeCredential: backend.claudeCredential,
+    claudeEnv: backend.claudeEnv,
     selfLoginOverride: optionalOrNull(env, 'AGENT_SELF_LOGIN'),
     selfWorkflowName: optional(env, 'AGENT_WORKFLOW_NAME', 'OpenCode Issue Agent'),
-    openai: loadOpenAiSettings(env),
+    openai: loadOpenAiSettings(env, backend.backend),
     gitRemoteBase,
     runUrl: buildRunUrl(env, gitRemoteBase, owner, repo),
     labelPrefix: labelPrefix(env, 'AGENT_LABEL_PREFIX', DEFAULT_LABEL_PREFIX),
     logKey: logKey(env, 'AGENT_LOG_KEY'),
-    commitAuthorName: optional(env, 'AGENT_COMMIT_NAME', 'opencode-agent[bot]'),
-    commitAuthorEmail: optional(env, 'AGENT_COMMIT_EMAIL', 'opencode-agent@users.noreply.github.com'),
+    commitAuthorName: optional(env, 'AGENT_COMMIT_NAME', 'github-actions[bot]'),
+    commitAuthorEmail: optional(env, 'AGENT_COMMIT_EMAIL', '41898282+github-actions[bot]@users.noreply.github.com'),
     checkCommand: optional(env, 'AGENT_CHECK_COMMAND', 'bun check:full'),
     reviewCommand: resolveReviewCommand(env['AGENT_REVIEW_COMMAND'], repoRoot, existsSync),
-    checks: parseChecks(env['AGENT_CHECKS']),
     reviewMaxRounds: boundedInt(env, 'AGENT_REVIEW_MAX_ROUNDS', 4, ROUND_RANGE),
     reviewPoolSize: boundedInt(env, 'AGENT_REVIEW_POOL_SIZE', DEFAULT_REVIEW_POOL_SIZE, POOL_RANGE),
     agentTimeoutMs: boundedInt(env, 'AGENT_TIMEOUT_MS', DEFAULT_TURN_TIMEOUT_MS, TIMEOUT_RANGE),
+    stallTimeoutMs: stallTimeout(env, 'AGENT_STALL_TIMEOUT_MS', DEFAULT_STALL_TIMEOUT_MS, STALL_RANGE),
     jobDeadlineMs: buildJobDeadline(env),
     teardownReserveMs: boundedInt(env, 'AGENT_TEARDOWN_RESERVE_MS', 180_000, RESERVE_RANGE),
     wrapUpMs: boundedInt(env, 'AGENT_WRAP_UP_MS', 120_000, WRAP_UP_RANGE),
     ciFixMaxRounds: boundedInt(env, 'AGENT_CI_FIX_MAX_ROUNDS', 2, ROUND_RANGE),
     commitRepairMaxRounds: boundedInt(env, 'AGENT_COMMIT_REPAIR_MAX_ROUNDS', 3, ROUND_RANGE),
+    syncRepairMaxRounds: boundedInt(env, 'AGENT_SYNC_REPAIR_MAX_ROUNDS', 3, ROUND_RANGE),
     maxCiAttempts: boundedInt(env, 'AGENT_MAX_CI_ATTEMPTS', 3, ROUND_RANGE),
     maxReviewAttempts: boundedInt(env, 'AGENT_MAX_REVIEW_ATTEMPTS', 3, ROUND_RANGE),
     // `LINES_RANGE`, the same bound `AGENT_MAX_CHANGED_LINES` takes, because it

@@ -14,6 +14,8 @@ import {
   isRetryableAppError,
   type AppError,
 } from './errors.js'
+import { t, type Locale } from './i18n/index.js'
+import { getContextLanguage } from './utils/config-language.js'
 
 export type ToolFailureType = AppError['type'] | 'tool-execution'
 export type ToolFailureCode = AppError['code'] | 'interrupted' | 'unknown' | 'expired' | 'provider_scope_missing'
@@ -44,6 +46,23 @@ export interface ToolFailureClassifyEvent {
 }
 
 export type EmitFailureClassifiedFn = (event: ToolFailureClassifyEvent) => void
+
+export interface BuildToolFailureOptions {
+  emitFailureClassified?: EmitFailureClassifiedFn
+  locale?: Locale
+}
+
+/**
+ * Resolve the locale for a failure body from the config context; failure
+ * mapping must never throw, so an unreadable config store degrades to `en`.
+ */
+export const resolveContextLocale = (configContextId: string): Locale => {
+  try {
+    return getContextLanguage(configContextId)
+  } catch {
+    return 'en'
+  }
+}
 
 function getErrorMessage(error: unknown): string {
   if (error instanceof Error) return error.message
@@ -90,7 +109,11 @@ function maybeEmitClassified(emitFn: EmitFailureClassifiedFn | undefined, result
   })
 }
 
-export function createProviderScopeMissingFailureResult(toolName: string, toolCallId: string): ToolFailureResult {
+export function createProviderScopeMissingFailureResult(
+  toolName: string,
+  toolCallId: string,
+  locale: Locale = 'en',
+): ToolFailureResult {
   return {
     success: false,
     error: PROVIDER_SCOPE_MISSING_MESSAGE,
@@ -99,7 +122,7 @@ export function createProviderScopeMissingFailureResult(toolName: string, toolCa
     timestamp: new Date().toISOString(),
     errorType: 'tool-execution',
     errorCode: 'provider_scope_missing',
-    userMessage: 'That action failed: an internal analytics scope was missing. Please try again.',
+    userMessage: t('errors.toolFailure.providerScopeMissing', locale),
     agentMessage:
       'The tool call was rejected before any provider I/O because the controlled provider_scope_missing failure was raised. Do not retry the same call; report the trace to the operator.',
     retryable: false,
@@ -107,13 +130,14 @@ export function createProviderScopeMissingFailureResult(toolName: string, toolCa
 }
 
 export function buildToolFailureResult(
-  ...args:
-    | [error: unknown, toolName: string, toolCallId: string]
-    | [error: unknown, toolName: string, toolCallId: string, emitFailureClassified: EmitFailureClassifiedFn]
+  error: unknown,
+  toolName: string,
+  toolCallId: string,
+  options?: BuildToolFailureOptions,
 ): ToolFailureResult {
-  const [error, toolName, toolCallId, emitFailureClassified] = args
+  const { emitFailureClassified, locale = 'en' } = options ?? {}
   if (error instanceof ProviderScopeMissingError) {
-    const result = createProviderScopeMissingFailureResult(toolName, toolCallId)
+    const result = createProviderScopeMissingFailureResult(toolName, toolCallId, locale)
     maybeEmitClassified(emitFailureClassified, result)
     return result
   }
@@ -129,7 +153,7 @@ export function buildToolFailureResult(
       timestamp: new Date().toISOString(),
       errorType: appError.type,
       errorCode: appError.code,
-      userMessage: getUserMessage(appError),
+      userMessage: getUserMessage(appError, locale),
       agentMessage: getAgentGuidance(appError),
       retryable: isRetryableAppError(appError),
       details: getAppErrorDetails(appError),
@@ -146,7 +170,7 @@ export function buildToolFailureResult(
     timestamp: new Date().toISOString(),
     errorType: 'tool-execution',
     errorCode: 'unknown',
-    userMessage: `That action failed: ${errorMessage}.`,
+    userMessage: t('errors.toolFailure.actionFailed', locale, { errorMessage }),
     agentMessage: `The tool failed without a classified AppError. Raw error: ${errorMessage}. Inspect the debug trace or logs before retrying.`,
     retryable: false,
   }
@@ -154,7 +178,11 @@ export function buildToolFailureResult(
   return result
 }
 
-export function createInterruptedToolFailureResult(toolName: string, toolCallId: string): ToolFailureResult {
+export function createInterruptedToolFailureResult(
+  toolName: string,
+  toolCallId: string,
+  locale: Locale = 'en',
+): ToolFailureResult {
   return {
     success: false,
     error: 'Tool execution incomplete or interrupted',
@@ -163,7 +191,7 @@ export function createInterruptedToolFailureResult(toolName: string, toolCallId:
     timestamp: new Date().toISOString(),
     errorType: 'tool-execution',
     errorCode: 'interrupted',
-    userMessage: `That action did not finish cleanly.`,
+    userMessage: t('errors.toolFailure.interrupted', locale),
     agentMessage: `The tool call was interrupted before a result was recorded. Re-check side effects before retrying.`,
     retryable: true,
     recovered: true,

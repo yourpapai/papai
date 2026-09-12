@@ -18,6 +18,7 @@ import {
 import type { AnalyticsEventRow, AnalyticsRekeyRunRow } from '../../db/schema.js'
 import { analyticsRemap, requireShadowParentIn, sourceEventMapIn } from './copy.js'
 import type { RekeyFullKeyMaterial } from './dual-write.js'
+import { parseRekeyVersions } from './run-store.js'
 import type { RekeyTx } from './run-store.js'
 
 type ChildCopyContext = Readonly<{
@@ -210,9 +211,9 @@ const copyTurnFrictionIn = (ctx: ChildCopyContext): void => {
 }
 
 const copyCensorIntervalsIn = (ctx: ChildCopyContext): void => {
+  const fromVersions = parseRekeyVersions(ctx.run.fromVersions)
   for (const interval of ctx.tx.select().from(analyticsCensorIntervals).all()) {
-    const inSource = [...ctx.sourceEvents.values()].some((row) => row.actorKey === interval.actorKey)
-    if (!inSource) continue
+    if (!fromVersions.some((version) => interval.actorKey.startsWith(`${version}.`))) continue
     const newActor = ctx.remap('actor:v1', interval.actorKey) ?? interval.actorKey
     const exists = ctx.tx
       .select()

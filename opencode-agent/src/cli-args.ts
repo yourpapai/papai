@@ -8,6 +8,7 @@ import process from 'node:process'
 
 import type { OctokitApiOptions } from './github.js'
 import type { Logger, LogLevel } from './logger.js'
+import type { ModelMetadataDeps } from './model-metadata.js'
 import type { CommandRunner } from './shell.js'
 
 /**
@@ -31,6 +32,14 @@ export interface MainOptions {
   run?: CommandRunner
   /** Seams for tests, forwarded verbatim as the GitHub adapter's own options. */
   octokit?: Pick<OctokitApiOptions, 'fetch' | 'log'>
+  /**
+   * The model catalogue reader, so a test never reaches models.dev.
+   *
+   * A seam rather than a mocked module because this is the one boot-path read
+   * that leaves the machine, and `tests/opencode-agent/` must not touch the
+   * network. Unset is the real reader, cache and bound and all.
+   */
+  modelCatalogue?: ModelMetadataDeps['loadDb']
 }
 
 export class UsageError extends Error {

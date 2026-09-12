@@ -279,7 +279,7 @@ describe('Linux story sandbox', () => {
     )
     expect(() =>
       assertLinuxStorySandboxBackend(processRunner({ exitCode: 0 }, { exitCode: 0, stdout: '1.3.12\n' })),
-    ).toThrow('must run Bun 1.3.13')
+    ).toThrow('must run Bun 1.4.0')
   })
 
   test('requires Docker backend validation in CI or when explicitly requested', () => {

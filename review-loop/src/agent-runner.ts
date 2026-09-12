@@ -3,46 +3,36 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { existsSync } from 'node:fs'
 import { copyFile, mkdir, readFile, unlink } from 'node:fs/promises'
 import path from 'node:path'
 
 import type { z } from 'zod'
 
+import {
+  agentWritePath,
+  buildAgentCommand,
+  findMisplacedScratches,
+  loadClaudeConventions,
+  type ClaudeSpawnContext,
+} from './agent-command.js'
+import { scrubCredentialValue, type ClaudeRunContext } from './backend-select.js'
+import { defaultCreateClaudeSpawnDir, type ClaudeSpawnDir, type CreateClaudeSpawnDir } from './claude-spawn-dir.js'
+import { createClaudeStreamDecoder } from './claude-stream.js'
+import type { AgentBackend } from './config.js'
 import { createLineHandler, enqueueLog } from './line-handler.js'
-import type { LineHandler } from './line-handler.js'
+import type { LineHandler, SessionLedgerSeam } from './line-handler.js'
 import type { ProgressReporter } from './progress-log.js'
+import type { AgentUsage } from './run-stats.js'
+import type { LineSink, SpawnFn, SpawnResult } from './spawn.js'
 
+export { agentWritePath, findMisplacedScratches } from './agent-command.js'
+export type { LineSink, SpawnFn, SpawnResult } from './spawn.js'
+export { emptyUsage } from './run-stats.js'
+export type { AgentUsage } from './run-stats.js'
+export type { ClaudeSpawnDir, CreateClaudeSpawnDir } from './claude-spawn-dir.js'
+export type { ClaudeRunContext } from './backend-select.js'
 export { createLineHandler } from './line-handler.js'
-export type { LineHandler } from './line-handler.js'
-
-export interface SpawnResult {
-  exitCode: number
-  stdout: string
-  stderr: string
-  timedOut?: boolean
-  // True when the kill was triggered by the inactivity watchdog (no stdout for
-  // inactivityTimeoutMs) rather than the wall-clock timeout. Stalls are
-  // retryable: a hung provider stream is transient, unlike an over-budget run.
-  stalled?: boolean
-}
-
-export type LineSink = (line: string) => void
-
-export type SpawnFn = (
-  command: string,
-  args: readonly string[],
-  options: { cwd: string; timeout?: number; killGraceMs?: number; inactivityTimeoutMs?: number },
-  onLine?: LineSink,
-) => Promise<SpawnResult>
-
-export interface AgentUsage {
-  inputTokens: number
-  outputTokens: number
-  reasoningTokens: number
-  costUsd: number
-  wallMs: number
-}
+export type { LineHandler, SessionLedgerSeam } from './line-handler.js'
 
 export interface AgentRunResult<T> {
   value: T
@@ -61,6 +51,8 @@ export class AgentRunError extends Error {
 export interface RunAgentOptions<T> {
   spawn: SpawnFn
   model: string
+  /** The role's reasoning-effort tier, composed as `--effort` on the claude branch (D4); absent is no flag (D6). */
+  effort?: string
   cwd: string
   prompt: string
   outputPath: string
@@ -83,6 +75,35 @@ export interface RunAgentOptions<T> {
   onRetry?: () => void
   timeoutMs?: number
   inactivityTimeoutMs?: number
+  /**
+   * Session-capture seam (D1): called once, the moment the first
+   * session-bearing event line of this spawn arrives. The host records the id
+   * synchronously so a crash mid-agent still leaves it on disk.
+   */
+  sessionLedger?: SessionLedgerSeam
+  /** Preferred ledger attempt number for this spawn (default 1). */
+  sessionAttempt?: number
+  /**
+   * Fail fast instead of retrying a soft failure once. Resume continuations
+   * set this: their fallback path is the caller's prompt-rebuild spawn, not a
+   * second continuation of a session that may no longer exist.
+   */
+  noRetry?: boolean
+  /** Which subprocess backend serves this spawn; absent is `opencode` (D2). */
+  backend?: AgentBackend
+  /** Required on the claude route; assembled once in `runCli` and threaded to every spawn. */
+  claude?: ClaudeRunContext
+  /**
+   * The per-spawn config-dir creation seam (D8): each spawn gets its own child
+   * under the run parent, with the native profile's empty-MCP document written
+   * into it by the same seam. Injectable so tests need no filesystem.
+   */
+  createClaudeSpawnDir?: CreateClaudeSpawnDir
+  /**
+   * The opencode child's entire replacement env, caller-composed (afk-runner-agent-mcp D3);
+   * threaded verbatim to `buildAgentCommand` — child env on opencode, refused on claude.
+   */
+  opencodeEnv?: Record<string, string>
 }
 
 interface AttemptResult<T> {
@@ -99,72 +120,121 @@ interface AttemptError {
 
 type Attempt<T> = AttemptResult<T> | AttemptError
 
-/**
- * Absolute path the agent should write its output to.
- *
- * The path is absolute (not relative) so the agent cannot mis-resolve it
- * against an unrelated project root. The worktree cwd itself often lives at
- * `<repoRoot>/.review-loop/worktrees/<runId>/`, and a relative path like
- * `.review-loop/matches.json` is ambiguous: the agent may resolve it against
- * the worktree cwd (correct) or against the project root two levels up
- * (`<repoRoot>/.review-loop/matches.json` — wrong). The runner always reads
- * from `<cwd>/.review-loop/<basename(outputPath)>`, so the prompt must direct
- * the agent there unambiguously.
- */
-export function agentWritePath(cwd: string, outputPath: string): string {
-  return path.resolve(cwd, '.review-loop', path.basename(outputPath))
-}
-
-const MISPLACEMENT_SEARCH_DEPTH = 8
-
-export function findMisplacedScratches(expectedPath: string, cwd: string, basename: string): string[] {
-  const expected = path.resolve(expectedPath)
-  const found: string[] = []
-  let current = path.resolve(cwd)
-  for (let i = 0; i < MISPLACEMENT_SEARCH_DEPTH; i += 1) {
-    const candidate = path.resolve(current, '.review-loop', basename)
-    if (candidate !== expected && existsSync(candidate)) {
-      found.push(candidate)
-    }
-    const parent = path.dirname(current)
-    if (parent === current) break
-    current = parent
-  }
-  return found
-}
-
-function attemptRun<T>(options: RunAgentOptions<T>, onLine?: LineSink): Promise<SpawnResult> {
+function attemptRun<T>(
+  options: RunAgentOptions<T>,
+  spawnDir: ClaudeSpawnDir | null,
+  onLine?: LineSink,
+  systemPrompt?: string,
+  continueSessionId?: string,
+): Promise<SpawnResult> {
+  const claude: ClaudeSpawnContext | undefined =
+    options.claude === undefined || spawnDir === null
+      ? undefined
+      : {
+          profile: options.claude.profile,
+          credentialName: options.claude.credentialName,
+          credentialValue: options.claude.credentialValue,
+          configDir: spawnDir.configDir,
+          mcpConfigPath: spawnDir.mcpConfigPath,
+          envSource: options.claude.envSource,
+        }
+  const command = buildAgentCommand({
+    backend: options.backend,
+    model: options.model,
+    effort: options.effort,
+    cwd: options.cwd,
+    prompt: options.prompt,
+    extraArgs: options.extraArgs,
+    label: options.label,
+    claude,
+    systemPrompt,
+    continueSessionId,
+    opencodeEnv: options.opencodeEnv,
+  })
   return options.spawn(
-    'opencode',
-    [
-      'run',
-      '--auto',
-      '--format',
-      'json',
-      '--model',
-      options.model,
-      '--dir',
-      options.cwd,
-      ...options.extraArgs,
-      options.prompt,
-    ],
-    { cwd: options.cwd, timeout: options.timeoutMs, inactivityTimeoutMs: options.inactivityTimeoutMs },
+    command.command,
+    command.args,
+    {
+      cwd: options.cwd,
+      timeout: options.timeoutMs,
+      inactivityTimeoutMs: options.inactivityTimeoutMs,
+      stdin: command.stdin,
+      env: command.env,
+    },
     onLine,
   )
 }
 
-async function runAttempt<T>(options: RunAgentOptions<T>, handler: LineHandler): Promise<Attempt<T>> {
+/**
+ * The non-zero-exit attempt failure, scrubbed once before it is embedded
+ * anywhere (D5): both the enqueued stderr line and the error message flow
+ * from this one copy, which later persists into needs-human reasoning.
+ */
+function spawnFailure<T>(
+  options: RunAgentOptions<T>,
+  handler: LineHandler,
+  result: { exitCode: number; stderr: string; timedOut?: boolean; stalled?: boolean },
+): Attempt<T> {
+  const stderr = scrubCredentialValue(result.stderr, options.claude?.credentialValue ?? null)
+  enqueueLog(handler.ctx, `[${options.label}] stderr: ${stderr}\n`)
+  return {
+    ok: false,
+    error: new Error(`${options.label} exited with code ${result.exitCode}: ${stderr}`),
+    timedOut: result.timedOut === true,
+    stalled: result.stalled === true,
+  }
+}
+
+async function runAttempt<T>(
+  options: RunAgentOptions<T>,
+  handler: LineHandler,
+  systemPrompt?: string,
+  continueSessionId?: string,
+): Promise<Attempt<T>> {
   await mkdir(path.resolve(options.cwd, '.review-loop'), { recursive: true })
-  const result = await attemptRun(options, handler.onLine)
-  if (result.exitCode !== 0) {
-    enqueueLog(handler.ctx, `[${options.label}] stderr: ${result.stderr}\n`)
-    return {
-      ok: false,
-      error: new Error(`${options.label} exited with code ${result.exitCode}: ${result.stderr}`),
-      timedOut: result.timedOut === true,
-      stalled: result.stalled === true,
+  // Re-arm session capture: a stall retry is a fresh opencode session, and its
+  // id must be recorded even though the first attempt already captured one.
+  handler.ctx.sessionId = null
+  // Re-arm the decoder on the claude route (D6): the tool-pairing map and the
+  // result outcome are attempt state, so a retry never reads the stalled
+  // attempt's result line as its own.
+  if (options.backend === 'claude') {
+    handler.decoder = createClaudeStreamDecoder()
+  }
+  const spawnDir =
+    options.claude === undefined
+      ? null
+      : await (options.createClaudeSpawnDir ?? defaultCreateClaudeSpawnDir)(options.claude)
+  const result = await attemptRun(options, spawnDir, handler.onLine, systemPrompt, continueSessionId)
+  if (result.exitCode !== 0) return spawnFailure(options, handler, result)
+  if (options.backend === 'claude') {
+    // Result-outcome gate (D6): an exit-0 turn whose result line is missing or
+    // error-signalling fails the attempt through the existing error path
+    // **before** the output file is accepted — never an empty success.
+    const outcome = handler.decoder.resultOutcome()
+    if (!outcome.seen || outcome.isError) {
+      const why = outcome.isError ? 'its result line signals an error' : 'no result line arrived'
+      return {
+        ok: false,
+        error: new Error(
+          `${options.label} exited 0 but ${why} — a drifted CLI presents as this failure; ` +
+            'check the pinned @anthropic-ai/claude-code version.',
+        ),
+        timedOut: false,
+        stalled: false,
+      }
     }
   }
+  return exchangeOutput(options)
+}
+
+/**
+ * The file-based output exchange's accept step, split from `runAttempt` when
+ * the claude seams pushed that function past `max-lines-per-function`. Reads
+ * the agent's scratch, copies it to the destination and validates the schema;
+ * a missing scratch keeps the backend-agnostic misplaced-scratch diagnosis.
+ */
+async function exchangeOutput<T>(options: RunAgentOptions<T>): Promise<Attempt<T>> {
   try {
     const agentFile = agentWritePath(options.cwd, options.outputPath)
     await mkdir(path.dirname(options.outputPath), { recursive: true })
@@ -201,20 +271,27 @@ async function runAttempt<T>(options: RunAgentOptions<T>, handler: LineHandler):
 
 export async function runAgent<T>(options: RunAgentOptions<T>): Promise<AgentRunResult<T>> {
   const handler = createLineHandler(options)
+  const systemPrompt = options.backend === 'claude' ? await loadClaudeConventions(options.cwd) : undefined
   const buildUsage = (): AgentUsage => ({
     ...handler.ctx.usage,
     wallMs: handler.ctx.firstStepAt === null ? 0 : Date.now() - handler.ctx.firstStepAt,
   })
   const finalize = (value: T): AgentRunResult<T> => ({ value, usage: buildUsage() })
   try {
-    const first = await runAttempt(options, handler)
+    const first = await runAttempt(options, handler, systemPrompt)
     if (first.ok) return finalize(first.value)
     // Wall-clock timeouts are not retried (the task genuinely overran its
     // budget), but stalls are: a hung provider stream is transient, and the
     // retry usually lands on a healthy request path.
     if (first.timedOut && !first.stalled) throw new AgentRunError(first.error.message, buildUsage())
+    if (options.noRetry === true) throw new AgentRunError(first.error.message, buildUsage())
     options.onRetry?.()
-    const second = await runAttempt(options, handler)
+    // The stall retry continues the captured session when one exists
+    // (escalation-retry-session-continuation D4): the id sits on the line
+    // handler's ctx — only this layer can reach it — and the command builder
+    // maps it per backend. No captured id degrades to today's fresh re-spawn.
+    const continueSessionId = handler.ctx.sessionId ?? undefined
+    const second = await runAttempt(options, handler, systemPrompt, continueSessionId)
     if (second.ok) return finalize(second.value)
     throw new AgentRunError(second.error.message, buildUsage())
   } finally {

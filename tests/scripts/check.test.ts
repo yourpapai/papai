@@ -18,6 +18,9 @@ import {
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 
+import { isGateableImplFile } from '../../.hooks/tdd/test-resolver.mjs'
+import { assertEach, type Row } from '../utils/grouped-assertions.js'
+
 const REPO_ROOT = path.resolve(import.meta.dir, '../..')
 const CHECK_SCRIPT_PATH = path.join(REPO_ROOT, 'scripts/check.sh')
 type CommandResult = Readonly<{
@@ -191,6 +194,36 @@ describe('check.sh --staged', () => {
     }
   })
 
+  // A commit made while `check:full` is running must not destroy that run's evidence. check.sh
+  // cleared reports/checks/ as unconditional top-of-script setup, but ONLY full mode writes
+  // there — staged mode keeps its per-check output in $TMPDIR. So the pre-commit hook's --staged
+  // run deleted the logs of an in-flight full run, whose summary then pointed at files that no
+  // longer existed. Observed 2026-08-31: seven leg logs written by 10:53, gone by 10:55.
+  test('leaves an in-flight full run reports/checks logs intact', () => {
+    const { repoDir, binDir, logFile } = createTempRepo()
+
+    try {
+      const checksDir = path.join(repoDir, 'reports', 'checks')
+      mkdirSync(checksDir, { recursive: true })
+      const inFlightLog = path.join(checksDir, 'test.log')
+      writeFileSync(inFlightLog, 'output of a full run still in progress\n')
+
+      writeFileSync(path.join(repoDir, 'README.md'), '# Docs\n')
+      expectSuccess(runCommand(repoDir, ['git', 'add', 'README.md']))
+
+      const env = createEnv({
+        PATH: `${binDir}:${basePath}`,
+        CHECK_LOG_FILE: logFile,
+      })
+      expect(runCommand(repoDir, ['bash', 'scripts/check.sh', '--staged'], env).exitCode).toBe(0)
+
+      expect(existsSync(inFlightLog)).toBe(true)
+      expect(readFileSync(inFlightLog, 'utf8')).toBe('output of a full run still in progress\n')
+    } finally {
+      rmSync(repoDir, { recursive: true, force: true })
+    }
+  })
+
   test('skips oxlint when staged files are hook-only TypeScript files outside lint scope', () => {
     const { repoDir, binDir, logFile } = createTempRepo()
 
@@ -298,12 +331,23 @@ describe('check.sh --skip-tests', () => {
         .filter((entry) => entry.length > 0)
 
       expect(calls).toContain('bun run lint')
-      expect(calls).toContain('bun run review-loop:lint')
+      // Full mode dropped the redundant typecheck leg (lint's tsgolint pass
+      // reports every tsgo diagnostic class over a superset scope —
+      // openspec/changes/dedupe-lint-typecheck); --skip-tests filters the
+      // full-mode array and inherits that.
+      expect(calls).not.toContain('bun run typecheck')
+      expect(calls).not.toContain('bun run review-loop:lint')
       expect(calls).not.toContain('bun run test')
       expect(calls).not.toContain('bun run test:client')
       expect(calls).not.toContain('bun run review-loop:test')
       expect(calls).not.toContain('bun run :client')
       expect(calls).not.toContain('bun run review-loop:')
+      // Aggregate gates enforce workspace code through the root checks only;
+      // no per-workspace proxy script may appear in any mode.
+      const workspaceProxyCalls = calls.filter((call) =>
+        ['review-loop:', 'mutation-improve:', 'opencode-agent:'].some((prefix) => call.startsWith(`bun run ${prefix}`)),
+      )
+      expect(workspaceProxyCalls).toEqual([])
     } finally {
       rmSync(repoDir, { recursive: true, force: true })
     }
@@ -501,10 +545,10 @@ describe('check.sh full mode', () => {
       expect(result.exitCode).toBe(0)
       const written = readdirSync(path.join(repoDir, 'reports', 'checks')).sort()
       expect(written).toContain('lint.log')
-      expect(written).toContain('typecheck.log')
+      expect(written).not.toContain('typecheck.log')
       // `:` is not a filename, and safe_name() has always mapped it to `_`.
       expect(written).toContain('format_check.log')
-      expect(written).toContain('review-loop_lint.log')
+      expect(written).not.toContain('review-loop_lint.log')
     } finally {
       rmSync(repoDir, { recursive: true, force: true })
     }
@@ -517,14 +561,14 @@ describe('check.sh full mode', () => {
       const env = createEnv({
         PATH: `${binDir}:${basePath}`,
         CHECK_LOG_FILE: logFile,
-        CHECK_FAIL_MATCH: 'run typecheck',
+        CHECK_FAIL_MATCH: 'run knip',
       })
       const result = runCommand(repoDir, ['bash', 'scripts/check.sh'], env)
 
       expect(result.exitCode).toBe(1)
-      expect(result.stdout).toContain('✗ typecheck failed')
-      expect(result.stdout).toContain('→ reports/checks/typecheck.log')
-      expect(existsSync(path.join(repoDir, 'reports', 'checks', 'typecheck.log'))).toBe(true)
+      expect(result.stdout).toContain('✗ knip failed')
+      expect(result.stdout).toContain('→ reports/checks/knip.log')
+      expect(existsSync(path.join(repoDir, 'reports', 'checks', 'knip.log'))).toBe(true)
     } finally {
       rmSync(repoDir, { recursive: true, force: true })
     }
@@ -598,12 +642,196 @@ describe('check.sh full mode', () => {
       const calls = readFileSync(logFile, 'utf8')
       expect(calls).toContain('bun run test')
       expect(calls).toContain('bun --conditions=browser test --preload ./tests/client-setup.ts')
-      expect(calls).toContain('bun test tests/review-loop')
+      expect(calls).not.toContain('bun test tests/review-loop')
       expect(calls).not.toContain('--max-concurrency')
       expect(calls).not.toContain('bun run test:client')
       expect(calls).not.toContain('bun run review-loop:test')
+      for (const prefix of ['review-loop:', 'mutation-improve:', 'opencode-agent:']) {
+        expect(calls).not.toContain(`bun run ${prefix}`)
+      }
     } finally {
       rmSync(repoDir, { recursive: true, force: true })
     }
+  })
+})
+
+describe('check surface composition (check.sh vs check:verbose)', () => {
+  // R1 (openspec/changes/dedupe-lint-typecheck): full mode and check:verbose
+  // dropped the redundant typecheck leg — lint's tsgolint pass reports every
+  // tsgo diagnostic class over a superset file scope. Staged mode keeps it:
+  // oxlint runs on staged files only there, so the project-wide typecheck leg
+  // is the only one that can catch an unstaged file broken by a staged edit.
+  // The pairing must stay symmetric across the two full surfaces: re-adding
+  // typecheck to one but not the other re-derives the dedup by accident.
+  const readVerboseChecks = (): readonly string[] => {
+    const packageJsonText = readFileSync(path.join(REPO_ROOT, 'package.json'), 'utf8')
+    const verboseMatch = packageJsonText.match(/"check:verbose": "([^"]*)"/u)
+    if (verboseMatch === null) {
+      throw new Error('check:verbose script not found in package.json')
+    }
+    const command = verboseMatch[1]
+    if (command === undefined) {
+      throw new Error('check:verbose script match captured no command')
+    }
+    return command
+      .replace(/^bun run --parallel /u, '')
+      .split(/\s+/u)
+      .filter((name) => name.length > 0)
+  }
+
+  const parseChecksArray = (arrayBody: string): readonly string[] =>
+    [...arrayBody.matchAll(/"([^"]+)"/gu)]
+      .map((match) => match[1])
+      .filter((name): name is string => typeof name === 'string')
+
+  const readCheckShArrays = (): readonly (readonly string[])[] => {
+    const checkSh = readFileSync(CHECK_SCRIPT_PATH, 'utf8')
+    return [...checkSh.matchAll(/checks=\(([^)]*)\)/gu)].map((match) => parseChecksArray(match[1] ?? ''))
+  }
+
+  test('full mode and check:verbose agree on the lint/typecheck pairing', () => {
+    const verboseChecks = readVerboseChecks()
+    const checkArrays = readCheckShArrays()
+    const fullMode = checkArrays.find((checks) => checks.includes('duplicates'))
+    const staged = checkArrays.find((checks) => !checks.includes('duplicates'))
+    expect(fullMode).toBeDefined()
+    expect(staged).toBeDefined()
+
+    expect(fullMode).toContain('lint')
+    expect(fullMode).not.toContain('typecheck')
+    expect(verboseChecks).toContain('lint')
+    expect(verboseChecks).not.toContain('typecheck')
+
+    // The staged array is the load-bearing exception and must keep typecheck.
+    expect(staged).toContain('lint')
+    expect(staged).toContain('typecheck')
+  })
+})
+
+describe('staged enumeration agreement (check.sh arms vs the mutation gate)', () => {
+  // openspec/changes/task D7: the staged shell check's two workspace
+  // enumerations (is_license_header_file, is_oxlint_scoped_file) and the
+  // mutation gate's gateable predicate must not drift apart about which trees
+  // ship product code. Both sides derive live — gateable roots from the widened
+  // `isGateableImplFile` (the established seam, also imported by
+  // scripts/mutation/changed-files.ts), routed roots from the path-prefix arms
+  // parsed out of check.sh — so a seventh gateable root added without a matching
+  // shell arm fails here instead of diverging silently. A static list of today's
+  // routed trees would stay green through exactly that divergence.
+  const RESOLVER_PATH = path.join(REPO_ROOT, '.hooks/tdd/test-resolver.mjs')
+
+  // plugins/ is gateable but unrouted today: no arm matches it, so staged files
+  // there fall to `*) return 1`. A pre-existing divergence
+  // recorded, not repaired (change non-goals forbid a check.sh behavioral
+  // change). Keyed — each entry asserts gateable and unrouted, so a tree that
+  // gains a shell arm or loses gateability fails here until its entry is
+  // retired in the same change that edits the shell arms.
+  const UNROUTED_GATEABLE_ROOTS: readonly string[] = ['plugins/']
+
+  const readGateableRoots = (): readonly string[] => {
+    const fn = readFileSync(RESOLVER_PATH, 'utf8').match(/export function isGateableImplFile\([\s\S]*?\n\}/u)
+    if (fn === null) {
+      throw new Error('isGateableImplFile body not found in .hooks/tdd/test-resolver.mjs')
+    }
+    // Classify through the live predicate, not the parsed text: the pin is about
+    // what the predicate answers; the parse only enumerates candidate roots.
+    const roots = [...(fn[0] ?? '').matchAll(/rel\.startsWith\('([^']+)'\)/gu)]
+      .map((match) => match[1])
+      .filter((prefix): prefix is string => typeof prefix === 'string' && prefix.endsWith('/'))
+      .filter((root) => isGateableImplFile(`${root}agreement-probe.ts`, REPO_ROOT))
+    if (roots.length === 0) {
+      throw new Error('no gateable roots derived from isGateableImplFile — parse drifted from the predicate source')
+    }
+    return roots
+  }
+
+  const readShellEnumerationRoots = (fnName: string): readonly string[] => {
+    const fn = readFileSync(CHECK_SCRIPT_PATH, 'utf8').match(
+      new RegExp(`${fnName}\\(\\) \\{\\n([\\s\\S]*?)\\n\\}`, 'u'),
+    )
+    if (fn === null) {
+      throw new Error(`${fnName} body not found in scripts/check.sh`)
+    }
+    // Path-prefix arms only: `<path>/*` case patterns. `*.md`, `docs/*.md` and
+    // the bare `drizzle.config.ts` file arm are not root routings; the
+    // grep-sample fixture arm routes a non-gateable path and is inert here.
+    const roots = [...(fn[1] ?? '').matchAll(/([A-Za-z0-9_./-]+\/\*)(?=[|\s)])/gu)]
+      .map((match) => match[1])
+      .filter((arm): arm is string => typeof arm === 'string')
+      .map((arm) => arm.slice(0, -1))
+    if (roots.length === 0) {
+      throw new Error(`no path-prefix arms parsed from ${fnName} — parse drifted from check.sh`)
+    }
+    return roots
+  }
+
+  const routedBy = (root: string, roots: readonly string[]): boolean => roots.some((arm) => root.startsWith(arm))
+
+  type GateableRootRow = Row<{
+    readonly root: string
+    readonly meetsLicenseAgreement: boolean
+    readonly meetsOxlintAgreement: boolean
+  }>
+
+  // Row classification lives outside the test bodies (no-conditional-in-test):
+  // a gateable root agrees when it is routed by an enumeration or keyed as an
+  // exception; the row keeps the raw flags so a failure prints both sides.
+  const classifyGateableRoots = (
+    gateableRoots: readonly string[],
+    licenseRoots: readonly string[],
+    oxlintRoots: readonly string[],
+  ): readonly GateableRootRow[] =>
+    gateableRoots.map((root) => {
+      const excepted = UNROUTED_GATEABLE_ROOTS.includes(root)
+      return {
+        label: root,
+        root,
+        meetsLicenseAgreement: excepted || routedBy(root, licenseRoots),
+        meetsOxlintAgreement: excepted || routedBy(root, oxlintRoots),
+      }
+    })
+
+  test('every gateable root is routed by both staged enumerations or recorded as a keyed exception', async () => {
+    const gateableRoots = readGateableRoots()
+    const licenseRoots = readShellEnumerationRoots('is_license_header_file')
+    const oxlintRoots = readShellEnumerationRoots('is_oxlint_scoped_file')
+
+    await assertEach(classifyGateableRoots(gateableRoots, licenseRoots, oxlintRoots), (row) => {
+      expect(
+        row.meetsLicenseAgreement,
+        `${row.root}: not routed by is_license_header_file and not keyed in UNROUTED_GATEABLE_ROOTS`,
+      ).toBe(true)
+      expect(
+        row.meetsOxlintAgreement,
+        `${row.root}: not routed by is_oxlint_scoped_file and not keyed in UNROUTED_GATEABLE_ROOTS`,
+      ).toBe(true)
+    })
+  })
+
+  test('each keyed exception is still gateable and still unrouted by both enumerations', async () => {
+    const gateableRoots = readGateableRoots()
+    const licenseRoots = readShellEnumerationRoots('is_license_header_file')
+    const oxlintRoots = readShellEnumerationRoots('is_oxlint_scoped_file')
+
+    await assertEach(
+      UNROUTED_GATEABLE_ROOTS.map((root) => ({
+        label: root,
+        root,
+        gateable: gateableRoots.includes(root),
+        routedByLicense: routedBy(root, licenseRoots),
+        routedByOxlint: routedBy(root, oxlintRoots),
+      })),
+      (row) => {
+        expect(row.gateable, `${row.root}: exception recorded but no longer gateable — retire it`).toBe(true)
+        expect(
+          row.routedByLicense,
+          `${row.root}: gained an is_license_header_file arm — retire its exception in the same change`,
+        ).toBe(false)
+        expect(
+          row.routedByOxlint,
+          `${row.root}: gained an is_oxlint_scoped_file arm — retire its exception in the same change`,
+        ).toBe(false)
+      },
+    )
   })
 })

@@ -71,6 +71,7 @@ Supported optional fields:
 | `providerContextConfigSchema`        | Context-scoped credential/config fields for the contributed provider type.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
 | `providerAllowedHosts`               | Static host allowlist used by `ctx.providerRuntime.httpFetch()`. Available to `http` plugins and contributed task-provider plugins.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
 | `providerAllowedHostsFromConfig`     | List of admin- or context-scoped config keys whose runtime values contribute their host to the HTTP allowlist at call time. Schema-validated: every referenced key must exist in `configRequirements`. **Two-tier trust model:** (1) **Admin tier** — a key with only an admin-scoped `configRequirements` entry feeds the operator-trusted tier: its host bypasses the public-IP restriction (useful for self-hosted Whisper on a LAN) because admin config carries the same trust level as manifest approval. (2) **Context (untrusted) tier** — adding a context-scoped `configRequirements` entry for the same key causes context-config values to flow through `buildContextDynamicHosts`; those hosts pass the allowlist membership check but still require full HTTPS + public-IP validation. Plugin authors must not assume context values receive the bypass. **Caching:** context-sourced hosts are cached with a 30-second TTL when the result is non-empty; an empty result (no context value set) is re-read on every call so a newly configured value takes effect without a restart. Static `providerAllowedHosts` entries keep the public-IP restriction regardless of tier. Requires `http` or `provider.task` permission. |
+| `providerAllowedInstanceHostsFromConfig` | Instance-scoped config keys (from `providerConfigSchema`) whose values contribute their host to a **per-instance** allowlist returned by `ctx.providerRuntime.forInstance(config)`. Schema-validated: every referenced key must exist in `providerConfigSchema` (which is always `scope: "instance"`). Unlike the admin/context tiers above, the derived hosts are scoped to a single callable returned at factory-call time — they are not merged into the manifest-level `httpFetch` allowlist. The derived hosts are operator-trusted (task-instance config is admin-set) and bypass HTTPS + public-IP checks so self-hosted `http://` instances work; any host not in the derived set is rejected. Requires `provider.task` permission (implicitly, via `providerConfigSchema`). |
 | `providerConfigValidator`            | Optional named export for validating contributed provider config before task-instance writes are persisted.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
 | `mcp`                                | Optional plugin-owned MCP server config. Runtime support is `streamable-http`; `stdio` is schema-reserved.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
 | `permissions`                        | Permission claims checked by framework facades.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
@@ -370,28 +371,29 @@ Provider plugin manifests split config into two schemas:
 - **`providerConfigSchema`** — instance-scoped fields stored in `task_instances.config` (e.g. `baseUrl`, `internalUrl`). Validated by `validateConfig` at instance creation.
 - **`providerContextConfigSchema`** — context-scoped fields stored per-user in `user_config` under the `plugin:<id>:provider:<fieldKey>` namespace (e.g. `plugin:task-provider-kaneo:provider:credential`, `plugin:task-provider-kaneo:provider:workspaceId`). Not available at instance-config validation time.
 
-Keys are **camelCase** and there is no `storageKey` property. Set `providerAllowedHosts: []` when the plugin uses the instance `baseUrl` dynamically rather than a fixed allowlist.
+Keys are **camelCase** and there is no `storageKey` property. Set `providerAllowedHosts: []` when the plugin uses the instance `baseUrl` dynamically rather than a fixed allowlist. Declare the dynamic instance host key in `providerAllowedInstanceHostsFromConfig` and route outbound traffic through `ctx.providerRuntime.forInstance(config)` so the operator-configured `baseUrl` host is admitted (see the Kaneo plugin for the canonical pattern).
 
-> **Known limitation (host allowlist not enforced for first-party task providers).** The
-> bundled `task-provider-kaneo` and `task-provider-youtrack` plugins make their HTTP calls
-> through a global `fetch` in their own `client.ts`, **not** through `ctx.providerRuntime.httpFetch()`.
-> Their `providerAllowedHosts` is therefore declared (`[]`) but **not enforced** at runtime —
-> the host allowlist and HTTPS-only checks in `providerRuntime` do not apply to their traffic.
-> This is a deliberate, documented gap rather than an oversight: enforcing it requires
-> (1) threading `ctx.providerRuntime` through the `(config) => TaskProvider` factory into the
-> provider client (the factory does not receive `ctx` today), (2) a mechanism to admit the
-> operator-configured instance `baseUrl` host into the otherwise-static allowlist, and (3) a
-> policy decision for self-hosted `http://` instances (`providerRuntime` is HTTPS-only). Until
-> those are designed, treat first-party provider HTTP as unguarded by `providerRuntime`. New
-> `http`-permission plugins that _do_ route through `ctx.providerRuntime.httpFetch()` are
-> still enforced normally.
+> **Host allowlist enforcement for first-party task providers.** The bundled
+> `task-provider-kaneo` plugin routes its HTTP through `ctx.providerRuntime.forInstance(config)`,
+> which derives a per-instance allowlist from the declared `providerAllowedInstanceHostsFromConfig`
+> key (`baseUrl`) and rejects any host not parsed from that config. Its `providerAllowedHosts` is
+> `[]` because admission is instance-scoped, not manifest-static. The derived hosts are
+> operator-trusted (task-instance config is admin-set) and bypass HTTPS + public-IP checks so
+> self-hosted `http://` instances work.
+>
+> The bundled `task-provider-youtrack` plugin still makes its HTTP calls through a global `fetch`
+> in its own `client.ts`, **not** through `ctx.providerRuntime` — its host allowlist is declared
+> (`[]`) but **not enforced** at runtime. This is a deliberate, documented gap (issue #15):
+> enforcing it requires threading `ctx.providerRuntime.forInstance(config)` through the factory
+> into the YouTrack client, mirroring the Kaneo pattern. New `http`-permission plugins that route
+> through `ctx.providerRuntime.httpFetch()` are enforced normally regardless.
 
 Abbreviated manifest for reference:
 
 ```json
 {
   "id": "task-provider-kaneo",
-  "permissions": ["provider.task", "identity"],
+  "permissions": ["provider.task", "identity", "http"],
   "contributes": { "taskProviderTypes": ["kaneo"] },
   "providerCapabilities": ["comments.create", "labels.list", "projects.list"],
   "providerConfigSchema": [
@@ -403,6 +405,7 @@ Abbreviated manifest for reference:
     { "key": "workspaceId", "label": "Workspace ID", "required": true, "sensitive": false, "scope": "context" }
   ],
   "providerAllowedHosts": [],
+  "providerAllowedInstanceHostsFromConfig": ["baseUrl"],
   "providerConfigValidator": "validateConfig"
 }
 ```
@@ -413,6 +416,9 @@ Keep discovered entry graphs strictly relative-only. Do not import `papai/plugin
 
 ```typescript
 type PluginContextLike = {
+  providerRuntime: {
+    forInstance: (config: Record<string, string>) => (url: string, init?: RequestInit) => Promise<Response>
+  }
   registration: {
     registerTaskProviderType(
       type: string,
@@ -459,7 +465,7 @@ import { createKaneoProvider } from './entry-runtime'
 const factory: PluginFactoryLike = (): PluginInstanceLike => ({
   activate(ctx: PluginContextLike): void {
     ctx.registration.registerTaskProviderType('kaneo', {
-      factory: (config) => createKaneoProvider(config),
+      factory: (config) => createKaneoProvider(config, ctx.providerRuntime.forInstance(config)),
     })
   },
 })

@@ -51,6 +51,8 @@ export const UsageTotalsSchema = z.object({
   inputTokens: z.number().int().nonnegative(),
   outputTokens: z.number().int().nonnegative(),
   reasoningTokens: z.number().int().nonnegative(),
+  cachedReadTokens: z.number().int().nonnegative().default(0),
+  cachedWriteTokens: z.number().int().nonnegative().default(0),
   costUsd: z.number().nonnegative(),
 })
 export type UsageTotals = z.infer<typeof UsageTotalsSchema>
@@ -130,6 +132,8 @@ export const RoundMetricSchema = z.object({
   exposureDivergent: z.number().int().nonnegative(),
   reviewerKind: KindCountsSchema,
   checkBehind: CheckBehindByKindSchema,
+  // Defaulted so traces written before deferral existed still parse.
+  deferred: z.number().int().nonnegative().default(0),
   phaseMs: PhaseMsSchema,
   usage: UsageTotalsSchema,
 })

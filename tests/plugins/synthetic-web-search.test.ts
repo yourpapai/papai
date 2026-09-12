@@ -57,6 +57,7 @@ function createMockContext(
     registration,
     providerRuntime: {
       httpFetch: overrides.httpFetch ?? mock(),
+      forInstance: () => overrides.httpFetch ?? mock(),
       allowedHosts: new Set(['api.synthetic.new']),
       logger: createMockLogger(),
     },

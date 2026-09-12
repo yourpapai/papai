@@ -3,11 +3,12 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { describeDetail } from './activity-detail.js'
+import { describeDetail, describeProviderDetail } from './activity-detail.js'
 import type { TranscriptRow } from './activity-detail.js'
 import { describeActivity } from './activity.js'
 import type { Activity } from './activity.js'
 import type { Logger } from './logger.js'
+import { statusLine, toolLine } from './progress-lines.js'
 import { foldStall, noStall, reportStall } from './turn-stall.js'
 import type { TurnStall } from './turn-stall.js'
 
@@ -74,37 +75,9 @@ export interface ProgressTrackerOptions {
   transcript?: TranscriptSink
 }
 
-/** One decimal place: `3.2s` — a duration is orientation, not measurement. */
-const formatDuration = (ms: number): string => `${(ms / 1_000).toFixed(1)}s`
-
 /**
- * The line one activity earns, or `null` for one that earns none.
- *
- * Two lines per tool call and no more: `▸ bash (running)` when it starts and
- * `✓ bash 3.2s` when it ends, with `✗` for a failed one. A completion whose
- * start was never seen carries no duration — the tracker's clock is the only
- * honest source, since `state.time.start` belongs to the server's clock.
- *
- * Plain text, with the metadata left empty: the pretty line is the message,
- * so a NDJSON renderer adds no structure and a text renderer loses nothing.
- * Names, statuses, counts and durations only — the containment rule from
- * `activity.ts` applies to the line exactly as it applied to the metadata.
+ * Everything one tracker accumulates, mutated in place by the observers below.
  */
-const toolLine = (activity: Activity, durationMs: number | null): string => {
-  const tool = String(activity.meta['tool'])
-  const status = String(activity.meta['status'])
-  if (status === 'running') return `▸ ${tool} (running)`
-  const duration = durationMs === null ? '' : ` ${formatDuration(durationMs)}`
-  return `${status === 'error' ? '✗' : '✓'} ${tool}${duration}`
-}
-
-const statusLine = (activity: Activity): string => {
-  const status = String(activity.meta['status'])
-  const attempt = activity.meta['attempt']
-  return attempt === undefined ? `● ${status}` : `● ${status} (attempt ${attempt})`
-}
-
-/** Everything one tracker accumulates, mutated in place by the observers below. */
 interface TrackerState {
   lastAction: string
   toolCalls: number
@@ -148,7 +121,13 @@ const observeTool = (
     // The server republishes the running state as the arguments stream in;
     // ten republishes of one call are one call, one line and one count.
     if (state.running.has(call)) return null
-    state.running.set(call, context.now())
+    const started = context.now()
+    state.running.set(call, started)
+    // A tool call starting is proof the model answered — as much progress as a
+    // finished step — so the stall clock restarts here, on the same clock read
+    // the duration uses. Only a *newly started* call counts: the republishes
+    // above are arguments arriving for one the model already issued.
+    state.sinceStep.lastProgressAt = started
     state.toolCalls += 1
     return { line: toolLine(activity, null), durationMs: null }
   }
@@ -178,6 +157,32 @@ const feedTranscript = (
   })
 }
 
+/**
+ * The provider's own failure text, one transcript row per occurrence.
+ *
+ * Called in front of the collapse gate for `foldStall`'s reason: a retry whose
+ * duplicate public line is suppressed is still a retry that happened, and the
+ * transcript is the designated place for the provider's account of it. The
+ * public log is untouched — the decode lives in `activity-detail.ts`, the one
+ * module whose output is allowed to carry content, and only into the
+ * encrypted sink.
+ */
+const feedProviderRow = (event: unknown, activity: Activity, context: TrackerContext): void => {
+  if (context.transcript === undefined) return
+  const retry = activity.kind === 'status' && activity.meta['status'] === 'retry'
+  if (activity.kind !== 'failure' && !retry) return
+
+  const provider = describeProviderDetail(event, context.sessionId)
+  if (provider === null) return
+  context.transcript.write({
+    time: new Date(context.now()).toISOString(),
+    tool: 'provider',
+    status: provider.status,
+    detail: provider.detail,
+    durationMs: null,
+  })
+}
+
 /** Decodes one event, folds it into the running summary, and reports it. */
 const observeOne = (event: unknown, context: TrackerContext): void => {
   const { log, state } = context
@@ -186,6 +191,10 @@ const observeOne = (event: unknown, context: TrackerContext): void => {
 
   // Ahead of the collapse gate below: see `foldStall`.
   state.sinceStep = foldStall(state.sinceStep, activity)
+
+  // Also ahead of it: a provider retry whose line collapses still owes the
+  // transcript its row, message and all.
+  feedProviderRow(event, activity, context)
 
   // `busy` is republished between every step; without this a hundred-step
   // turn writes a hundred identical lines and buries the tool calls.
@@ -207,6 +216,10 @@ const observeOne = (event: unknown, context: TrackerContext): void => {
   }
 
   if (activity.kind === 'step') {
+    // The fold above cleared the evidence; the stamp is the tracker's half, for
+    // the reason `turn-stall.ts` states: a finished step is progress, and the
+    // clock the stall watcher reads restarts on it.
+    state.sinceStep.lastProgressAt = context.now()
     log.info({}, `✓ finished a step — ${state.tokens} tokens, ${state.toolCalls} tool calls so far`)
     return
   }
@@ -235,10 +248,11 @@ export const createProgressTracker = (
   log: Logger,
   options: ProgressTrackerOptions = {},
 ): ProgressTracker => {
+  const now = options.now ?? ((): number => Date.now())
   const context: TrackerContext = {
     sessionId,
     log,
-    now: options.now ?? ((): number => Date.now()),
+    now,
     transcript: options.transcript,
     state: {
       lastAction: 'starting',
@@ -247,7 +261,10 @@ export const createProgressTracker = (
       cost: 0,
       lastCollapsed: null,
       running: new Map(),
-      sinceStep: noStall(),
+      // Stamped at creation: the stall window is measured from a real instant
+      // even in a turn that has decoded no event yet, which is exactly the turn
+      // this clock exists to catch.
+      sinceStep: noStall(now()),
     },
   }
 

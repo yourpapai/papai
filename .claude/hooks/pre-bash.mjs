@@ -5,14 +5,27 @@
 
 import fs from 'node:fs'
 
+import { blockGitBranchCreate } from '../../.hooks/git/checks/block-git-branch-create.mjs'
 import { blockGitCheckoutDiscard } from '../../.hooks/git/checks/block-git-checkout-discard.mjs'
+import { blockGitCheckout } from '../../.hooks/git/checks/block-git-checkout.mjs'
+import { blockGitReset } from '../../.hooks/git/checks/block-git-reset.mjs'
+import { blockGitRm } from '../../.hooks/git/checks/block-git-rm.mjs'
 import { blockGitStash } from '../../.hooks/git/checks/block-git-stash.mjs'
+import { blockGitSwitch } from '../../.hooks/git/checks/block-git-switch.mjs'
 
 try {
   /** @type {{ tool_name?: string, tool_input: Record<string, unknown> }} */
   const ctx = JSON.parse(fs.readFileSync('/dev/stdin', 'utf8'))
 
-  const checks = [blockGitStash, blockGitCheckoutDiscard]
+  const checks = [
+    blockGitStash,
+    blockGitCheckoutDiscard,
+    blockGitReset,
+    blockGitRm,
+    blockGitSwitch,
+    blockGitCheckout,
+    blockGitBranchCreate,
+  ]
   for (const check of checks) {
     const result = check(ctx)
     if (result) {

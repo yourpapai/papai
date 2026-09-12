@@ -10,6 +10,8 @@ import path from 'node:path'
 import { z } from 'zod'
 
 import type { RunAgentOptions, SpawnResult } from '../../review-loop/src/agent-runner.js'
+import { MIN_SECRET_LENGTH } from '../../review-loop/src/backend-select.js'
+import { createClaudeStreamDecoder } from '../../review-loop/src/claude-stream.js'
 import { createLineHandler, enqueueLog } from '../../review-loop/src/line-handler.js'
 import type { ProgressReporter, UsageDelta } from '../../review-loop/src/progress-log.js'
 import { RunStats } from '../../review-loop/src/run-stats.js'
@@ -81,7 +83,62 @@ describe('createLineHandler reporter wiring', () => {
         part: { reason: 'stop', tokens: { input: 5, output: 2, reasoning: 1 }, cost: 0.5 },
       }),
     )
-    expect(deltas).toEqual([{ input: 5, output: 2, reasoning: 1, cost: 0.5, label: 'drain', model: 'm' }])
+    expect(deltas).toEqual([
+      { input: 5, output: 2, reasoning: 1, cacheRead: 0, cacheWrite: 0, cost: 0.5, label: 'drain', model: 'm' },
+    ])
+  })
+
+  test('step_finish forwards cached tokens to the reporter as separate delta fields', () => {
+    const cwd = makeTempDir('line-handler-cache-usage-')
+    const deltas: UsageDelta[] = []
+    const reporter = makeReporter({
+      usage: (d) => {
+        deltas.push(d)
+      },
+    })
+    const handler = createLineHandler({ ...makeOptions(cwd, path.join(cwd, 'agent.log')), reporter })
+    handler.onLine(
+      JSON.stringify({
+        type: 'step_finish',
+        part: {
+          reason: 'stop',
+          tokens: { input: 1757, output: 3, reasoning: 0, cache: { read: 8320, write: 4096 } },
+          cost: 0,
+        },
+      }),
+    )
+    expect(deltas).toEqual([
+      { input: 1757, output: 3, reasoning: 0, cacheRead: 8320, cacheWrite: 4096, cost: 0, label: 'drain', model: 'm' },
+    ])
+  })
+
+  test('step_finish accumulates cached token counters separately from input on ctx.usage', () => {
+    const cwd = makeTempDir('line-handler-cache-accum-')
+    const handler = createLineHandler(makeOptions(cwd, path.join(cwd, 'agent.log')))
+    handler.onLine(
+      JSON.stringify({
+        type: 'step_finish',
+        part: {
+          reason: 'stop',
+          tokens: { input: 100, output: 4, reasoning: 1, cache: { read: 800, write: 60 } },
+          cost: 0,
+        },
+      }),
+    )
+    handler.onLine(
+      JSON.stringify({
+        type: 'step_finish',
+        part: {
+          reason: 'stop',
+          tokens: { input: 50, output: 2, reasoning: 0, cache: { read: 400, write: 30 } },
+          cost: 0,
+        },
+      }),
+    )
+    expect(handler.ctx.usage.inputTokens).toBe(150)
+    expect(handler.ctx.usage.cachedReadTokens).toBe(1200)
+    expect(handler.ctx.usage.cachedWriteTokens).toBe(90)
+    expect(handler.ctx.usage.outputTokens).toBe(6)
   })
 
   test('step_finish delta carries label/model and tool calls accumulate per step', () => {
@@ -115,8 +172,8 @@ describe('createLineHandler reporter wiring', () => {
     handler.onLine(tool('c1'))
     handler.onLine(stepFinish)
     expect(deltas).toEqual([
-      { input: 5, output: 2, reasoning: 1, cost: 0, label: 'drain', model: 'm' },
-      { input: 5, output: 2, reasoning: 1, cost: 0, label: 'drain', model: 'm' },
+      { input: 5, output: 2, reasoning: 1, cacheRead: 0, cacheWrite: 0, cost: 0, label: 'drain', model: 'm' },
+      { input: 5, output: 2, reasoning: 1, cacheRead: 0, cacheWrite: 0, cost: 0, label: 'drain', model: 'm' },
     ])
     expect(stats.snapshot().totals.toolCalls).toBe(2)
     expect(stats.snapshot().perLabel['drain']?.input).toBe(10)
@@ -264,5 +321,337 @@ describe('createLineHandler reporter wiring', () => {
     handler.onLine(JSON.stringify({ type: 'step_start', timestamp: 1, part: {} }))
     await handler.dispose()
     expect(slots[slots.length - 1]).toEqual(['drain', null])
+  })
+})
+
+describe('createLineHandler decoder injection', () => {
+  test('defaults to the opencode adapter when no decoder is passed', () => {
+    const cwd = makeTempDir('line-handler-default-decoder-')
+    const handler = createLineHandler(makeOptions(cwd, path.join(cwd, 'agent.log')))
+    handler.onLine(
+      JSON.stringify({
+        type: 'tool_use',
+        part: { tool: 'read', callID: 'c1', state: { status: 'running', input: { filePath: '/a' } } },
+      }),
+    )
+    expect(handler.ctx.toolCount).toBe(1)
+    // An opencode line carries its session id top-level; the default adapter reads it.
+    handler.onLine(JSON.stringify({ type: 'step_start', sessionID: 'ses_oc', timestamp: 1, part: {} }))
+    expect(handler.ctx.sessionId).toBe('ses_oc')
+  })
+
+  test('an injected claude decoder processes claude NDJSON lines', () => {
+    const cwd = makeTempDir('line-handler-claude-decoder-')
+    const handler = createLineHandler(makeOptions(cwd, path.join(cwd, 'agent.log')), createClaudeStreamDecoder())
+
+    handler.onLine(JSON.stringify({ type: 'system', subtype: 'init', session_id: 'claude-sess-1', cwd, tools: [] }))
+    expect(handler.ctx.sessionId).toBe('claude-sess-1')
+
+    handler.onLine(
+      JSON.stringify({
+        type: 'assistant',
+        message: {
+          content: [{ type: 'tool_use', id: 'toolu_1', name: 'Read', input: { file_path: 'README.md' } }],
+          stop_reason: 'tool_use',
+        },
+        session_id: 'claude-sess-1',
+      }),
+    )
+    expect(handler.ctx.toolCount).toBe(1)
+    expect(handler.ctx.tool).toBe('Read')
+
+    handler.onLine(
+      JSON.stringify({
+        type: 'result',
+        is_error: false,
+        stop_reason: 'end_turn',
+        session_id: 'claude-sess-1',
+        total_cost_usd: 0.02,
+        usage: { input_tokens: 10, output_tokens: 5, cache_read_input_tokens: 0, cache_creation_input_tokens: 0 },
+      }),
+    )
+    expect(handler.ctx.usage.inputTokens).toBe(10)
+    expect(handler.ctx.usage.costUsd).toBeCloseTo(0.02)
+  })
+
+  test('the decoder is re-armable per attempt', () => {
+    // runAttempt re-arms the decoder beside handler.ctx.sessionId so a retry
+    // never reads the stalled attempt's result line as its own.
+    const cwd = makeTempDir('line-handler-rearm-decoder-')
+    const handler = createLineHandler(makeOptions(cwd, path.join(cwd, 'agent.log')), createClaudeStreamDecoder())
+    handler.onLine(
+      JSON.stringify({ type: 'result', is_error: true, stop_reason: 'stop_sequence', total_cost_usd: 0, usage: {} }),
+    )
+    expect(handler.decoder.resultOutcome()).toEqual({ seen: true, isError: true })
+
+    handler.decoder = createClaudeStreamDecoder()
+    handler.ctx.sessionId = null
+    expect(handler.decoder.resultOutcome()).toEqual({ seen: false, isError: false })
+  })
+})
+
+describe('createLineHandler credential scrub (enqueueLog sink)', () => {
+  const SECRET = 'sk-ant-secret-0123456789'
+
+  function claudeOptions(cwd: string, logPath: string, credentialValue: string): RunAgentOptions<{ ok: boolean }> {
+    return {
+      ...makeOptions(cwd, logPath),
+      backend: 'claude',
+      claude: {
+        profile: 'bare',
+        credentialName: 'ANTHROPIC_API_KEY',
+        credentialValue,
+        configDirRoot: path.join(cwd, 'claude-root'),
+        envSource: {},
+      },
+    }
+  }
+
+  test('MIN_SECRET_LENGTH mirrors the parent route 12-char floor', () => {
+    expect(MIN_SECRET_LENGTH).toBe(12)
+  })
+
+  test('a raw NDJSON line embedding the credential comes out of the sink scrubbed', async () => {
+    const cwd = makeTempDir('line-handler-scrub-raw-')
+    const logPath = path.join(cwd, 'agent.log')
+    const handler = createLineHandler(claudeOptions(cwd, logPath, SECRET))
+    handler.onLine(
+      JSON.stringify({
+        type: 'user',
+        message: {
+          content: [{ type: 'tool_result', tool_use_id: 't1', content: `printenv said ${SECRET}`, is_error: false }],
+        },
+      }),
+    )
+    await handler.dispose()
+    const logged = readFileSync(logPath, 'utf8')
+    expect(logged).toContain('[redacted]')
+    expect(logged).not.toContain(SECRET)
+  })
+
+  test('the stderr caller path (enqueueLog directly) is scrubbed by construction', async () => {
+    const cwd = makeTempDir('line-handler-scrub-stderr-')
+    const logPath = path.join(cwd, 'agent.log')
+    const handler = createLineHandler(claudeOptions(cwd, logPath, SECRET))
+    enqueueLog(handler.ctx, `[fixer-w1] stderr: env: ANTHROPIC_API_KEY=${SECRET}\n`)
+    await handler.dispose()
+    const logged = readFileSync(logPath, 'utf8')
+    expect(logged).toContain('[redacted]')
+    expect(logged).not.toContain(SECRET)
+  })
+
+  test('a sub-floor credential value survives the scrub unscrubbed', async () => {
+    const cwd = makeTempDir('line-handler-scrub-subfloor-')
+    const logPath = path.join(cwd, 'agent.log')
+    const shortValue = 'short-token'
+    expect(shortValue.length).toBeLessThan(MIN_SECRET_LENGTH)
+    const handler = createLineHandler(claudeOptions(cwd, logPath, shortValue))
+    handler.onLine(`echo ${shortValue}`)
+    await handler.dispose()
+    const logged = readFileSync(logPath, 'utf8')
+    expect(logged).toContain(shortValue)
+  })
+
+  test('the opencode route (no claude context) logs verbatim', async () => {
+    const cwd = makeTempDir('line-handler-noscrub-')
+    const logPath = path.join(cwd, 'agent.log')
+    const handler = createLineHandler(makeOptions(cwd, logPath))
+    handler.onLine(`harmless ${SECRET}`)
+    await handler.dispose()
+    const logged = readFileSync(logPath, 'utf8')
+    expect(logged).toContain(SECRET)
+  })
+})
+
+describe('createLineHandler todo capture', () => {
+  type TodoItems = readonly { content: string; status: string }[]
+
+  function todoReporter(): { reporter: ProgressReporter; lists: TodoItems[] } {
+    const lists: TodoItems[] = []
+    const reporter: ProgressReporter = {
+      dynamic: false,
+      event: () => {},
+      live: () => {},
+      clearLive: () => {},
+      log: () => {},
+      todos: (items) => {
+        lists.push(items)
+      },
+    }
+    return { reporter, lists }
+  }
+
+  // Pinned verbatim from walk-drill-target transcripts (agent-todos-capture D2):
+  // .afk-runner/runs/fix-the-response-delivery-path-verification-fallback-chunking/
+  // transcripts/resolver-r1-r1-a1.jsonl
+  const opencodeTodoLine =
+    '{"type":"tool_use","timestamp":1788845620465,"sessionID":"ses_f8080803dffeq3Fy1J3stieiKK","part":{"type":"tool","tool":"todowrite","callID":"call_dda71847a3bc44dd8d038d5c","state":{"status":"completed","input":{"todos":[{"content":"Locate and read the four artifacts + .review-loop dir","status":"in_progress","priority":"high"},{"content":"Verify code evidence behind findings (proactive path, builder tests, telegram format)","status":"pending","priority":"high"},{"content":"Edit specs/verified-completion/spec.md (F1/F2/S1/S2)","status":"pending","priority":"high"},{"content":"Edit design.md (F2 wording, F3, S3, S4, S5)","status":"pending","priority":"high"},{"content":"Edit proposal.md (F4 list alignment, F5 word trim)","status":"pending","priority":"high"},{"content":"Write .review-loop/resolutions-1.json","status":"pending","priority":"high"}]},"output":"[\\n  {\\n    \\"content\\": \\"Locate and read the four artifacts + .review-loop dir\\",\\n    \\"status\\": \\"in_progress\\",\\n    \\"priority\\": \\"high\\"\\n  }\\n]","metadata":{"todos":[{"content":"Locate and read the four artifacts + .review-loop dir","status":"in_progress","priority":"high"}],"truncated":false},"title":"6 todos","time":{"start":1788845620447,"end":1788845620450}},"id":"prt_07f81fcd7001drAyy2QaQ7n519","sessionID":"ses_f8080803dffeq3Fy1J3stieiKK","messageID":"msg_07f7f80c90017RdZOsgrTocsBy"}}'
+
+  test('the pinned opencode todowrite envelope fires reporter.todos with normalized items', () => {
+    const cwd = makeTempDir('line-handler-todos-')
+    const { reporter, lists } = todoReporter()
+    const handler = createLineHandler({ ...makeOptions(cwd, path.join(cwd, 'agent.log')), reporter })
+    handler.onLine(opencodeTodoLine)
+    expect(lists).toEqual([
+      [
+        { content: 'Locate and read the four artifacts + .review-loop dir', status: 'in_progress' },
+        {
+          content: 'Verify code evidence behind findings (proactive path, builder tests, telegram format)',
+          status: 'pending',
+        },
+        { content: 'Edit specs/verified-completion/spec.md (F1/F2/S1/S2)', status: 'pending' },
+        { content: 'Edit design.md (F2 wording, F3, S3, S4, S5)', status: 'pending' },
+        { content: 'Edit proposal.md (F4 list alignment, F5 word trim)', status: 'pending' },
+        { content: 'Write .review-loop/resolutions-1.json', status: 'pending' },
+      ],
+    ])
+  })
+
+  test('todoread emits nothing', () => {
+    const cwd = makeTempDir('line-handler-todoread-')
+    const { reporter, lists } = todoReporter()
+    const handler = createLineHandler({ ...makeOptions(cwd, path.join(cwd, 'agent.log')), reporter })
+    handler.onLine(
+      JSON.stringify({
+        type: 'tool_use',
+        part: { tool: 'todoread', callID: 'c1', state: { status: 'completed', input: { todos: [] } } },
+      }),
+    )
+    expect(lists).toEqual([])
+  })
+
+  test('the claude route TodoWrite envelope normalizes activeForm away', () => {
+    const cwd = makeTempDir('line-handler-claude-todos-')
+    const { reporter, lists } = todoReporter()
+    const handler = createLineHandler(
+      { ...makeOptions(cwd, path.join(cwd, 'agent.log')), reporter },
+      createClaudeStreamDecoder(),
+    )
+    handler.onLine(
+      JSON.stringify({
+        type: 'assistant',
+        message: {
+          content: [
+            {
+              type: 'tool_use',
+              id: 'toolu_1',
+              name: 'TodoWrite',
+              input: {
+                todos: [
+                  { content: 'Write the failing test', status: 'in_progress', activeForm: 'Writing the failing test' },
+                  { content: 'Implement the hook', status: 'pending', activeForm: 'Implementing the hook' },
+                ],
+              },
+            },
+          ],
+        },
+        session_id: 'claude-sess-1',
+      }),
+    )
+    expect(lists).toEqual([
+      [
+        { content: 'Write the failing test', status: 'in_progress' },
+        { content: 'Implement the hook', status: 'pending' },
+      ],
+    ])
+  })
+
+  test('an unknown tool emits nothing', () => {
+    const cwd = makeTempDir('line-handler-unknown-tool-')
+    const { reporter, lists } = todoReporter()
+    const handler = createLineHandler({ ...makeOptions(cwd, path.join(cwd, 'agent.log')), reporter })
+    handler.onLine(
+      JSON.stringify({
+        type: 'tool_use',
+        part: {
+          tool: 'read',
+          callID: 'c1',
+          state: { status: 'running', input: { todos: [{ content: 'x', status: 'pending' }] } },
+        },
+      }),
+    )
+    expect(lists).toEqual([])
+  })
+})
+
+describe('createLineHandler session capture seam', () => {
+  test('reports the session id once, on the first session-bearing line', () => {
+    const cwd = makeTempDir('line-handler-session-')
+    const reported: Array<{ id: string; attempt: number }> = []
+    const handler = createLineHandler({
+      ...makeOptions(cwd, path.join(cwd, 'agent.log')),
+      sessionLedger: {
+        recordSessionId: (id, attempt) => {
+          reported.push({ id, attempt })
+        },
+      },
+    })
+    handler.onLine(
+      JSON.stringify({ type: 'step_start', sessionID: 'ses_abc', timestamp: 1, part: { type: 'step-start' } }),
+    )
+    handler.onLine(
+      JSON.stringify({ type: 'step_start', sessionID: 'ses_abc', timestamp: 2, part: { type: 'step-start' } }),
+    )
+    handler.onLine(
+      JSON.stringify({ type: 'tool_use', sessionID: 'ses_abc', part: { tool: 'read', callID: 'c1', state: {} } }),
+    )
+    expect(reported).toEqual([{ id: 'ses_abc', attempt: 1 }])
+  })
+
+  test('never reports when no session-bearing line arrives', () => {
+    const cwd = makeTempDir('line-handler-nosession-')
+    const reported: string[] = []
+    const handler = createLineHandler({
+      ...makeOptions(cwd, path.join(cwd, 'agent.log')),
+      sessionLedger: {
+        recordSessionId: (id) => {
+          reported.push(id)
+        },
+      },
+    })
+    handler.onLine(JSON.stringify({ type: 'step_start', timestamp: 1, part: {} }))
+    handler.onLine('{ not json')
+    expect(reported).toEqual([])
+  })
+
+  test('a ledger error never fails the line handler (best-effort capture)', () => {
+    const cwd = makeTempDir('line-handler-ledger-throw-')
+    const handler = createLineHandler({
+      ...makeOptions(cwd, path.join(cwd, 'agent.log')),
+      sessionLedger: {
+        recordSessionId: () => {
+          throw new Error('disk on fire')
+        },
+      },
+    })
+    handler.onLine(
+      JSON.stringify({ type: 'step_start', sessionID: 'ses_x', timestamp: 1, part: { type: 'step-start' } }),
+    )
+  })
+
+  test('re-arming the seam records the next session under a fresh attempt', () => {
+    const cwd = makeTempDir('line-handler-rearm-')
+    const attempts: number[] = []
+    const ledger = {
+      recordSessionId: (_id: string, attempt: number): void => {
+        attempts.push(attempt)
+      },
+    }
+    const handler = createLineHandler({
+      ...makeOptions(cwd, path.join(cwd, 'agent.log')),
+      sessionLedger: ledger,
+    })
+    handler.onLine(
+      JSON.stringify({ type: 'step_start', sessionID: 'ses_a', timestamp: 1, part: { type: 'step-start' } }),
+    )
+    // runAgent's stall retry re-arms the seam before the second attempt
+    const rearmed = createLineHandler({
+      ...makeOptions(cwd, path.join(cwd, 'agent.log')),
+      sessionLedger: ledger,
+    })
+    rearmed.onLine(
+      JSON.stringify({ type: 'step_start', sessionID: 'ses_b', timestamp: 2, part: { type: 'step-start' } }),
+    )
+    expect(attempts).toEqual([1, 1])
   })
 })

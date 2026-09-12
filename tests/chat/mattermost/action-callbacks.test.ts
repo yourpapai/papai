@@ -3,7 +3,7 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { afterEach, describe, expect, test } from 'bun:test'
+import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
 
 import { routeInteraction } from '../../../src/chat/interaction-router.js'
 import {
@@ -16,6 +16,7 @@ import {
 import { createMattermostActionContext } from '../../../src/chat/mattermost/action-signing.js'
 import { toScopedThreadContextId } from '../../../src/chat/scoped-context.js'
 import type { ReplyFn } from '../../../src/chat/types.js'
+import { mockLogger, setupTestDb } from '../../utils/test-helpers.js'
 
 const secret = 'test-secret'
 
@@ -46,6 +47,10 @@ const requestWithContext = (context: unknown, channelId = 'chan-1', threadId?: s
   })
 
 describe('Mattermost action callbacks', () => {
+  beforeEach(async () => {
+    mockLogger()
+    await setupTestDb()
+  })
   afterEach(() => unregisterMattermostActionDispatcher('mattermost-main'))
 
   test('dispatches valid signed callbacks to registered provider', async () => {

@@ -84,8 +84,11 @@ function doKeywordSearch(
   scope: MessageScope,
   input: SearchChatHistoryInput,
   mode: ResultMode,
+  chatUserId: string,
 ): SearchChatHistoryOutput {
-  const results = searchMessages(scope, input.query, toFilters(input), input.limit).map((m) => toResultRow(m))
+  const results = searchMessages(scope, input.query, toFilters(input), input.limit, chatUserId).map((m) =>
+    toResultRow(m),
+  )
   log.info({ resultCount: results.length, mode }, 'keyword search completed')
   return { results, total: results.length, mode, hasMore: results.length === input.limit }
 }
@@ -120,7 +123,7 @@ async function executeSearch(
     { queryLengthChars: input.query.length, mode: input.mode, limit: input.limit },
     'search_chat_history called',
   )
-  if (input.mode === 'keyword') return doKeywordSearch(scope, input, 'keyword')
+  if (input.mode === 'keyword') return doKeywordSearch(scope, input, 'keyword', embeddingCtx.chatUserId)
 
   const queryVec = await getEmbeddingForContext(input.query, configContextId, embeddingCtx)
   if (queryVec === null) {
@@ -128,14 +131,14 @@ async function executeSearch(
       log.info('semantic unavailable; no embedding model resolved')
       return { results: [], total: 0, mode: 'semantic_unavailable', hasMore: false }
     }
-    return doKeywordSearch(scope, input, 'keyword_fallback')
+    return doKeywordSearch(scope, input, 'keyword_fallback', embeddingCtx.chatUserId)
   }
 
   if (input.mode === 'semantic') return doSemanticSearch(scope, input, queryVec)
 
   const semantic = doSemanticSearch(scope, input, queryVec)
   if (semantic.results.length > 0) return semantic
-  return doKeywordSearch(scope, input, 'keyword_fallback')
+  return doKeywordSearch(scope, input, 'keyword_fallback', embeddingCtx.chatUserId)
 }
 
 export function makeSearchChatHistoryTool(

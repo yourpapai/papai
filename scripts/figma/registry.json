@@ -1,0 +1,380 @@
+{
+  "version": 1,
+  "fileKey": "o8B8JfxhFeOHqIfpv0eSdZ",
+  "components": [
+    {
+      "name": "ui/Btn",
+      "figmaNode": "19:35",
+      "source": "client/shared/ui/Btn.svelte",
+      "props": { "Variant": "variant", "Label": "children" },
+      "values": {
+        "Primary": "primary",
+        "Secondary": "secondary",
+        "Outline": "outline",
+        "Ghost": "ghost",
+        "Danger": "danger"
+      }
+    },
+    {
+      "name": "ui/Input",
+      "figmaNode": "22:45",
+      "source": "client/shared/ui/Input.svelte",
+      "props": { "Value": "value", "Placeholder": "placeholder", "Type": "type" },
+      "values": { "Text": "text", "Search": "search", "Password": "password" }
+    },
+    {
+      "name": "ui/Field",
+      "figmaNode": "22:47",
+      "source": "client/shared/ui/Field.svelte",
+      "props": { "Label": "label", "Required": "required", "Hint": "hint", "Error": "error" },
+      "values": {}
+    },
+    {
+      "name": "ui/PageHeader",
+      "figmaNode": "22:52",
+      "source": "client/shared/ui/PageHeader.svelte",
+      "props": { "Title": "title", "Eyebrow": "eyebrow", "Sub": "sub" },
+      "values": {}
+    },
+    {
+      "name": "ui/SidebarLink",
+      "figmaNode": "22:62",
+      "source": "client/settings/components/SettingsSidebar.svelte",
+      "props": { "Label": "label", "Active": "active" },
+      "values": { "True": "true", "False": "false" }
+    },
+    {
+      "name": "ui/TopBar",
+      "figmaNode": "22:65",
+      "source": "client/settings/components/SettingsTopBar.svelte",
+      "props": {},
+      "values": {}
+    },
+    {
+      "name": "shared/Modal",
+      "figmaNode": "50:68",
+      "source": "client/shared/Modal.svelte",
+      "props": { "Title": "title", "Size": "size", "Body": "children" },
+      "values": { "Sm": "sm", "Md": "md", "Lg": "lg", "Xl": "xl" }
+    },
+    {
+      "name": "shared/Confirm",
+      "figmaNode": "50:74",
+      "source": "client/shared/Confirm.svelte",
+      "props": {
+        "Title": "title",
+        "Body": "children",
+        "CancelLabel": "cancelLabel",
+        "ConfirmLabel": "confirmLabel",
+        "Danger": "danger",
+        "Busy": "busy"
+      },
+      "values": { "True": "true", "False": "false" }
+    },
+    {
+      "name": "shared/TreeView",
+      "figmaNode": "51:70",
+      "source": "client/shared/TreeView.svelte",
+      "props": { "Label": "label" },
+      "values": {}
+    },
+    {
+      "name": "shared/PropertiesTable",
+      "figmaNode": "50:91",
+      "source": "client/shared/PropertiesTable.svelte",
+      "props": {},
+      "values": {}
+    },
+    {
+      "name": "ui/DataTable",
+      "figmaNode": "57:100",
+      "source": "client/shared/ui/DataTable.svelte",
+      "props": { "Empty": "empty" },
+      "values": {}
+    },
+    {
+      "name": "ui/Select",
+      "figmaNode": "57:87",
+      "source": "client/shared/ui/Select.svelte",
+      "props": { "Value": "value", "Placeholder": "placeholder", "Disabled": "disabled" },
+      "values": { "True": "true", "False": "false" }
+    },
+    {
+      "name": "ui/Segmented",
+      "figmaNode": "57:88",
+      "source": "client/shared/ui/SegmentedControl.svelte",
+      "props": { "Value": "value" },
+      "values": { "Allow": "allow", "Ask": "ask", "Deny": "deny" }
+    },
+    {
+      "name": "ui/Pill",
+      "figmaNode": "57:89",
+      "source": "client/shared/ui/Pill.svelte",
+      "props": { "Label": "children", "Dot": "dot" },
+      "values": {
+        "Accent": "accent",
+        "Warn": "warn",
+        "Danger": "danger",
+        "Info": "info",
+        "Neutral": "neutral",
+        "Mute": "mute",
+        "True": "true",
+        "False": "false"
+      }
+    },
+    {
+      "name": "ui/MetricCard",
+      "figmaNode": "56:123",
+      "source": "client/shared/ui/MetricCard.svelte",
+      "props": { "Label": "label", "Value": "value", "Sub": "sub" },
+      "values": {}
+    },
+    {
+      "name": "settings/SettingsFieldShell",
+      "figmaNode": "62:71",
+      "source": "client/settings/components/SettingsFieldShell.svelte",
+      "props": {
+        "Label": "label",
+        "Required": "required",
+        "EditorOpen": "editorOpen",
+        "Head": "children",
+        "Error": "error",
+        "Hint": "hint"
+      },
+      "values": { "True": "true", "False": "false" }
+    },
+    {
+      "name": "settings/SettingsTable",
+      "figmaNode": "62:80",
+      "source": "client/settings/components/SettingsTable.svelte",
+      "props": { "SearchPlaceholder": "searchPlaceholder", "Empty": "empty" },
+      "values": {}
+    },
+    {
+      "name": "settings/SettingsGate",
+      "figmaNode": "62:125",
+      "source": "client/settings/components/SettingsGate.svelte",
+      "props": {},
+      "values": {}
+    },
+    {
+      "name": "settings/SettingsGroupToggle",
+      "figmaNode": "62:126",
+      "source": "client/settings/components/SettingsGroupToggle.svelte",
+      "props": { "Label": "label", "Hint": "hint", "Collapsed": "collapsed" },
+      "values": { "True": "true", "False": "false" }
+    },
+    {
+      "name": "settings/SettingsJumpMenu",
+      "figmaNode": "62:112",
+      "source": "client/settings/components/SettingsJumpMenu.svelte",
+      "props": { "ActiveId": "activeId" },
+      "values": {}
+    },
+    {
+      "name": "settings/ConfigFieldRow",
+      "figmaNode": "62:117",
+      "source": "client/settings/components/ConfigFieldRow.svelte",
+      "props": { "Hint": "hint" },
+      "values": {}
+    },
+    {
+      "name": "settings/ProviderForm",
+      "figmaNode": "69:77",
+      "source": "client/settings/components/ProviderForm.svelte",
+      "props": { "Busy": "busy", "RequireApiKey": "requireApiKey", "EditMode": "editMode" },
+      "values": { "True": "true", "False": "false" }
+    },
+    {
+      "name": "settings/ProviderModelsEditor",
+      "figmaNode": "69:91",
+      "source": "client/settings/components/ProviderModelsEditor.svelte",
+      "props": { "Models": "models", "Busy": "busy" },
+      "values": { "True": "true", "False": "false" }
+    },
+    {
+      "name": "settings/RoleBindingBlock",
+      "figmaNode": "69:114",
+      "source": "client/settings/components/RoleBindingBlock.svelte",
+      "props": { "RoleName": "roleName", "CanInherit": "canInherit", "InheritLabel": "inheritLabel" },
+      "values": { "True": "true", "False": "false" }
+    },
+    {
+      "name": "settings/PluginCard",
+      "figmaNode": "69:120",
+      "source": "client/settings/components/PluginCard.svelte",
+      "props": {},
+      "values": {}
+    },
+    {
+      "name": "settings/IdCell",
+      "figmaNode": "69:107",
+      "source": "client/settings/components/IdCell.svelte",
+      "props": { "Value": "value" },
+      "values": {}
+    },
+    {
+      "name": "settings/VerificationPill",
+      "figmaNode": "69:143",
+      "source": "client/settings/components/VerificationPill.svelte",
+      "props": { "Label": "children", "Status": "verification.status" },
+      "values": { "Verified": "verified", "Error": "error", "Unverified": "unverified" }
+    },
+    {
+      "name": "admin/AdminTopBar",
+      "figmaNode": "72:95",
+      "source": "client/admin/components/AdminTopBar.svelte",
+      "props": {},
+      "values": {}
+    },
+    {
+      "name": "admin/AdminSidebarPanel",
+      "figmaNode": "72:149",
+      "source": "client/admin/components/AdminSidebarPanel.svelte",
+      "props": { "ActiveId": "activeId" },
+      "values": {}
+    },
+    {
+      "name": "admin/StatsPanel",
+      "figmaNode": "72:111",
+      "source": "client/admin/components/StatsPanel.svelte",
+      "props": {},
+      "values": {}
+    },
+    {
+      "name": "admin/SubjectDetail",
+      "figmaNode": "72:131",
+      "source": "client/admin/components/SubjectDetail.svelte",
+      "props": {},
+      "values": {}
+    },
+    {
+      "name": "admin/SubjectsTable",
+      "figmaNode": "72:164",
+      "source": "client/admin/components/SubjectsTable.svelte",
+      "props": {},
+      "values": {}
+    },
+    {
+      "name": "admin/SubjectStatsPanel",
+      "figmaNode": "72:175",
+      "source": "client/admin/components/SubjectStatsPanel.svelte",
+      "props": { "StorageContextId": "storageContextId" },
+      "values": {}
+    },
+    {
+      "name": "admin/AdminJumpMenu",
+      "figmaNode": "72:183",
+      "source": "client/admin/components/AdminJumpMenu.svelte",
+      "props": { "ActiveId": "activeId" },
+      "values": {}
+    }
+  ],
+  "screens": [
+    {
+      "name": "screen/SettingsApp",
+      "figmaNode": "22:198",
+      "source": "client/settings/SettingsApp.svelte"
+    },
+    {
+      "name": "screen/MembersSection",
+      "figmaNode": "23:58",
+      "source": "client/settings/sections/MembersSection.svelte"
+    },
+    {
+      "name": "screen/TaskProviderSection",
+      "figmaNode": "23:103",
+      "source": "client/settings/sections/TaskProviderSection.svelte"
+    },
+    {
+      "name": "screen/ToolsSection",
+      "figmaNode": "25:133",
+      "source": "client/settings/sections/ToolsSection.svelte"
+    },
+    {
+      "name": "screen/OverviewSection (admin)",
+      "figmaNode": "25:221",
+      "source": "client/admin/sections/OverviewSection.svelte"
+    }
+  ],
+  "sections": [
+    {
+      "screen": "screen/SettingsApp",
+      "section": "Sidebar",
+      "figmaNode": "22:206",
+      "source": "client/settings/components/SettingsSidebar.svelte"
+    },
+    {
+      "screen": "screen/SettingsApp",
+      "section": "Section — profile",
+      "figmaNode": "22:248",
+      "source": "client/settings/sections/ProfileSection.svelte"
+    },
+    {
+      "screen": "screen/SettingsApp",
+      "section": "Section — task-provider",
+      "figmaNode": "22:260",
+      "source": "client/settings/sections/TaskProviderSection.svelte"
+    },
+    {
+      "screen": "screen/SettingsApp",
+      "section": "Section — tools",
+      "figmaNode": "22:275",
+      "source": "client/settings/sections/ToolsSection.svelte"
+    },
+    {
+      "screen": "screen/MembersSection",
+      "section": "Add form",
+      "figmaNode": "23:65",
+      "source": "client/settings/sections/MembersSection.svelte"
+    },
+    {
+      "screen": "screen/MembersSection",
+      "section": "DataTable — members",
+      "figmaNode": "23:73",
+      "source": "client/settings/sections/MembersSection.svelte"
+    },
+    {
+      "screen": "screen/TaskProviderSection",
+      "section": "Bind form",
+      "figmaNode": "23:110",
+      "source": "client/settings/sections/TaskProviderSection.svelte"
+    },
+    {
+      "screen": "screen/TaskProviderSection",
+      "section": "Provision block",
+      "figmaNode": "23:120",
+      "source": "client/settings/sections/TaskProviderSection.svelte"
+    },
+    {
+      "screen": "screen/ToolsSection",
+      "section": "Preset row",
+      "figmaNode": "25:140",
+      "source": "client/settings/sections/ToolsSection.svelte"
+    },
+    {
+      "screen": "screen/ToolsSection",
+      "section": "Domain — TASKS",
+      "figmaNode": "25:151",
+      "source": "client/settings/sections/ToolsSection.svelte"
+    },
+    {
+      "screen": "screen/ToolsSection",
+      "section": "Domain — WEB",
+      "figmaNode": "25:192",
+      "source": "client/settings/sections/ToolsSection.svelte"
+    },
+    {
+      "screen": "screen/OverviewSection (admin)",
+      "section": "KPI row",
+      "figmaNode": "25:228",
+      "source": "client/admin/sections/OverviewSection.svelte"
+    },
+    {
+      "screen": "screen/OverviewSection (admin)",
+      "section": "Charts",
+      "figmaNode": "25:249",
+      "source": "client/admin/sections/OverviewSection.svelte"
+    }
+  ]
+}

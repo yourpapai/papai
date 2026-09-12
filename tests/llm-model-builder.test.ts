@@ -3,13 +3,19 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { beforeEach, describe, expect, it, mock } from 'bun:test'
+import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
 
 import { createOpenAICompatible } from '@ai-sdk/openai-compatible'
+import { generateText } from 'ai'
+import { z } from 'zod'
 
+import { AI_REASONING_EFFORT_KEY, resolveEffectiveReasoningEffort } from '../src/ai-output-settings.js'
+import { setCachedConfig } from '../src/cache.js'
 import { buildChatModel, getOpenAICompatibleProvider, type ModelBuilderDeps } from '../src/llm-model-builder.js'
 import { clearModelBuilderCacheForTesting } from '../src/llm-model-builder.testing.js'
+import type { ModelMetadata } from '../src/models-dev/resolve.js'
 import { fetchWithoutTimeout } from '../src/utils/fetch.js'
+import { mockLogger, restoreFetch, setMockFetch, setupTestDb } from './utils/test-helpers.js'
 
 function makeDeps(): { create: ReturnType<typeof mock>; deps: ModelBuilderDeps } {
   const create = mock((opts: Parameters<typeof createOpenAICompatible>[0]) => createOpenAICompatible(opts))
@@ -62,5 +68,171 @@ describe('llm-model-builder', () => {
   it('buildChatModel returns a model bound to the requested model name', () => {
     const model = buildChatModel('k1', 'http://x', 'small-model-1')
     expect(model).toMatchObject({ modelId: 'small-model-1' })
+  })
+})
+
+describe('buildChatModel with metadata', () => {
+  beforeEach(async () => {
+    mockLogger()
+    clearModelBuilderCacheForTesting()
+    await setupTestDb()
+  })
+
+  afterEach(() => {
+    restoreFetch()
+  })
+
+  const metadata = (over: Partial<ModelMetadata> = {}): ModelMetadata => ({
+    providerId: 'openai',
+    modelId: 'm1',
+    contextWindow: 100_000,
+    maxOutputTokens: 777,
+    source: 'models-dev',
+    via: 'inferred',
+    ...over,
+  })
+
+  const chatCompletionResponse = (): Response =>
+    new Response(
+      JSON.stringify({
+        id: 'chatcmpl-1',
+        choices: [{ message: { role: 'assistant', content: 'ok' }, finish_reason: 'stop' }],
+      }),
+      { headers: { 'Content-Type': 'application/json' } },
+    )
+
+  const captureBodies = (): { raw: string[]; json: () => Record<string, unknown>[] } => {
+    const raw: string[] = []
+    const parseBody = (body: string): Record<string, unknown> =>
+      z.record(z.string(), z.unknown()).catch({}).parse(JSON.parse(body))
+    setMockFetch((_url, init) => {
+      raw.push(typeof init.body === 'string' ? init.body : '')
+      return Promise.resolve(chatCompletionResponse())
+    })
+    return { raw, json: () => raw.map(parseBody) }
+  }
+
+  it("a known model's generation request carries the catalogue maxOutputTokens", async () => {
+    const captured = captureBodies()
+
+    await generateText({ model: buildChatModel('k1', 'http://x', 'm1', undefined, metadata()), prompt: 'hi' })
+
+    expect(captured.json()[0]?.['max_tokens']).toBe(777)
+  })
+
+  it("an override entry's cap is honored", async () => {
+    const captured = captureBodies()
+
+    await generateText({
+      model: buildChatModel(
+        'k1',
+        'http://x',
+        'gateway-model',
+        undefined,
+        metadata({ providerId: 'anthropic', modelId: 'claude-declared', maxOutputTokens: 4_000, via: 'override' }),
+      ),
+      prompt: 'hi',
+    })
+
+    expect(captured.json()[0]?.['max_tokens']).toBe(4_000)
+  })
+
+  it('a none model sends byte-identical requests with and without the metadata argument', async () => {
+    const captured = captureBodies()
+
+    await generateText({ model: buildChatModel('k1', 'http://x', 'm1'), prompt: 'hi' })
+    const plainBody = captured.raw[0]
+    await generateText({
+      model: buildChatModel('k1', 'http://x', 'm1', undefined, {
+        providerId: null,
+        modelId: null,
+        contextWindow: null,
+        maxOutputTokens: null,
+        source: 'none',
+        via: null,
+      }),
+      prompt: 'hi',
+    })
+
+    expect(captured.raw[1]).toBe(plainBody)
+  })
+
+  it('the (apiKey, baseUrl) provider cache is untouched by metadata', async () => {
+    const { create, deps } = makeDeps()
+    const captured = captureBodies()
+
+    const first = buildChatModel('k1', 'http://x', 'm1', deps, metadata({ maxOutputTokens: 111 }))
+    const second = buildChatModel('k1', 'http://x', 'm1', deps, metadata({ maxOutputTokens: 222 }))
+
+    expect(create).toHaveBeenCalledTimes(1)
+    expect(second).not.toBe(first)
+
+    await generateText({ model: first, prompt: 'hi' })
+    await generateText({ model: second, prompt: 'hi' })
+
+    expect(captured.json()[0]?.['max_tokens']).toBe(111)
+    expect(captured.json()[1]?.['max_tokens']).toBe(222)
+  })
+
+  it('a stored in-set level rides the request as reasoning_effort', async () => {
+    const captured = captureBodies()
+    setCachedConfig('ctx-effort-in-set', AI_REASONING_EFFORT_KEY, 'high')
+    const effort = resolveEffectiveReasoningEffort('ctx-effort-in-set', metadata({ maxOutputTokens: null }))
+
+    await generateText({
+      model: buildChatModel('k1', 'http://x', 'm1', undefined, metadata({ maxOutputTokens: null }), effort),
+      prompt: 'hi',
+    })
+
+    expect(captured.json()[0]?.['reasoning_effort']).toBe('high')
+    expect(captured.json()[0]?.['max_tokens']).toBeUndefined()
+  })
+
+  it('an unset level leaves the request byte-identical to today', async () => {
+    const captured = captureBodies()
+
+    await generateText({ model: buildChatModel('k1', 'http://x', 'm1', undefined, metadata()), prompt: 'hi' })
+    const today = captured.raw[0]
+    const effort = resolveEffectiveReasoningEffort('ctx-effort-unset', metadata())
+    await generateText({ model: buildChatModel('k1', 'http://x', 'm1', undefined, metadata(), effort), prompt: 'hi' })
+
+    expect(captured.raw[1]).toBe(today)
+  })
+
+  it('a stored level on a catalogue non-reasoning model never reaches the request', async () => {
+    const captured = captureBodies()
+    setCachedConfig('ctx-effort-non-reasoning', AI_REASONING_EFFORT_KEY, 'high')
+    const effort = resolveEffectiveReasoningEffort('ctx-effort-non-reasoning', metadata({ reasoning: false }))
+
+    await generateText({
+      model: buildChatModel('k1', 'http://x', 'm1', undefined, metadata({ reasoning: false }), effort),
+      prompt: 'hi',
+    })
+
+    expect(captured.json()[0]?.['reasoning_effort']).toBeUndefined()
+  })
+
+  it('a stored level outside the catalogue levels never reaches the request', async () => {
+    const captured = captureBodies()
+    setCachedConfig('ctx-effort-out-of-set', AI_REASONING_EFFORT_KEY, 'high')
+    const effort = resolveEffectiveReasoningEffort('ctx-effort-out-of-set', metadata({ effortLevels: ['low'] }))
+
+    await generateText({
+      model: buildChatModel('k1', 'http://x', 'm1', undefined, metadata({ effortLevels: ['low'] }), effort),
+      prompt: 'hi',
+    })
+
+    expect(captured.json()[0]?.['reasoning_effort']).toBeUndefined()
+  })
+
+  it('the effort and the maxOutputTokens cap coexist in one request', async () => {
+    const captured = captureBodies()
+    setCachedConfig('ctx-effort-capped', AI_REASONING_EFFORT_KEY, 'high')
+    const effort = resolveEffectiveReasoningEffort('ctx-effort-capped', metadata())
+
+    await generateText({ model: buildChatModel('k1', 'http://x', 'm1', undefined, metadata(), effort), prompt: 'hi' })
+
+    expect(captured.json()[0]?.['reasoning_effort']).toBe('high')
+    expect(captured.json()[0]?.['max_tokens']).toBe(777)
   })
 })

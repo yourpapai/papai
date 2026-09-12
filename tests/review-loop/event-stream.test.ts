@@ -5,7 +5,7 @@
 
 import { describe, expect, test } from 'bun:test'
 
-import { parseEventLine } from '../../review-loop/src/event-stream.js'
+import { parseEventLine, sessionIdOfLine } from '../../review-loop/src/event-stream.js'
 
 describe('parseEventLine', () => {
   test('parses step_start', () => {
@@ -45,7 +45,69 @@ describe('parseEventLine', () => {
     expect(parseEventLine(line)).toEqual({
       type: 'step_finish',
       reason: 'stop',
-      tokens: { input: 13373, output: 31, reasoning: 0 },
+      tokens: { input: 13373, output: 31, reasoning: 0, cacheRead: 0, cacheWrite: 0 },
+      cost: 0,
+    })
+  })
+
+  test('parses step_finish with cache read/write as separate token counters', () => {
+    const line = JSON.stringify({
+      type: 'step_finish',
+      part: {
+        type: 'step-finish',
+        reason: 'stop',
+        tokens: { total: 10080, input: 1757, output: 3, reasoning: 0, cache: { write: 4096, read: 8320 } },
+        cost: 0,
+      },
+    })
+    expect(parseEventLine(line)).toEqual({
+      type: 'step_finish',
+      reason: 'stop',
+      tokens: { input: 1757, output: 3, reasoning: 0, cacheRead: 8320, cacheWrite: 4096 },
+      cost: 0,
+    })
+  })
+
+  test('step_finish without cache object defaults cache counters to 0', () => {
+    const line = JSON.stringify({
+      type: 'step_finish',
+      part: { type: 'step-finish', reason: 'stop', tokens: { input: 10, output: 2, reasoning: 0 }, cost: 0 },
+    })
+    expect(parseEventLine(line)).toEqual({
+      type: 'step_finish',
+      reason: 'stop',
+      tokens: { input: 10, output: 2, reasoning: 0, cacheRead: 0, cacheWrite: 0 },
+      cost: 0,
+    })
+  })
+
+  test('step_finish with malformed cache values normalizes them to 0', () => {
+    const line = JSON.stringify({
+      type: 'step_finish',
+      part: {
+        type: 'step-finish',
+        reason: 'stop',
+        tokens: { input: 10, output: 2, reasoning: 0, cache: { read: 'lots', write: null } },
+        cost: 0,
+      },
+    })
+    expect(parseEventLine(line)).toEqual({
+      type: 'step_finish',
+      reason: 'stop',
+      tokens: { input: 10, output: 2, reasoning: 0, cacheRead: 0, cacheWrite: 0 },
+      cost: 0,
+    })
+  })
+
+  test('step_finish with non-object cache defaults cache counters to 0', () => {
+    const line = JSON.stringify({
+      type: 'step_finish',
+      part: { type: 'step-finish', reason: 'stop', tokens: { input: 10, output: 2, reasoning: 0, cache: 7 }, cost: 0 },
+    })
+    expect(parseEventLine(line)).toEqual({
+      type: 'step_finish',
+      reason: 'stop',
+      tokens: { input: 10, output: 2, reasoning: 0, cacheRead: 0, cacheWrite: 0 },
       cost: 0,
     })
   })
@@ -69,5 +131,35 @@ describe('parseEventLine', () => {
 
   test('returns null when part is missing', () => {
     expect(parseEventLine(JSON.stringify({ type: 'step_start', timestamp: 1 }))).toBeNull()
+  })
+})
+
+describe('sessionIdOfLine', () => {
+  test('lifts the top-level sessionID from an event line', () => {
+    const line = JSON.stringify({
+      type: 'step_start',
+      sessionID: 'ses_abc',
+      timestamp: 1,
+      part: { type: 'step-start' },
+    })
+    expect(sessionIdOfLine(line)).toBe('ses_abc')
+  })
+
+  test('returns null when the line has no sessionID', () => {
+    const line = JSON.stringify({ type: 'step_start', timestamp: 1, part: { type: 'step-start' } })
+    expect(sessionIdOfLine(line)).toBeNull()
+  })
+
+  test('returns null when sessionID is not a string', () => {
+    expect(sessionIdOfLine(JSON.stringify({ sessionID: 42, part: {} }))).toBeNull()
+    expect(sessionIdOfLine(JSON.stringify({ sessionID: null, part: {} }))).toBeNull()
+  })
+
+  test('returns null when sessionID is an empty string, not a usable id', () => {
+    expect(sessionIdOfLine(JSON.stringify({ sessionID: '', part: {} }))).toBeNull()
+  })
+
+  test('returns null for malformed JSON', () => {
+    expect(sessionIdOfLine('{ not json')).toBeNull()
   })
 })

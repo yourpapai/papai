@@ -75,4 +75,38 @@ describe('replayLeftoverSteerAsFreshTurn', () => {
     expect(captured.turnId).toBeUndefined()
     expect(captured.originatingMessageIds).toEqual([])
   })
+
+  test('forwards isBotAdmin and platformInstanceId from the invocation source', async () => {
+    const captured: { isBotAdmin?: boolean; platformInstanceId?: string; segments?: unknown } = {}
+    const processMessage: ProcessMessageFn = ((
+      _reply,
+      _contextId,
+      _chatUserId,
+      _username,
+      _userText,
+      _contextType,
+      _configContextId,
+      _deps,
+      _attachmentIds,
+      _turnId,
+      _actorRole,
+      _originatingMessageIds,
+      segments,
+      isBotAdmin,
+      platformInstanceId,
+    ) => {
+      captured.segments = segments
+      captured.isBotAdmin = isBotAdmin
+      captured.platformInstanceId = platformInstanceId
+      return Promise.resolve()
+    }) as ProcessMessageFn
+    await replayLeftoverSteerAsFreshTurn([{ text: 'replay me' }], {
+      invocationSource: { ...invocationSource, isBotAdmin: true, platformInstanceId: 'pi-1' },
+      configContextId: undefined,
+      deps: defaultDeps,
+      processMessage,
+    })
+    expect(captured.isBotAdmin).toBe(true)
+    expect(captured.platformInstanceId).toBe('pi-1')
+  })
 })

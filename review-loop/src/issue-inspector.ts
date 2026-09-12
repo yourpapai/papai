@@ -3,14 +3,30 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { agentWritePath, runAgent, AgentRunError, type AgentUsage, type SpawnFn } from './agent-runner.js'
+import {
+  agentWritePath,
+  emptyUsage,
+  runAgent,
+  AgentRunError,
+  type AgentUsage,
+  type ClaudeRunContext,
+  type SpawnFn,
+} from './agent-runner.js'
+import type { AgentBackend } from './config.js'
 import type { IssueWorker } from './issue-processor-attempts.js'
 import type { IssueProcessorDeps } from './issue-processor.js'
-import { type FixerResult, InspectorResultSchema, type InspectorResult, type ReviewerIssue } from './issue-schema.js'
-import { emitInspectComplete, tallyInspector } from './loop-trace.js'
-import type { RoundCollector } from './loop-trace.js'
+import {
+  AggregatedInspectorResultSchema,
+  type AggregatedInspectorResult,
+  type FixerResult,
+  InspectorResultSchema,
+  type InspectorResult,
+  type ReviewerIssue,
+} from './issue-schema.js'
+import { emitInspectComplete } from './loop-trace.js'
 import type { ProgressReporter } from './progress-log.js'
-import { buildInspectPrompt } from './prompt-templates.js'
+import { buildAggregatedInspectPrompt, buildInspectPrompt } from './prompt-templates.js'
+import { tallyInspector, type RoundCollector } from './round-collector.js'
 import { workerOutputPath } from './run-state.js'
 import type { TraceLogger } from './trace-log.js'
 import { execGit } from './worktree.js'
@@ -25,7 +41,11 @@ export interface RunInspectorDeps {
   logPath: string
   reporter: ProgressReporter
   model: string
+  /** The role's reasoning-effort tier (D4); absent is no `--effort` (D6). */
+  effort?: string
   extraArgs: readonly string[]
+  backend?: AgentBackend
+  claude?: ClaudeRunContext
   timeoutMs?: number
   label: string
 }
@@ -55,6 +75,9 @@ export async function runInspector(
   const result = await runAgent({
     spawn: deps.spawn,
     model: deps.model,
+    effort: deps.effort,
+    backend: deps.backend,
+    claude: deps.claude,
     cwd: deps.cwd,
     prompt: buildInspectPrompt(deps.issue, diff, deps.fixerReasoning, agentWritePath(deps.cwd, deps.outputPath)),
     outputPath: deps.outputPath,
@@ -95,7 +118,10 @@ export async function runInspectorOrTreatAsRejection(
         logPath: deps.runState.logPath,
         reporter: deps.log,
         model: inspectorConfig.model,
+        effort: inspectorConfig.effort,
         extraArgs: inspectorConfig.extraArgs,
+        backend: deps.config.backend,
+        claude: deps.config.claude,
         timeoutMs: inspectorConfig.timeoutMs ?? deps.config.agentTimeoutMs,
         label: `inspector${labelSuffix}`,
       },
@@ -114,10 +140,152 @@ export async function runInspectorOrTreatAsRejection(
     return {
       kind: 'unavailable',
       reasoning: `inspector unavailable: ${originalReasoning}`,
-      usage:
-        error instanceof AgentRunError
-          ? error.usage
-          : { inputTokens: 0, outputTokens: 0, reasoningTokens: 0, costUsd: 0, wallMs: 0 },
+      usage: error instanceof AgentRunError ? error.usage : emptyUsage(),
     }
+  }
+}
+
+export interface AggregatedInspectorDeps {
+  spawn: SpawnFn
+  cwd: string
+  issues: readonly { id: string; issue: ReviewerIssue }[]
+  baselineSha: string
+  outputPath: string
+  logPath: string
+  reporter: ProgressReporter
+  model: string
+  /** The role's reasoning-effort tier (D4); absent is no `--effort` (D6). */
+  effort?: string
+  extraArgs: readonly string[]
+  backend?: AgentBackend
+  claude?: ClaudeRunContext
+  timeoutMs?: number
+  label: string
+}
+
+export async function runAggregatedInspector(
+  deps: AggregatedInspectorDeps,
+  round: number,
+  trace: TraceLogger,
+  collector?: RoundCollector,
+): Promise<AggregatedInspectorResult & { kind: 'inspected'; usage: AgentUsage }> {
+  await execGit(deps.cwd, ['add', '-N', '.'])
+  const { stdout: diff } = await execGit(deps.cwd, ['diff', deps.baselineSha])
+  const result = await runAgent({
+    spawn: deps.spawn,
+    model: deps.model,
+    effort: deps.effort,
+    backend: deps.backend,
+    claude: deps.claude,
+    cwd: deps.cwd,
+    prompt: buildAggregatedInspectPrompt(deps.issues, diff, agentWritePath(deps.cwd, deps.outputPath)),
+    outputPath: deps.outputPath,
+    outputSchema: AggregatedInspectorResultSchema,
+    label: deps.label,
+    reporter: deps.reporter,
+    logPath: deps.logPath,
+    extraArgs: deps.extraArgs,
+    timeoutMs: deps.timeoutMs,
+  })
+  for (const r of result.value.results) {
+    emitInspectComplete(trace, round, r.id, r.addresses, r.confidence, r.reasoning)
+    if (collector !== undefined) tallyInspector(collector, r.addresses)
+  }
+  return { ...result.value, kind: 'inspected', usage: result.usage }
+}
+
+function buildAggregatedInspectorUnavailable(
+  deps: { log: ProgressReporter; trace: TraceLogger },
+  issues: readonly { id: string }[],
+  round: number,
+  collector: RoundCollector,
+  error: unknown,
+): { kind: 'unavailable'; reasoning: string; usage: AgentUsage; results: AggregatedInspectorResult['results'] } {
+  const reasoning = `inspector unavailable: ${error instanceof Error ? error.message : String(error)}`
+  deps.log.log(`[inspect] aggregated inspector unavailable: ${reasoning}`)
+  for (const { id } of issues) {
+    emitInspectComplete(deps.trace, round, id, false, 0, reasoning)
+    tallyInspector(collector, false)
+  }
+  return {
+    kind: 'unavailable',
+    reasoning,
+    usage: error instanceof AgentRunError ? error.usage : emptyUsage(),
+    results: issues.map(({ id }) => ({ id, addresses: false, reasoning, confidence: 0 })),
+  }
+}
+
+/** The aggregated inspector's `runAgent` deps, assembled from the resolved role config (design D4). */
+function aggregatedInspectorDeps(
+  deps: {
+    spawn: SpawnFn
+    log: ProgressReporter
+    config: {
+      inspector?: { model: string; effort?: string; extraArgs: readonly string[]; timeoutMs?: number }
+      fixer: { model: string; effort?: string; extraArgs: readonly string[]; timeoutMs?: number }
+      agentTimeoutMs: number
+      backend?: AgentBackend
+      claude?: ClaudeRunContext
+    }
+  },
+  cfg: { model: string; effort?: string; extraArgs: readonly string[]; timeoutMs?: number },
+  worktreePath: string,
+  issues: readonly { id: string; issue: ReviewerIssue }[],
+  baselineSha: string,
+  runDir: string,
+  logPath: string,
+): AggregatedInspectorDeps {
+  return {
+    spawn: deps.spawn,
+    cwd: worktreePath,
+    issues,
+    baselineSha,
+    outputPath: workerOutputPath(runDir, undefined, 'inspect-aggregated.json'),
+    logPath,
+    reporter: deps.log,
+    model: cfg.model,
+    effort: cfg.effort,
+    extraArgs: cfg.extraArgs,
+    backend: deps.config.backend,
+    claude: deps.config.claude,
+    timeoutMs: cfg.timeoutMs ?? deps.config.agentTimeoutMs,
+    label: 'inspector-aggregated',
+  }
+}
+
+export async function runAggregatedInspectorOrTreatAsRejection(
+  deps: {
+    config: {
+      inspector?: { model: string; effort?: string; extraArgs: readonly string[]; timeoutMs?: number }
+      fixer: { model: string; effort?: string; extraArgs: readonly string[]; timeoutMs?: number }
+      agentTimeoutMs: number
+      backend?: AgentBackend
+      claude?: ClaudeRunContext
+    }
+    spawn: SpawnFn
+    log: ProgressReporter
+    trace: TraceLogger
+  },
+  worktreePath: string,
+  issues: readonly { id: string; issue: ReviewerIssue }[],
+  baselineSha: string,
+  round: number,
+  runDir: string,
+  logPath: string,
+  collector: RoundCollector,
+): Promise<
+  | (AggregatedInspectorResult & { kind: 'inspected'; usage: AgentUsage })
+  | { kind: 'unavailable'; reasoning: string; usage: AgentUsage; results: AggregatedInspectorResult['results'] }
+> {
+  const cfg = deps.config.inspector ?? deps.config.fixer
+  try {
+    return await runAggregatedInspector(
+      aggregatedInspectorDeps(deps, cfg, worktreePath, issues, baselineSha, runDir, logPath),
+      round,
+      deps.trace,
+      collector,
+    )
+  } catch (error) {
+    return buildAggregatedInspectorUnavailable(deps, issues, round, collector, error)
   }
 }

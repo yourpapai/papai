@@ -126,20 +126,28 @@ export class TaskProviderResolver {
     this.deps = { ...defaultDeps, ...deps }
   }
 
-  async resolve(contextId: string): Promise<TaskProvider | null> {
+  resolve(contextId: string): Promise<TaskProvider | null> {
     const settings = this.deps.getContextSettings(contextId)
     if (settings === null) {
       log.warn({ contextId }, 'Cannot resolve task provider: context has no task assignment')
-      return null
+      return Promise.resolve(null)
     }
     if (settings.taskInstanceId === null) {
       log.warn({ contextId }, 'Cannot resolve task provider: context has no task assignment')
-      return null
+      return Promise.resolve(null)
     }
 
-    const instance = this.deps.getTaskInstance(settings.taskInstanceId)
+    return this.resolveForInstance(contextId, settings.taskInstanceId)
+  }
+
+  /** Resolves the explicitly given task instance for a context, ignoring the
+   * context's current assignment (used by pinned-instance alert polling).
+   * Context-scoped config fields still come from `contextId`. */
+  async resolveForInstance(contextId: string, taskInstanceId: string): Promise<TaskProvider | null> {
+    log.debug({ contextId, taskInstanceId }, 'resolveForInstance called')
+    const instance = this.deps.getTaskInstance(taskInstanceId)
     if (instance === null) {
-      log.warn({ contextId, taskInstanceId: settings.taskInstanceId }, 'Cannot resolve task provider: instance missing')
+      log.warn({ contextId, taskInstanceId }, 'Cannot resolve task provider: instance missing')
       return null
     }
     if (instance.status !== 'active') {
@@ -150,6 +158,11 @@ export class TaskProviderResolver {
       return null
     }
 
+    const provider = await this.resolveDescriptorAndBuild(contextId, instance)
+    return provider
+  }
+
+  private async resolveDescriptorAndBuild(contextId: string, instance: TaskInstance): Promise<TaskProvider | null> {
     const descriptor = this.deps.getTaskProviderDescriptor(instance.type)
     if (descriptor === undefined) {
       log.warn(

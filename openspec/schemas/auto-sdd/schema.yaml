@@ -293,7 +293,7 @@ artifacts:
     description: Assumption log - unknowns resolved by default instead of by asking
     template: assumptions.md
     instruction: >
-      GENERATED artifact: the sdd-runner materializes this file from JSON
+      GENERATED artifact: the afk-runner materializes this file from JSON
       sidecars; do not hand-write or hand-edit it.
 
 
@@ -310,7 +310,7 @@ artifacts:
     description: Review-round record - findings, classifications, resolutions, convergence
     template: review.md
     instruction: >
-      GENERATED artifact: the sdd-runner materializes this file from
+      GENERATED artifact: the afk-runner materializes this file from
       findings/resolutions JSON sidecars; do not hand-write or hand-edit it.
 
 

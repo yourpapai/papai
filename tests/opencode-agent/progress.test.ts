@@ -399,7 +399,7 @@ describe('the tracker records a provider that is still failing', () => {
     tracker.observe(RETRY)
     tracker.observe(RETRY)
 
-    expect(tracker.stall()).toEqual({ retries: 3, failure: null })
+    expect(tracker.stall()).toMatchObject({ retries: 3, failure: null })
   })
 
   test('a finished step clears it, because that is what recovery looks like', () => {
@@ -420,7 +420,7 @@ describe('the tracker records a provider that is still failing', () => {
 
     tracker.observe(PROVIDER_ERROR)
 
-    expect(tracker.stall()).toEqual({ retries: 0, failure: { name: 'APIError', statusCode: 429 } })
+    expect(tracker.stall()).toMatchObject({ retries: 0, failure: { name: 'APIError', statusCode: 429 } })
   })
 
   test('logs that failure at error, since it is what explains a run that then stops', () => {
@@ -619,6 +619,61 @@ describe('createProgressTracker', () => {
         durationMs: 2_000,
       },
     ])
+  })
+
+  describe('provider rows reach the transcript, one per occurrence', () => {
+    const providerRows = (events: readonly unknown[]): { rows: TranscriptRow[]; lines: Line[] } => {
+      const { log, lines } = recorder()
+      const clock = manualClock()
+      const rows: TranscriptRow[] = []
+      const tracker = createProgressTracker(SESSION, log, {
+        now: clock.now,
+        transcript: { write: (row) => void rows.push(row) },
+      })
+      for (const event of events) tracker.observe(event)
+      return { rows, lines }
+    }
+
+    test('every retry is a row, even when the public line collapses to one', () => {
+      // Same rule as the stall fold: a retry whose duplicate line is
+      // suppressed is still a retry that happened, and the transcript is the
+      // designated place for the provider's own account of it.
+      const { rows, lines } = providerRows([RETRY, RETRY, RETRY])
+
+      expect(rows).toHaveLength(3)
+      expect(rows[0]).toMatchObject({ tool: 'provider', status: 'retry (attempt 1)', detail: 'slow down' })
+      expect(rows.map((row) => row.durationMs)).toEqual([null, null, null])
+      expect(lines.filter((line) => line.message.includes('retry'))).toHaveLength(1)
+    })
+
+    test('a session error is a provider row too, with the message the public log drops', () => {
+      const { rows, lines } = providerRows([PROVIDER_ERROR])
+
+      expect(rows).toEqual([
+        {
+          // `providerRows`'s clock starts where `manualClock`'s does.
+          time: new Date(1_000_000).toISOString(),
+          tool: 'provider',
+          status: 'error',
+          detail: 'rate limit reached',
+          durationMs: null,
+        },
+      ])
+      expect(JSON.stringify(lines)).not.toContain('rate limit reached')
+    })
+
+    test('the public log never carries the provider’s message, however many retries stream', () => {
+      const { lines } = providerRows([RETRY, RETRY, RETRY, PROVIDER_ERROR])
+
+      expect(JSON.stringify(lines)).not.toContain('slow down')
+      expect(JSON.stringify(lines)).not.toContain('rate limit reached')
+    })
+
+    test('a tool row and a provider row coexist, each in its own shape', () => {
+      const { rows } = providerRows([RETRY, BASH_RUNNING])
+
+      expect(rows.map((row) => row.tool)).toEqual(['provider', 'bash'])
+    })
   })
 
   test('counts a tool call once it starts, not when it finishes', () => {

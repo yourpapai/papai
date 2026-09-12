@@ -70,12 +70,7 @@ type BuilderArgs =
       contextType: ContextType | undefined,
       username: string | null | undefined,
       stagedDownloadFn: StagedFileDownloadFn | undefined,
-    ]
-  | readonly [
-      contextType: ContextType | undefined,
-      username: string | null | undefined,
-      stagedDownloadFn: StagedFileDownloadFn | undefined,
-      chatParticipantResolver: ChatParticipantResolver | undefined,
+      chatParticipantResolver?: ChatParticipantResolver | undefined,
     ]
 
 function maybeAddProjectTools(tools: ToolSet, provider: TaskProvider): void {
@@ -262,13 +257,14 @@ export function buildTools(
     username,
     stagedDownloadFn,
     allowTaskDependentDeferredPrompts: true,
+    activityAlertsEnabled: provider.capabilities.has('activities.read') && provider.getTaskHistory !== undefined,
   })
   const storageOwnerId = getStorageOwnerId(chatUserId, contextId)
   if (storageOwnerId !== undefined)
     registerProviderBackedTool(tools, 'promote_memo', makePromoteMemoTool(provider, storageOwnerId))
   maybeAddIdentityTools(tools, provider, chatUserId, contextType)
   if (contextType === 'group' && chatParticipantResolver !== undefined && contextId !== undefined) {
-    tools['resolve_chat_participant'] = makeResolveChatParticipantTool(chatParticipantResolver, contextId)
+    tools['resolve_chat_participant'] = makeResolveChatParticipantTool(chatParticipantResolver, contextId, chatUserId)
   }
   return tools
 }
@@ -294,7 +290,7 @@ export function buildProviderlessTools(
     allowTaskDependentDeferredPrompts: false,
   })
   if (contextType === 'group' && chatParticipantResolver !== undefined && contextId !== undefined) {
-    tools['resolve_chat_participant'] = makeResolveChatParticipantTool(chatParticipantResolver, contextId)
+    tools['resolve_chat_participant'] = makeResolveChatParticipantTool(chatParticipantResolver, contextId, chatUserId)
   }
   return tools
 }

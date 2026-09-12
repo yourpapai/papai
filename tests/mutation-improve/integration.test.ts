@@ -19,7 +19,15 @@ import { cleanupTempDirs, makeTempDir } from './test-helpers.js'
 
 afterEach(cleanupTempDirs)
 
-const emptyUsage = (): AgentUsage => ({ inputTokens: 0, outputTokens: 0, reasoningTokens: 0, costUsd: 0, wallMs: 0 })
+const emptyUsage = (): AgentUsage => ({
+  inputTokens: 0,
+  outputTokens: 0,
+  reasoningTokens: 0,
+  cachedReadTokens: 0,
+  cachedWriteTokens: 0,
+  costUsd: 0,
+  wallMs: 0,
+})
 
 const selection: Selection = {
   file: 'src/foo.ts',
@@ -44,7 +52,9 @@ const sequenceMeasure = (scores: readonly number[]): PipelineDeps['measureScore'
   return (): Promise<MeasuredScore> => {
     calls += 1
     const idx = Math.min(calls - 1, scores.length - 1)
-    return Promise.resolve({ score: scores[idx] ?? 0, survivingMutantIds: [] })
+    const score = scores[idx] ?? 0
+    const killed = Math.round(score * 100)
+    return Promise.resolve({ score, killed, timeout: 0, scored: 100, survivingMutantIds: [] })
   }
 }
 
@@ -103,7 +113,7 @@ describe('integration', () => {
     expect(aborted).toBe(false)
     expect(results[0]).toMatchObject({ outcome: 'improved', file: 'src/foo.ts', afterScore: 0.97 })
 
-    expect(baseline['src/foo.ts']).toBe(0.97)
+    expect(baseline['src/foo.ts']).toEqual({ score: 0.97, killed: 97, timeout: 0, scored: 100 })
 
     const out = await runFinalize(
       {

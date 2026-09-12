@@ -9,12 +9,14 @@ import { z } from 'zod'
 
 import { addAuthorizedGroup } from '../../../src/authorized-groups.js'
 import { ChatRouter } from '../../../src/chat/router.js'
-import { toScopedContextId } from '../../../src/chat/scoped-context.js'
+import { toScopedContextId, toScopedThreadContextId } from '../../../src/chat/scoped-context.js'
 import { taskInstances } from '../../../src/db/instance-schema.js'
 import { clearRuntimeChatRouter, setRuntimeChatRouter } from '../../../src/debug/chat-router-runtime.js'
 import { handleGroupRoutes } from '../../../src/debug/settings/group-routes.js'
+import { createAlertPrompt, getAlertPrompt } from '../../../src/deferred-prompts/alerts.js'
+import type { AlertCondition, DeferredPromptDeliveryInput } from '../../../src/deferred-prompts/types.js'
 import { upsertGroupAdminObservation, upsertKnownGroupContext } from '../../../src/group-settings/registry.js'
-import { getContextSettings } from '../../../src/instances/context-store.js'
+import { getContextSettings, setContextSettings } from '../../../src/instances/context-store.js'
 import { insertTaskInstance } from '../../../src/instances/task-store.js'
 import { addUser } from '../../../src/users.js'
 import { getTestDb, mockLogger, seedTestPlatformInstance, setupTestDb } from '../../utils/test-helpers.js'
@@ -447,6 +449,96 @@ describe('settings group routes', () => {
     expect(res.status).toBe(422)
     await expect(res.json()).resolves.toEqual({ error: 'unreadable task instance' })
     expect(getContextSettings(contextId)).toBeNull()
+  })
+
+  describe('task-instance PATCH switching instances cancels alerts pinned to the old instance', () => {
+    const groupDelivery = (groupContextId: string, threadId: string | null): DeferredPromptDeliveryInput => ({
+      contextId: 'grp-1',
+      storageContextId:
+        threadId === null
+          ? groupContextId
+          : toScopedThreadContextId({ platformInstanceId: 'pi-1', nativeContextId: 'grp-1', threadId }),
+      contextType: 'group' as const,
+      threadId,
+      audience: 'shared' as const,
+      mentionUserIds: [],
+      createdByUserId: 'u-1',
+      createdByUsername: null,
+    })
+
+    test('cancels old-instance-pinned alerts delivered into the group, others stay active', async () => {
+      const contextId = seedManageableGroup()
+      const otherGroupContextId = toScopedContextId({ platformInstanceId: 'pi-1', nativeContextId: 'grp-2' })
+      insertTaskInstance({ id: 'ti-old', type: 'kaneo', config: {}, status: 'active' })
+      insertTaskInstance({ id: 'ti-new', type: 'kaneo', config: {}, status: 'active' })
+      insertTaskInstance({ id: 'ti-other', type: 'kaneo', config: {}, status: 'active' })
+      setContextSettings({ contextId, taskInstanceId: 'ti-old', platformInstanceId: 'pi-1' })
+
+      const condition: AlertCondition = { field: 'task.status', op: 'eq', value: 'done' }
+      const pinnedOldMain = createAlertPrompt(
+        'u-1',
+        'pinned old main',
+        condition,
+        60,
+        undefined,
+        groupDelivery(contextId, null),
+        'ti-old',
+      )
+      const pinnedOldThread = createAlertPrompt(
+        'u-1',
+        'pinned old thread',
+        condition,
+        60,
+        undefined,
+        groupDelivery(contextId, '42'),
+        'ti-old',
+      )
+      const pinnedOther = createAlertPrompt(
+        'u-1',
+        'pinned other',
+        condition,
+        60,
+        undefined,
+        groupDelivery(contextId, null),
+        'ti-other',
+      )
+      const pinnedNull = createAlertPrompt(
+        'u-1',
+        'pinned null',
+        condition,
+        60,
+        undefined,
+        groupDelivery(contextId, null),
+      )
+      const pinnedOldElsewhere = createAlertPrompt(
+        'u-1',
+        'pinned old elsewhere',
+        condition,
+        60,
+        undefined,
+        groupDelivery(otherGroupContextId, null),
+        'ti-old',
+      )
+
+      const patchUrl = new URL('https://x/settings/api/group/task-instance')
+      const res = await handleGroupRoutes(
+        new Request(patchUrl, {
+          method: 'PATCH',
+          headers: { ...authHeaders(session, true), 'Content-Type': 'application/json' },
+          body: JSON.stringify({ taskInstanceId: 'ti-new', contextId }),
+        }),
+        patchUrl,
+        '/settings/api/group/task-instance',
+      )
+
+      expect(res.status).toBe(200)
+      expect(getContextSettings(contextId)?.taskInstanceId).toBe('ti-new')
+      expect(getAlertPrompt(pinnedOldMain.id, 'u-1')?.status).toBe('cancelled')
+      expect(getAlertPrompt(pinnedOldThread.id, 'u-1')?.status).toBe('cancelled')
+      expect(getAlertPrompt(pinnedOther.id, 'u-1')?.status).toBe('active')
+      expect(getAlertPrompt(pinnedNull.id, 'u-1')?.status).toBe('active')
+      expect(getAlertPrompt(pinnedOldElsewhere.id, 'u-1')?.status).toBe('active')
+    })
   })
 
   test('members GET enriches user_label via the live resolver', async () => {

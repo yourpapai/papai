@@ -3,14 +3,32 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { beforeEach, describe, expect, test } from 'bun:test'
+import { beforeEach, describe, expect, mock, test } from 'bun:test'
 
 import type { ModelMessage } from 'ai'
 
 import type { ReplyTarget } from '../src/chat/types.js'
-import { sendLlmResponse } from '../src/llm-orchestrator-send.js'
+import type { VerifierPrompt } from '../src/completion/verified-completion.js'
+import { setConfigValue } from '../src/config.js'
+import { subscribe, unsubscribe, type DebugEvent } from '../src/debug/event-bus.js'
 import { runRegistry } from '../src/run-control/registry.js'
-import { createMockReply, mockLogger } from './utils/test-helpers.js'
+import { createTrackedLoggerMock } from './utils/logger-mock.js'
+import { createMockReply, mockLogger, setupTestDb } from './utils/test-helpers.js'
+
+const tracked = createTrackedLoggerMock()
+void mock.module('../src/logger.js', () => ({ logger: tracked.logger, getLogLevel: tracked.getLogLevel }))
+
+// src/llm-orchestrator-send.ts binds `logger.child({ scope })` at module-eval time and the
+// preload graph evaluates it with the real logger, so force a fresh evaluation under the
+// tracked mock with a cache-busting query (mirrors tests/history.test.ts).
+type SendModule = typeof import('../src/llm-orchestrator-send.js')
+const isSendModule = (value: unknown): value is SendModule =>
+  typeof value === 'object' && value !== null && typeof Reflect.get(value, 'sendLlmResponse') === 'function'
+const loadedSend: unknown = await import(`../src/llm-orchestrator-send.js?t=${crypto.randomUUID()}`)
+if (!isSendModule(loadedSend)) {
+  throw new Error('send module did not export expected shape')
+}
+const { sendLlmResponse } = loadedSend
 
 const baseResult = {
   text: undefined as string | undefined,
@@ -18,6 +36,10 @@ const baseResult = {
   toolCalls: [] as unknown[],
   finalStep: { response: { messages: [] as ModelMessage[] } },
 }
+
+beforeEach(async () => {
+  await setupTestDb()
+})
 
 describe('sendLlmResponse verification wiring', () => {
   test('risky turn (empty text) invokes the verifier and delivers its text', async () => {
@@ -54,6 +76,150 @@ describe('sendLlmResponse verification wiring', () => {
     })
     expect(invoked).toBe(0)
     expect(reply.textCalls).toContain('All set — moved to Done.')
+  })
+
+  test('risky turn in a ru context gets the ru verifier prompt and no-op fallback', async () => {
+    mockLogger()
+    setConfigValue('ctx-ru', 'language', 'ru')
+    const reply = createMockReply()
+    const prompts: VerifierPrompt[] = []
+    await sendLlmResponse(reply.reply, 'ctx-ru', { ...baseResult }, undefined, {
+      history: [],
+      verifier: {
+        readOnlyToolset: undefined,
+        invokeVerifier: (prompt: VerifierPrompt): Promise<{ text: string | undefined }> => {
+          prompts.push(prompt)
+          return Promise.resolve({ text: undefined })
+        },
+      },
+    })
+    expect(prompts[0]?.system).toContain('Отвечай на русском языке')
+    expect(reply.textCalls).toContain(
+      'Похоже, в этот раз я ничего не выполнил — ход прервался. Пожалуйста, повтори запрос.',
+    )
+  })
+
+  test('turn with executed tools gets the neutral fallback, not the no-op message', async () => {
+    mockLogger()
+    const reply = createMockReply()
+    await sendLlmResponse(
+      reply.reply,
+      'ctx-1',
+      {
+        ...baseResult,
+        steps: [
+          {
+            response: {
+              messages: [
+                {
+                  role: 'tool',
+                  content: [
+                    {
+                      type: 'tool-result',
+                      toolCallId: 'c1',
+                      toolName: 'get_task',
+                      output: { type: 'json', value: { id: 'TK-1' } },
+                    },
+                  ],
+                },
+              ],
+            },
+          },
+        ],
+      },
+      undefined,
+      {
+        history: [],
+        verifier: {
+          readOnlyToolset: undefined,
+          invokeVerifier: (): Promise<{ text: string | undefined }> => Promise.resolve({ text: undefined }),
+        },
+      },
+    )
+    expect(reply.textCalls).toContain(
+      'I ran the requested actions but could not confirm the result — please double-check.',
+    )
+  })
+
+  test('a failing verifier on a risky turn with model text delivers the model text', async () => {
+    mockLogger()
+    const reply = createMockReply()
+    const modelText = 'Task TK-42 updated; TK-43 still pending.'
+    await sendLlmResponse(
+      reply.reply,
+      'ctx-1',
+      { ...baseResult, text: modelText, finishReason: 'tool-calls' },
+      undefined,
+      {
+        history: [],
+        verifier: {
+          readOnlyToolset: undefined,
+          invokeVerifier: (): Promise<{ text: string | undefined }> => Promise.resolve({ text: '' }),
+        },
+      },
+    )
+    expect(reply.textCalls).toContain(modelText)
+    expect(reply.textCalls).not.toContain(
+      'I ran the requested actions but could not confirm the result — please double-check.',
+    )
+  })
+
+  test('a verified risky turn emits llm:verifier with the context scope, turnId and outcome', async () => {
+    mockLogger()
+    const reply = createMockReply()
+    const events: DebugEvent[] = []
+    const listener = (event: DebugEvent): void => {
+      events.push(event)
+    }
+    subscribe(listener)
+    try {
+      await sendLlmResponse(reply.reply, 'ctx-1', { ...baseResult }, undefined, {
+        history: [],
+        verifier: {
+          readOnlyToolset: undefined,
+          invokeVerifier: (): Promise<{ text: string | undefined }> => Promise.resolve({ text: '' }),
+        },
+        turnId: 'turn-1',
+      })
+    } finally {
+      unsubscribe(listener)
+    }
+    const event = events.find((entry) => entry.type === 'llm:verifier')
+    expect(event).toBeDefined()
+    expect(event?.scope).toEqual({ kind: 'user', userId: 'ctx-1' })
+    expect(event?.turnId).toBe('turn-1')
+    expect(event?.data['verifierOutcome']).toBe('empty')
+  })
+
+  test('a confident turn emits no llm:verifier event', async () => {
+    mockLogger()
+    const reply = createMockReply()
+    const events: DebugEvent[] = []
+    const listener = (event: DebugEvent): void => {
+      events.push(event)
+    }
+    subscribe(listener)
+    try {
+      await sendLlmResponse(reply.reply, 'ctx-1', { ...baseResult, text: 'All set.' }, undefined, {
+        history: [],
+        verifier: {
+          readOnlyToolset: undefined,
+          invokeVerifier: (): Promise<{ text: string | undefined }> => Promise.resolve({ text: 'unused' }),
+        },
+        turnId: 'turn-2',
+      })
+    } finally {
+      unsubscribe(listener)
+    }
+    expect(events.some((entry) => entry.type === 'llm:verifier')).toBe(false)
+  })
+
+  test('empty-text turn without a verifier in a ru context gets the localized done fallback', async () => {
+    mockLogger()
+    setConfigValue('ctx-ru-done', 'language', 'ru')
+    const reply = createMockReply()
+    await sendLlmResponse(reply.reply, 'ctx-ru-done', { ...baseResult }, undefined)
+    expect(reply.textCalls).toContain('Готово.')
   })
 })
 
@@ -146,5 +312,88 @@ describe('sendLlmResponse reply-target capture', () => {
     await sendLlmResponse(reply.reply, 'ctx-no-target', { ...baseResult, text: 'Done.' }, undefined)
 
     expect(runRegistry.get('ctx-no-target')!.replyTarget).toBeUndefined()
+  })
+})
+
+describe('sendLlmResponse send logging', () => {
+  type SendLogMeta = { sentTextLength: number; modelTextLength: number; verifierOutcome?: string }
+
+  const isSendLogMeta = (value: unknown): value is SendLogMeta =>
+    typeof value === 'object' &&
+    value !== null &&
+    typeof Reflect.get(value, 'sentTextLength') === 'number' &&
+    typeof Reflect.get(value, 'modelTextLength') === 'number'
+
+  const findLogMeta = (level: 'info' | 'warn', message: string): SendLogMeta | undefined => {
+    const call = tracked.getCallsByLevel(level).find((entry) => entry.args[1] === message)
+    return call !== undefined && isSendLogMeta(call.args[0]) ? call.args[0] : undefined
+  }
+
+  beforeEach(() => {
+    tracked.clearCalls()
+  })
+
+  test('send log reports the delivered length and the model text length', async () => {
+    mockLogger()
+    const reply = createMockReply()
+    const modelText = 'All set — moved to Done.'
+    await sendLlmResponse(reply.reply, 'ctx-log-1', { ...baseResult, text: modelText }, undefined)
+    expect(reply.textCalls).toContain(modelText)
+
+    const meta = findLogMeta('info', 'Response sent successfully')
+    expect(meta).toBeDefined()
+    expect(meta?.sentTextLength).toBe(modelText.length)
+    expect(meta?.modelTextLength).toBe(modelText.length)
+  })
+
+  test('a verifier-delivered long reply logs the delivered length and a zero model text length', async () => {
+    mockLogger()
+    const reply = createMockReply()
+    const verifierText = `Completed. ${'Details follow. '.repeat(75)}`.trimEnd()
+    await sendLlmResponse(reply.reply, 'ctx-log-2', { ...baseResult }, undefined, {
+      history: [],
+      verifier: {
+        readOnlyToolset: undefined,
+        invokeVerifier: (): Promise<{ text: string | undefined }> => Promise.resolve({ text: verifierText }),
+      },
+    })
+    expect(reply.textCalls).toContain(verifierText)
+
+    const meta = findLogMeta('info', 'Response sent successfully')
+    expect(meta).toBeDefined()
+    expect(meta?.sentTextLength).toBe(verifierText.length)
+    expect(meta?.sentTextLength).toBeGreaterThan(1000)
+    expect(meta?.modelTextLength).toBe(0)
+  })
+
+  test('the step-cap warn carries the same delivered and model text lengths', async () => {
+    mockLogger()
+    const reply = createMockReply()
+    await sendLlmResponse(reply.reply, 'ctx-log-3', { ...baseResult, finishReason: 'tool-calls' }, undefined)
+
+    const meta = findLogMeta(
+      'warn',
+      'LLM turn ended on a pending tool call (step cap reached); reply may be incomplete',
+    )
+    expect(meta).toBeDefined()
+    expect(meta?.sentTextLength).toBe('Done.'.length)
+    expect(meta?.modelTextLength).toBe(0)
+  })
+
+  test('the send log surfaces the verifier outcome for verified turns', async () => {
+    mockLogger()
+    const reply = createMockReply()
+    await sendLlmResponse(reply.reply, 'ctx-log-4', { ...baseResult }, undefined, {
+      history: [],
+      verifier: {
+        readOnlyToolset: undefined,
+        invokeVerifier: (): Promise<{ text: string | undefined }> => Promise.resolve({ text: '' }),
+      },
+      turnId: 'turn-log-1',
+    })
+
+    const meta = findLogMeta('info', 'Response sent successfully')
+    expect(meta).toBeDefined()
+    expect(meta?.verifierOutcome).toBe('empty')
   })
 })

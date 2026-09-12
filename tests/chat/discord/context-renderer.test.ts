@@ -89,3 +89,31 @@ describe('renderDiscordContext', () => {
     expect(result.embed.footer).toMatch(/approximate/iu)
   })
 })
+
+describe('renderDiscordContext locale', () => {
+  test('ru localizes the title header word', () => {
+    const result = renderDiscordContext({ ...standardContextSnapshot, locale: 'ru' })
+    assertEmbed(result)
+    expect(result.embed.title).toBe('Контекст · gpt-4o')
+  })
+
+  test('ru localizes the footer tokens unit and keeps en-US grouping', () => {
+    const result = renderDiscordContext({ ...standardContextSnapshot, locale: 'ru' })
+    assertEmbed(result)
+    expect(result.embed.footer).toContain('6,770 / 128,000 токенов (5.3%)')
+    expect(result.embed.footer).not.toContain('tokens')
+  })
+
+  test('ru footer without maxTokens uses the tokens unit', () => {
+    const result = renderDiscordContext({ ...standardContextSnapshot, locale: 'ru', maxTokens: null })
+    assertEmbed(result)
+    expect(result.embed.footer).toContain('6,770 токенов')
+  })
+
+  test('ru localizes the approximate marker', () => {
+    const result = renderDiscordContext({ ...standardContextSnapshot, locale: 'ru', approximate: true })
+    assertEmbed(result)
+    expect(result.embed.footer).toContain('(приблизительно)')
+    expect(result.embed.footer).not.toContain('(approximate)')
+  })
+})

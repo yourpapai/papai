@@ -29,8 +29,8 @@ function unavailableImplementation(message: string): Error {
   return new Error(`Coding-session capability implementation is unavailable: ${message}`)
 }
 
-function discoverCurrentImplementation(pluginDirectory: string): DiscoveredPlugin {
-  const result = discoverPlugins(pluginDirectory)
+async function discoverCurrentImplementation(pluginDirectory: string): Promise<DiscoveredPlugin> {
+  const result = await discoverPlugins(pluginDirectory)
   if (result.directoryMissing) throw unavailableImplementation(`directory '${pluginDirectory}' does not exist`)
   const implementation = result.plugins.find(({ manifest }) => manifest.id === CURRENT_IMPLEMENTATION_ID)
   if (implementation !== undefined) return implementation
@@ -38,10 +38,12 @@ function discoverCurrentImplementation(pluginDirectory: string): DiscoveredPlugi
   throw unavailableImplementation(detail === '' ? `none was found in '${pluginDirectory}'` : detail)
 }
 
-function ensureCurrentImplementation(pluginDirectory: string, updatedBy: string): void {
+async function ensureCurrentImplementation(pluginDirectory: string, updatedBy: string): Promise<void> {
   let entry = pluginRegistry.getEntry(CURRENT_IMPLEMENTATION_ID)
   if (entry === undefined) {
-    pluginRegistry.registerDiscovered(discoverCurrentImplementation(pluginDirectory))
+    // The registry stays synchronous; only the discovery that feeds it awaits.
+    const discovered = await discoverCurrentImplementation(pluginDirectory)
+    pluginRegistry.registerDiscovered(discovered)
     entry = pluginRegistry.getEntry(CURRENT_IMPLEMENTATION_ID)
   }
   if (entry === undefined) throw unavailableImplementation('registration did not create a registry entry')
@@ -53,10 +55,10 @@ function ensureCurrentImplementation(pluginDirectory: string, updatedBy: string)
 }
 
 /** @public Intentional public seam for the plugin-core-separation refactor. */
-export function configureCodingSessionCapability(
+export async function configureCodingSessionCapability(
   config: CodingSessionCapabilityConfig,
-): ConfiguredCodingSessionCapability {
-  ensureCurrentImplementation(config.pluginDirectory, config.updatedBy)
+): Promise<ConfiguredCodingSessionCapability> {
+  await ensureCurrentImplementation(config.pluginDirectory, config.updatedBy)
   setPluginAdminConfig(CURRENT_IMPLEMENTATION_ID, MAGI_BASE_URL_KEY, config.magiBaseUrl, config.updatedBy)
   setPluginAdminConfig(CURRENT_IMPLEMENTATION_ID, MAGI_TOKEN_KEY, config.magiToken, config.updatedBy)
   setPluginEnabledForContext(CURRENT_IMPLEMENTATION_ID, config.contextId, true)

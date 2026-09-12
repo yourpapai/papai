@@ -3,10 +3,16 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { describe, expect, test } from 'bun:test'
+import { describe, expect, spyOn, test } from 'bun:test'
 
 import { ChatRouter } from '../../src/chat/router.js'
-import { type ProductionBackgroundDeps, startProductionBackground } from '../../src/runtime/production-background.js'
+import { defaultTaskProviderResolver } from '../../src/providers/resolver.js'
+import {
+  type ProductionBackgroundDeps,
+  resolveProductionTaskProvider,
+  startProductionBackground,
+} from '../../src/runtime/production-background.js'
+import { createMockProvider } from '../tools/mock-provider.js'
 
 function fixture(events: string[]): ProductionBackgroundDeps {
   const record = (event: string): void => {
@@ -155,5 +161,33 @@ describe('production background composition', () => {
       'tasks:unregister',
       'sweeper:stop',
     ])
+  })
+})
+
+describe('production poller provider wiring', () => {
+  test('passes an alert pin through to resolveForInstance and falls back to resolve otherwise', async () => {
+    const provider = createMockProvider()
+    const resolveSpy = spyOn(defaultTaskProviderResolver, 'resolve').mockImplementation(() => Promise.resolve(provider))
+    const resolveForSpy = spyOn(defaultTaskProviderResolver, 'resolveForInstance').mockImplementation(() =>
+      Promise.resolve(provider),
+    )
+
+    try {
+      const unpinned = await resolveProductionTaskProvider('ctx-1')
+      const nullPinned = await resolveProductionTaskProvider('ctx-1', null)
+      const pinned = await resolveProductionTaskProvider('ctx-1', 'ti-a')
+      // Snapshot before mockRestore — restoring clears the recorded calls.
+      const resolveCalls = [...resolveSpy.mock.calls]
+      const resolveForCalls = [...resolveForSpy.mock.calls]
+
+      expect(unpinned).toBe(provider)
+      expect(nullPinned).toBe(provider)
+      expect(pinned).toBe(provider)
+      expect(resolveCalls).toEqual([['ctx-1'], ['ctx-1']])
+      expect(resolveForCalls).toEqual([['ctx-1', 'ti-a']])
+    } finally {
+      resolveSpy.mockRestore()
+      resolveForSpy.mockRestore()
+    }
   })
 })

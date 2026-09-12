@@ -28,8 +28,17 @@ describe('samePackageTestDir — src↔tests package mapping (all roots)', () =>
     ['plugins/task-provider-kaneo/client.ts', 'tests/plugins/task-provider-kaneo'],
     ['review-loop/src/index.ts', 'tests/review-loop'],
     ['review-loop/src/lib/util.ts', 'tests/review-loop/lib'],
-    ['sdd-runner/src/index.ts', 'tests/sdd-runner'],
-    ['sdd-runner/src/stages/intake.ts', 'tests/sdd-runner/stages'],
+    // The coding-agent workspace maps to a single FLAT package dir: tests live in
+    // tests/opencode-agent/ with no mirrored subdirectories, so every workspace source —
+    // top-level or nested under src/ — maps to tests/opencode-agent. The branch must sit
+    // ahead of the src/ handling so these never reach the generic top-level-`tests`
+    // fallback, which would drag every top-level test into workspace candidate universes.
+    ['opencode-agent/src/config.ts', 'tests/opencode-agent'],
+    ['opencode-agent/src/phases/implement-steps.ts', 'tests/opencode-agent'],
+    // The sdd-runner workspace is deleted; its paths fall to the generic
+    // fallback like any other unknown root, and a re-added special case must
+    // consciously update this pin.
+    ['sdd-runner/src/index.ts', 'tests'],
     ['scripts/foo.ts', 'tests'],
   ]
   for (const [input, expected] of cases) {

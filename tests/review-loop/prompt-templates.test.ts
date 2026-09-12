@@ -8,12 +8,14 @@ import { describe, expect, test } from 'bun:test'
 import { ReviewerIssueSchema } from '../../review-loop/src/issue-schema.js'
 import type { ReviewerIssue } from '../../review-loop/src/issue-schema.js'
 import {
+  buildAggregatedInspectPrompt,
   buildFixPrompt,
   buildInspectPrompt,
   buildRetryFixPrompt,
   buildRetryFixWithInspectorFeedbackPrompt,
   buildReviewPrompt,
   MINIMALITY_LADDER,
+  PROTECTED_PATHS_RULE,
 } from '../../review-loop/src/prompt-templates.js'
 
 const issue: ReviewerIssue = {
@@ -125,6 +127,79 @@ describe('buildInspectPrompt', () => {
     const prompt = buildInspectPrompt(inspectorIssue, 'd', 'r', 'o.json')
     expect(prompt).toContain('between 0 and 1')
     expect(prompt).toContain('NOT a 1-5 rating')
+  })
+})
+
+describe('buildAggregatedInspectPrompt', () => {
+  const memberA: ReviewerIssue = {
+    title: 'English literal not localized',
+    kind: 'defect',
+    severity: 'low',
+    summary: 's',
+    whyItMatters: 'w',
+    evidence: 'src/a.ts 1-2',
+    file: 'src/a.ts',
+    lineStart: 1,
+    lineEnd: 2,
+    suggestedFix: 'localize',
+    confidence: 0.9,
+  }
+  const memberB: ReviewerIssue = { ...memberA, title: 'Literal in b', file: 'src/b.ts', evidence: 'src/b.ts 1-2' }
+
+  test('embeds each member id so the inspector can echo per-id verdicts', () => {
+    const prompt = buildAggregatedInspectPrompt(
+      [
+        { id: 'ledger-aaa', issue: memberA },
+        { id: 'ledger-bbb', issue: memberB },
+      ],
+      'the aggregated diff',
+      'out.json',
+    )
+    expect(prompt).toContain('ledger-aaa')
+    expect(prompt).toContain('ledger-bbb')
+    // The id the inspector must echo is the ledger id, not a positional index:
+    // the result rows are matched back to records by this string.
+    expect(prompt).not.toContain('"id": "0"')
+    expect(prompt).not.toContain('"id": "1"')
+    expect(prompt).toContain('English literal not localized')
+    expect(prompt).toContain('the aggregated diff')
+    expect(prompt).toContain('out.json')
+    expect(prompt).toContain('"results"')
+  })
+
+  test('states the per-id result contract and the already-passed build', () => {
+    const prompt = buildAggregatedInspectPrompt([{ id: 'x', issue: memberA }], 'd', 'o.json')
+    expect(prompt).toContain('You are an inspector')
+    expect(prompt).toContain('{id, addresses, reasoning, confidence}')
+    expect(prompt).toContain('build check has already passed')
+  })
+
+  test('gates addresses=true on diff lines that resolve the specific complaint', () => {
+    const prompt = buildAggregatedInspectPrompt([{ id: 'x', issue: memberA }], 'd', 'o.json')
+    expect(prompt).toContain('Return addresses=true ONLY if')
+    expect(prompt).toContain('When addresses=false, reasoning MUST be actionable')
+  })
+
+  test('states the exact result schema and the 0-1 confidence range', () => {
+    const prompt = buildAggregatedInspectPrompt([{ id: 'x', issue: memberA }], 'd', 'o.json')
+    expect(prompt).toContain(
+      '{"results": [{"id": string, "addresses": boolean, "reasoning": string, "confidence": number}]}',
+    )
+    expect(prompt).toContain('between 0 and 1')
+    expect(prompt).toContain('NOT a 1-5 rating')
+  })
+
+  test('carries the inspector scope rules over the aggregated batch', () => {
+    const prompt = buildAggregatedInspectPrompt([{ id: 'x', issue: memberA }], 'd', 'o.json')
+    expect(prompt).toContain('Do not flag unrelated problems')
+    expect(prompt).toContain('Do not run checks')
+  })
+
+  test('labels the issues block and the diff as the baseline..HEAD diff', () => {
+    const prompt = buildAggregatedInspectPrompt([{ id: 'x', issue: memberA }], 'the diff body', 'o.json')
+    expect(prompt).toContain('Issues:')
+    expect(prompt).toContain('Diff (baseline..HEAD):')
+    expect(prompt).toContain('the diff body')
   })
 })
 
@@ -246,6 +321,68 @@ describe('fix instruction contract', () => {
   })
 })
 
+describe('protected-paths rule in prompts', () => {
+  // Run 32992114904 (issue #360): the fixer edited `.github/workflows/ci.yml`,
+  // the push guard reverted it, and the run died on a refused push — because no
+  // review-loop prompt had ever been told the rule the opencode-agent side has
+  // carried since issue #240. The retry prompts carry it for the same reason
+  // minimality is: a second attempt is where scope creeps.
+  const fixPrompts = [
+    ['buildFixPrompt', (): string => buildFixPrompt(issue, '/p/result.json', 'npm test')],
+    ['buildRetryFixPrompt', (): string => buildRetryFixPrompt(issue, '/p/result.json', 'boom', 'npm test')],
+    [
+      'buildRetryFixWithInspectorFeedbackPrompt',
+      (): string => buildRetryFixWithInspectorFeedbackPrompt(issue, 'not addressed', '/p/result.json', 'npm test'),
+    ],
+  ] as const
+
+  for (const [label, build] of fixPrompts) {
+    test(`${label} carries the protected-paths rule verbatim`, () => {
+      // Containment, not byte equality of the whole prompt: the constant is the
+      // definition, and a carrier may say more around it but never less.
+      expect(build()).toContain(PROTECTED_PATHS_RULE)
+    })
+  }
+
+  test('the rule names the forbidden path and the by-hand alternative', () => {
+    expect(PROTECTED_PATHS_RULE).toContain('.github/workflows/')
+    expect(PROTECTED_PATHS_RULE).toContain('by hand')
+  })
+
+  test('the fixer mapping line routes a workflow-requiring fix to needs_human with the change in reasoning', () => {
+    // The agent-side rule says "say in your reply"; a fixer has no reply, it
+    // has a JSON result. Without the mapping the manual-application half has
+    // no landing place and the fixer would either edit the file or hand back
+    // an empty needs_human.
+    expect(PROTECTED_PATHS_RULE).toContain('needs_human')
+    expect(PROTECTED_PATHS_RULE).toContain('`reasoning`')
+  })
+
+  test('buildReviewPrompt reports workflow-fix findings for manual application', () => {
+    const p = buildReviewPrompt('/plan.md', '/issues.json')
+    expect(p).toContain('.github/workflows/')
+    expect(p).toContain('suggestedFix')
+    expect(p).toContain('by hand')
+  })
+
+  test('buildReviewPrompt demands the suggested fix be self-contained', () => {
+    // The suggested fix may be the only record of the change that survives the
+    // run (on CI the ledger dies with the runner), so it must carry the exact
+    // replacement text rather than a description the reader has to reconstruct
+    // from context they do not have.
+    const p = buildReviewPrompt('/plan.md', '/issues.json')
+    expect(p).toContain('self-contained')
+    expect(p).toContain('copy-paste')
+  })
+
+  test('the inspect prompts judge diffs and carry nothing', () => {
+    // Writing is not their job, and a rule about writing in a prompt that
+    // cannot write is noise the model pays for on every issue.
+    expect(buildInspectPrompt(issue, 'd', 'r', 'o.json')).not.toContain('.github/workflows/')
+    expect(buildAggregatedInspectPrompt([{ id: 'x', issue }], 'd', 'o.json')).not.toContain('.github/workflows/')
+  })
+})
+
 describe('deletion findings in the reviewer prompt', () => {
   const reviewPrompt = (): string => buildReviewPrompt('/plan.md', '/issues.json')
 
@@ -306,5 +443,59 @@ describe('deletion findings in the reviewer prompt', () => {
       confidence: 0.5,
     })
     for (const key of Object.keys(shape)) expect(p).toContain(`"${key}"`)
+  })
+})
+
+describe('spans in reviewer schema', () => {
+  test('ReviewerIssueSchema accepts theme spans and legacy without spans', async () => {
+    const { ReviewerIssueSchema: Schema } = await import('../../review-loop/src/issue-schema.js')
+    const legacy = {
+      title: 't',
+      severity: 'low',
+      summary: 's',
+      whyItMatters: 'w',
+      evidence: 'e',
+      file: 'f.ts',
+      lineStart: 1,
+      lineEnd: 2,
+      suggestedFix: 'x',
+      confidence: 0.5,
+    }
+    expect(() => Schema.parse(legacy)).not.toThrow()
+    expect(() =>
+      Schema.parse({
+        ...legacy,
+        spans: [
+          { file: 'src/a.ts', lineStart: 1, lineEnd: 2, evidence: 'e1' },
+          { file: 'src/b.ts', lineStart: 3, lineEnd: 4, evidence: 'e2' },
+        ],
+      }),
+    ).not.toThrow()
+    expect(() => Schema.parse({ ...legacy, spans: [] })).toThrow()
+  })
+})
+
+describe('reviewer coalescence', () => {
+  test('review prompt tells reviewer to coalesce same-class repeats into theme spans', () => {
+    const prompt = buildReviewPrompt('/plan.md', '/issues.json')
+    expect(prompt).toMatch(/same class repeats/iu)
+    expect(prompt).toContain('spans')
+    expect(prompt).toMatch(/ONE theme issue/iu)
+    expect(prompt).toMatch(/un-migrated English literals/iu)
+  })
+
+  test('documents the spans shape beside the issue schema', () => {
+    // The inline shape must carry every field attribution walks: file,
+    // lineStart, lineEnd, evidence — a missing key loses the claim silently.
+    const prompt = buildReviewPrompt('/plan.md', '/issues.json')
+    expect(prompt).toContain('"spans": [{"file": string, "lineStart": number, "lineEnd": number, "evidence": string}]')
+    expect(prompt).toContain('(optional, theme issue coalescence)')
+  })
+
+  test('requires the legacy fields mirrored from the first span', () => {
+    const prompt = buildReviewPrompt('/plan.md', '/issues.json')
+    expect(prompt).toContain('mirrored from the first span')
+    expect(prompt).toContain('for backward compatibility')
+    expect(prompt).toContain('identical to a legacy issue')
   })
 })

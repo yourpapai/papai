@@ -8,7 +8,6 @@ import type { ModelMessage, ToolSet } from 'ai'
 import { runWithProviderRequestScope } from './analytics/provider-request-scope.js'
 import type { ProviderRequestScope } from './analytics/provider-request-scope.js'
 import type { StagedFileDownloadFn } from './attachments/index.js'
-import { getCachedTools, setCachedTools } from './cache.js'
 import type { ChatParticipantResolver } from './chat/participants/roster.js'
 import { askPermissionViaChat } from './chat/permission-prompt.js'
 import { getConfigContextIdFromStorageContextId, parseScopedContextId } from './chat/scoped-context.js'
@@ -16,10 +15,12 @@ import type { ActorRole, ReplyFn } from './chat/types.js'
 import { resolveCodingGuardrails } from './coding-credentials/guardrails.js'
 import { buildMessagesWithMemory } from './conversation.js'
 import { resolveTimezone } from './llm-orchestrator-config.js'
+import { getOrCreateDescriptors } from './llm-orchestrator-descriptor-cache.js'
 import { validateToolResults } from './llm-orchestrator-validation.js'
 import { logger } from './logger.js'
 import type { TaskProvider } from './providers/types.js'
 import { toolCapabilityCatalog } from './runtime/capability-catalog.js'
+import { resolveContextLocale } from './tool-failure.js'
 import { applyResultCompaction } from './tools/compaction/wrap-compaction.js'
 import { registerMcpToolCapabilities, registerOfferedCoreToolCapabilities } from './tools/core-capabilities.js'
 import { getToolRetriever } from './tools/disclosure/embedding-tool-retriever.js'
@@ -63,9 +64,6 @@ export function applyWhoMayUseFilter(tools: ToolSet, whoMayUse: 'members' | stri
   return out
 }
 
-const isToolSet = (value: unknown): value is ToolSet =>
-  typeof value === 'object' && value !== null && !Array.isArray(value)
-
 /** Injectable collaborators for prepareLlmInvocation; tests override these instead of mocking modules. */
 export interface PrepareLlmInvocationDeps {
   buildToolDescriptors: typeof buildToolDescriptors
@@ -79,43 +77,6 @@ const defaultDeps = (): PrepareLlmInvocationDeps => ({
   buildProviderlessToolDescriptors,
   applyResultCompaction,
 })
-
-const getOrCreateDescriptors = async (
-  contextId: string,
-  chatUserId: string,
-  username: string | null,
-  provider: TaskProvider | null,
-  contextType: 'dm' | 'group' | undefined,
-  stagedDownloadFn: StagedFileDownloadFn | undefined,
-  chatParticipantResolver: ChatParticipantResolver | undefined,
-  deps: PrepareLlmInvocationDeps,
-): Promise<ToolSet> => {
-  const providerCacheScope = provider === null ? 'providerless' : 'provider-backed'
-  const stagedDownloadScope = stagedDownloadFn === undefined ? 'no-staged-download' : 'with-staged-download'
-  const resolverScope = chatParticipantResolver === undefined ? 'no-resolver' : 'with-resolver'
-  const usernameSuffix = username ?? ''
-  const cacheKey = `${providerCacheScope}:${stagedDownloadScope}:${resolverScope}:${contextId}:${chatUserId}:${usernameSuffix}`
-  const cached = getCachedTools(cacheKey)
-  if (cached !== undefined && cached !== null && isToolSet(cached)) {
-    log.debug({ contextId, chatUserId, hasUsername: username !== null }, 'Using cached tool descriptors')
-    return cached
-  }
-  log.debug({ contextId, chatUserId, hasUsername: username !== null }, 'Building tool descriptors (cache miss)')
-  const descriptorOptions = {
-    storageContextId: contextId,
-    chatUserId,
-    username,
-    contextType,
-    stagedDownloadFn,
-    chatParticipantResolver,
-  }
-  const descriptors =
-    provider === null
-      ? await deps.buildProviderlessToolDescriptors(descriptorOptions)
-      : await deps.buildToolDescriptors(provider, descriptorOptions)
-  setCachedTools(cacheKey, descriptors)
-  return descriptors
-}
 
 export type LlmInvocationOptions = {
   contextId: string
@@ -131,6 +92,10 @@ export type LlmInvocationOptions = {
   providerRequestScope: ProviderRequestScope
   actorRole?: ActorRole
   chatParticipantResolver?: ChatParticipantResolver
+  /** Whether the acting user is a bot admin; absent means not an admin. */
+  isBotAdmin?: boolean
+  /** Platform instance the turn originated from; absent when unknown. */
+  platformInstanceId?: string
 }
 
 /** Minimal shape of args required to build LlmInvocationOptions from a callLlm context. */
@@ -143,6 +108,10 @@ export type InvocationSource = {
   history: readonly ModelMessage[]
   userText: string
   actorRole?: ActorRole
+  /** Whether the acting user is a bot admin; absent means not an admin. */
+  isBotAdmin?: boolean
+  /** Platform instance the turn originated from; absent when unknown. */
+  platformInstanceId?: string
 }
 
 /** Constructs LlmInvocationOptions by binding askPermissionViaChat to the reply surface. */
@@ -167,6 +136,8 @@ export function buildLlmInvocationOpts(
     askPermission,
     providerRequestScope,
     actorRole: src.actorRole,
+    isBotAdmin: src.isBotAdmin,
+    platformInstanceId: src.platformInstanceId,
   }
 }
 
@@ -241,6 +212,8 @@ const buildFullToolSet = async (
       opts.stagedDownloadFn,
       opts.chatParticipantResolver,
       deps,
+      opts.isBotAdmin,
+      opts.platformInstanceId,
     ),
   )
   observeInvocationSurface(opts, descriptors)
@@ -259,7 +232,10 @@ const buildFullToolSet = async (
   // Single final pass: attach the strict ProviderRequestScope contextSchema and
   // outer execution wrapper to every executable descriptor (including the real
   // search_tools/load_tool). No later step may create or replace a tool.
-  const tools = finalizeProviderScopedTools(disclosedTools)
+  const tools = finalizeProviderScopedTools(
+    disclosedTools,
+    resolveContextLocale(getConfigContextIdFromStorageContextId(contextId)),
+  )
   log.debug(
     { contextId, toolCount: Object.keys(tools).length, gated: gatedTools !== descriptors },
     'Prepared tool set for LLM invocation',
