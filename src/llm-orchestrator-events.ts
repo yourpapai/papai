@@ -152,7 +152,7 @@ export function emitLlmEnd(
   messages: ModelMessage[],
   tools: ToolSet,
   turnId: string,
-  analytics?: LlmAttemptAnalytics & { timeToFirstTokenMs: number | null },
+  analytics?: LlmAttemptAnalytics & { timeToFirstTokenMs: number | null; stopReason?: 'turn_limit' },
 ): void {
   emitUser(
     'llm:end',
@@ -174,6 +174,7 @@ export function emitLlmEnd(
       currentTimeTag: lastCurrentTimeTag(messages) ?? undefined,
       ...attemptAnalyticsData(analytics),
       ...(analytics === undefined ? {} : { timeToFirstTokenMs: analytics.timeToFirstTokenMs }),
+      ...(analytics?.stopReason === undefined ? {} : { stopReason: analytics.stopReason }),
     },
     turnId,
   )
