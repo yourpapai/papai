@@ -1086,6 +1086,25 @@ describe('phase 1 — triage', () => {
     expect(latestPostedState(harness)?.phase).toBe('DESIGN_SPEC')
   })
 
+  test('/continue out of a parked INIT_OR_CLARIFY re-runs triage', async () => {
+    // The forward path out of the clarifying park: the conversation is already
+    // answered — attempts 0, nothing captured — and the maintainer types
+    // /continue to send triage back to work rather than re-reading the thread
+    // themselves. The machine takes the re-entry, triage runs again and the
+    // issue captures, exactly as a plain answer re-running triage would.
+    seedState(harness, { phase: 'INIT_OR_CLARIFY', changeName: null })
+    harness.io.replies = [SPEC_REPLY]
+
+    const result = await runPipeline({ event: comment('/continue'), deps: harness.deps })
+
+    expect(result.status).toBe('waiting')
+    expect(harness.io.posted[0]).toContain('### Captured')
+    expect(latestPostedState(harness)?.phase).toBe('DESIGN_SPEC')
+    expect(latestPostedState(harness)?.changeName).toBe(CHANGE_NAME)
+    // The run's one comment is the capture park, not a refusal of the command.
+    expect(harness.io.posted.join('\n')).not.toContain('does not apply right now')
+  })
+
   test('parks in FAILED when the model returns unusable JSON', async () => {
     harness.io.replies = ['I could not decide.']
 
@@ -2849,12 +2868,16 @@ describe('commands and budgets', () => {
   })
 
   test('rejects /approve arriving in a phase that cannot accept it', async () => {
+    // PLANNING, not the opening phase: `/approve` in a parked INIT_OR_CLARIFY
+    // is the forward path's re-entry now (issue #438), so the refusal case
+    // needs a phase whose rows name no APPROVED at all.
     const harness = makeHarness()
+    seedState(harness, { phase: 'PLANNING' })
 
     const result = await runPipeline({ event: comment('/approve'), deps: harness.deps })
 
     expect(result.status).toBe('skipped')
-    expect(result.reason).toContain('not valid in INIT_OR_CLARIFY')
+    expect(result.reason).toContain('not valid in PLANNING')
   })
 
   test('says so on the issue rather than only in the job log', async () => {
@@ -2870,10 +2893,13 @@ describe('commands and budgets', () => {
     expect(refusal).toContain('/changes')
     expect(refusal).toContain('INIT_OR_CLARIFY')
     // Derived from the transition table, so it cannot promise a command the
-    // machine would refuse in turn.
+    // machine would refuse in turn — and cannot omit the two re-entries the
+    // forward path put on this phase.
     expect(refusal).toContain('/cancel')
     expect(refusal).toContain('/ask')
-    expect(refusal).not.toContain('`/approve`')
+    expect(refusal).toContain('`/approve`')
+    expect(refusal).toContain('`/continue`')
+    expect(refusal).not.toContain('`/review`')
   })
 
   test('/changes is accepted once the agent can read back its own spec', async () => {

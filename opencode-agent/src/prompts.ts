@@ -128,6 +128,8 @@ export const TRIAGE_INSTRUCTIONS = [
   '`sdd-automation`) — never issue-sized micro-capabilities. While `openspec/specs/` holds no archived',
   'corpus, name new capabilities only: there is nothing yet to modify.',
   'Ask questions only when a wrong guess would produce the wrong feature; prefer stating an assumption in the spec.',
+  'When you ask for maintainer input, invite a plain reply on the thread; never suggest a slash command, which the',
+  'phase the issue is parked in may refuse.',
 ].join('\n')
 
 export const buildTriagePrompt = (context: PromptContext, feedback: string | null): string => {
