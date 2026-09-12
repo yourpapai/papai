@@ -5,6 +5,158 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [6.14.8] - 2026-09-12
+
+### Added
+
+- **openspec:** Codeindex-ci-experiment planning artifacts
+- **codeindex:** Per-job usage report script with tests
+- **codeindex:** Gated agent-job provisioning, canary and usage report
+- **agent:** Implement issue #437 — step 1/23: 1.1 TDD red: extend `tests/models-dev/client.test.ts` — the parse keeps
+- **agent:** Implement issue #437 — step 2/23: 1.2 Implement the tolerant schemas in `src/models-dev/client.ts` in the
+- **agent:** Implement issue #437 — step 3/23: 1.3 TDD red: extend `tests/models-dev/resolve.test.ts` — `ModelMetadata`
+- **agent:** Implement issue #437 — step 4/23: 1.4 Implement the metadata threading and the levels agreement rule mirro
+- **agent:** Implement issue #437 — step 5/23: 1.5 TDD red: new `tests/models-dev/effort-levels.test.ts` — `effortLevel
+- **agent:** Implement issue #437 — step 6/23: 1.6 Implement the pure module `src/models-dev/effort-levels.ts` (union c
+- **agent:** Implement issue #437 — step 7/23: 2.1 TDD red: extend `tests/ai-output-settings.test.ts` — free-string par
+- **agent:** Implement issue #437 — step 8/23: 2.2 Add `ai_reasoning_effort` to `AiOutputConfigKey`/`ALL_CONFIG_KEYS` (
+- **agent:** Implement issue #437 — step 9/23: 3.1 TDD red: extend `tests/config-keys.test.ts` — the `ai_reasoning_effo
+- **agent:** Implement issue #437 — step 10/23: 3.2 Implement the field entry and per-model option decoration in `src/co
+- **agent:** Implement issue #437 — step 11/23: 3.3 TDD red: extend `tests/debug/settings/config-routes.test.ts` — GET r
+- **agent:** Implement issue #437 — step 12/23: 3.4 Close any route-level gap (expected near-zero: GET and PATCH already
+- **agent:** Implement issue #437 — step 13/23: 3.5 TDD red: extend `tests/client/settings/sections/AiOutputSection.test
+- **agent:** Implement issue #437 — step 14/23: 3.6 Implement the hint line and the display fallback in `client/settings
+- **agent:** Implement issue #437 — step 15/23: 4.1 TDD red: extend `tests/llm-model-builder.test.ts` with request-body
+- **agent:** Implement issue #437 — step 16/23: 4.2 Implement the optional trailing effort param and the `providerOption
+- **agent:** Implement issue #437 — step 17/23: 4.3 TDD red: extend `tests/llm-orchestrator.test.ts` — the `buildModel`
+- **agent:** Implement issue #437 — step 18/23: 4.4 Implement the optional effort argument through `LlmOrchestratorDeps.
+- **agent:** Implement issue #437 — step 19/23: 4.5 TDD red: extend `tests/deferred-prompts/proactive-llm.test.ts` — pro
+- **agent:** Implement issue #437 — step 20/23: 4.6 Implement the same pass-through in `src/deferred-prompts/proactive-l
+- **agent:** Implement issue #437 — step 21/23: 5.1 Seam-shape and affected-loop checks: `bun test:stories:contracts` (t
+- **agent:** Implement issue #437 — step 22/23: 5.2 Update the affected doc page: one bullet in `docs/architecture/behav
+- **agent:** Implement issue #437 — step 23/23: 5.3 Final gates over the whole tree: `bun run test`, `bun run typecheck`
+- **agent:** Implement issue #442 — step 1/10: 1.1 Write failing tracker tests in `tests/run-control/turn-limit.test.ts
+- **agent:** Implement issue #442 — step 2/10: 1.2 Implement `src/run-control/turn-limit.ts`: export `TURN_LIMIT_STOP_R
+- **agent:** Implement issue #442 — step 3/10: 2.1 Update `tests/run-control/invoke-wiring.test.ts` to import `AGENT_MA
+- **agent:** Implement issue #442 — step 4/10: 2.2 Export `AGENT_MAX_STEPS` from `src/llm-orchestrator-invoke.ts` and r
+- **agent:** Implement issue #442 — step 5/10: 3.1 Add failing integration tests in `tests/llm-orchestrator-invoke.test
+- **agent:** Implement issue #442 — step 6/10: 3.2 Add optional `stopReason?: 'turn_limit'` to the `emitLlmEnd` analyti
+- **agent:** Implement issue #442 — step 7/10: 3.3 Wire the tracker in `src/llm-orchestrator-invoke.ts`: build it in `c
+- **agent:** Implement issue #442 — step 8/10: 4.1 Confirm cap-out still ends in the existing truncated-verdict flow wi
+- **agent:** Implement issue #442 — step 9/10: 5.1 Document the 125-step default and the `stopReason: 'turn_limit'` mar
+- **agent:** Implement issue #442 — step 10/10: 5.2 Full verification: `bun run test` (with coverage ratchet), `bun run
+- **agent:** Implement issue #439 — step 1/22: 1.1 Write failing tests for the shared hint parser: `tests/llm-providers
+- **agent:** Implement issue #439 — step 2/22: 1.2 Create `src/llm-providers/model-hints.ts` (`ModelHintsSchema` + `par
+- **agent:** Implement issue #439 — step 3/22: 1.3 Write failing resolver tests in `tests/llm-providers/resolver.test.t
+- **agent:** Implement issue #439 — step 4/22: 1.4 Implement the precedence in `metadataFor` (src/llm-providers/resolve
+- **agent:** Implement issue #439 — step 5/22: 2.1 Write failing migration test `tests/db/migrations/084_llm_provider_m
+- **agent:** Implement issue #439 — step 6/22: 2.2 Implement `src/db/migrations/084_llm_provider_model_hints.ts` (patte
+- **agent:** Implement issue #439 — step 7/22: 2.3 Write failing store tests in `tests/llm-providers/store.test.ts`: hi
+- **agent:** Implement issue #439 — step 8/22: 2.4 Implement store changes in `src/llm-providers/store.ts` (per design
+- **agent:** Implement issue #439 — step 9/22: 3.1 Write failing tests in `tests/byok-llm/blob-codec.test.ts`: legacy b
+- **agent:** Implement issue #439 — step 10/22: 3.2 Implement decode-time normalization in `src/byok-llm/blob-codec.ts`:
+- **agent:** Implement issue #439 — step 11/22: 4.1 Write failing tests in `tests/debug/settings/admin/llm-providers-rou
+- **agent:** Implement issue #439 — step 12/22: 4.2 Implement admin route changes in `src/debug/settings/admin/llm-provi
+- **agent:** Implement issue #439 — step 13/22: 4.3 Write failing tests in `tests/debug/settings/admin/byok-routes.test.
+- **agent:** Implement issue #439 — step 14/22: 4.4 Implement BYOK route changes: `ProviderInBlobSchema` gains optional
+- **agent:** Implement issue #439 — step 15/22: 5.1 Write failing tests in `tests/client/settings/fetcher-schemas-llm-pr
+- **agent:** Implement issue #439 — step 16/22: 5.2 Implement client schema updates in `client/settings/fetcher-schemas-
+- **agent:** Implement issue #439 — step 17/22: 5.3 Write failing tests in `tests/client/settings/model-hints-editor.tes
+- **agent:** Implement issue #439 — step 18/22: 5.4 Implement `client/settings/components/ModelHintsEditor.svelte` (per
+- **agent:** Implement issue #439 — step 19/22: 5.5 Write failing tests in `tests/client/settings/admin-providers-sectio
+- **agent:** Implement issue #439 — step 20/22: 5.6 Wire `client/settings/components/ProviderForm.svelte` (render `Model
+- **agent:** Implement issue #439 — step 21/22: 6.1 Update the models-dev-catalogue precedence sentence in `docs/archite
+- **agent:** Implement issue #439 — step 22/22: 6.2 Run the full gate: `bun run test`, then `bun run typecheck`, `bun ru
+- **agent:** Implement issue #438 — step 1/11: 1.1 Add the failing repro to `tests/opencode-agent/orchestrator.test.ts`
+- **agent:** Implement issue #438 — step 2/11: 2.1 In `tests/opencode-agent/state-manager.test.ts` add the re-entry tes
+- **agent:** Implement issue #438 — step 3/11: 2.2 In `tests/opencode-agent/commands.test.ts` pin the derived offer: `a
+- **agent:** Implement issue #438 — step 4/11: 3.1 In `opencode-agent/src/transitions.ts`: widen `canTransition`'s `CON
+- **agent:** Implement issue #438 — step 5/11: 3.2 Add the `APPROVED: 'INIT_OR_CLARIFY'` self-loop row with a doc comme
+- **agent:** Implement issue #438 — step 6/11: 4.1 Update `commands and budgets` in `tests/opencode-agent/orchestrator.
+- **agent:** Implement issue #438 — step 7/11: 4.2 Add one line to `TRIAGE_INSTRUCTIONS` in `opencode-agent/src/prompts
+- **agent:** Implement issue #438 — step 8/11: 5.1 Update `opencode-agent/README.md`: the phase table's `INIT_OR_CLARIF
+- **agent:** Implement issue #438 — step 9/11: 6.1 Run the mutation ratchet over the touched gateable files: `bun run t
+- **agent:** Implement issue #438 — step 10/11: 6.2 Run `bun check:full`; on failure read `reports/checks/<name>.log` ra
+- **agent:** Implement issue #438 — step 11/11: 6.3 Final: full `bun run test` (budget ≥ 20 min; on interruption query `
+- **agent:** Implement issue #441 — step 1/20: 1.1 Pin the baseline the command sits on: a plain comment (no slash comm
+- **agent:** Implement issue #441 — step 2/20: 1.2 Write failing tests for `acceptedCommands`: `/follow-up` offered exa
+- **agent:** Implement issue #441 — step 3/20: 1.3 Implement: add `/follow-up` to `SLASH_COMMANDS`, add the `COMMAND_AP
+- **agent:** Implement issue #441 — step 4/20: 1.4 Write failing tests for the refusal and dispatch paths: undelivered
+- **agent:** Implement issue #441 — step 5/20: 1.5 Implement: `refuseUnknown` `/follow-up` wording, `sideOperation` `/f
+- **agent:** Implement issue #441 — step 6/20: 2.1 Write failing tests: `/follow-up` accepted on the originating issue
+- **agent:** Implement issue #441 — step 7/20: 2.2 Implement: extend `commandSurface` in `feedback-target.ts` to take t
+- **agent:** Implement issue #441 — step 8/20: 3.1 Run `bun test tests/opencode-agent/workflow.test.ts` and confirm it
+- **agent:** Implement issue #441 — step 9/20: 3.2 Add `/follow-up` to the arm's `contains` list (single-line edit; no
+- **agent:** Implement issue #441 — step 10/20: 4.1 Write failing handler tests: size gate fires before any git operatio
+- **agent:** Implement issue #441 — step 11/20: 4.2 Write failing tests for the pre-turn gates: token ceiling asked befo
+- **agent:** Implement issue #441 — step 12/20: 4.3 Write failing framing pins: request enveloped under the maintainer-n
+- **agent:** Implement issue #441 — step 13/20: 4.4 Implement `follow-up-notices.ts`: renderers for usage refusal, over-
+- **agent:** Implement issue #441 — step 14/20: 4.5 Implement `phases/follow-up.ts` (`runFollowUp`, `runSync`/`answer.ts
+- **agent:** Implement issue #441 — step 15/20: 4.6 Wire the dispatch: `driveMachine` calls `runFollowUp` beside `runSyn
+- **agent:** Implement issue #441 — step 16/20: 4.7 Confirm the mutation ratchet is satisfied on the new module: run `bu
+- **agent:** Implement issue #441 — step 17/20: 5.1 `opencode-agent/README.md`: add the `/follow-up` row to the command
+- **agent:** Implement issue #441 — step 18/20: 5.2 `opencode-agent/CLAUDE.md`: note the surface exception as the one ca
+- **agent:** Implement issue #441 — step 19/20: 6.1 Run the full suite and checks: `bun test`, `bun run typecheck`, `bun
+- **agent:** Implement issue #441 — step 20/20: 6.2 Update affected `docs/architecture/*.md` pages (coding-sessions.md c
+
+### Documentation
+
+- **afk-runner:** Extraction change refresh — D6 wait-for-landing complete, D7 runner-executed A/C, target yourpapai/afk-runner
+- **afk-runner:** Extraction prep — three runner task files (A, C-setup, C-retire) + the locked D7 runbook
+- **codeindex:** Fix CLAUDE.md protocol — clone pointer, watcher truth, plugins/
+- **skills:** Point structural-query skills at the codeindex protocol
+- **codeindex:** README developer-tooling section — sibling-clone setup
+- **codeindex:** Record the smoke-verified codeindex commit d6eb4e8
+- **openspec:** Draft artifacts for reasoning-effort-setting
+- **afk-runner:** Drain gate confirmed (task 4.1) — run 5 cleared to launch
+- **afk-runner:** Run-5 halt record — twin escalation mechanics (unchecked-box walk, hand re-target), 4.1/4.2 hand landings, 3.1 lint-red fix
+- **afk-runner:** Run-5 gate-7 round — 4.3/4.4 landed (e7e877dfe sweep), 4.5 hand re-target (f654f2728), remaining walk 4.6/5.1-5.3
+- **afk-runner:** Run-5 release round — 4.6/5.1 runner-landed, 5.2/5.3 hand re-target (0b5a727a0), APPROVE staged at gate-8
+- **openspec:** Draft artifacts for agent-turn-limit-headroom
+- **openspec:** Draft artifacts for llm-base-model-selection
+- **openspec:** Draft artifacts for opencode-agent-clarify-forward-commands
+- **opencode-agent:** Point resumeTransition doc at transition below, not above
+- **opencode-agent:** Scope the /retry//continue note-framing claim to implementation resumes
+- **opencode-agent:** Audit the /continue acceptance the INIT_OR_CLARIFY row omits
+- **openspec:** Draft artifacts for opencode-agent-follow-up-command
+
+### Fixed
+
+- **ci:** Check the codeindex sibling out inside the workspace, then move it
+- **models-dev:** Agree the reasoning flag across ambiguous-name matches
+- **config-editor:** Name the field unavailable when the allowed option set is empty
+- **mutation:** Hoist the baseline load out of the test body in baseline.test.ts — 3.1's commit inlined loadBaseline(...) ?? {} inside a test(), tripping vitest/no-conditional-tests; the hoisted committedBaselineKeys() helper sits beside the file's existing committedBaseline() convention
+- **client:** Block save on incomplete model hints; surface edit-save errors
+- **settings:** Trim model hint aliases at the ProviderForm save boundary (D7)
+- **settings:** Placeholder option on model-hints add-control so the last unhinted model stays addabl
+- **llm-providers:** Trim model-hint aliases so whitespace-only values are rejected at the schema bou
+- **client:** Clear stale section error when the provider edit form opens
+- **agent:** Repair CI for issue #438
+- **ci:** Admit /follow-up in the agent pipeline's pull-request comment arm
+
+### Miscellaneous
+
+- **mutation:** Ratchet baseline
+- **codeindex:** Ignore root .codeindex/ — replace the stale nested-era pattern
+- **codeindex:** Retire the opencode reindex plugin — server owns freshness
+- **codeindex:** Widen indexed roots to ["src", "client", "plugins"]
+- **claude-code:** Pre-approve the codeindex project MCP server
+- **codeindex:** Codeindex-integration-refresh complete — full gates green
+- **openspec:** Scaffold reasoning-effort-setting
+- **mutation:** Ratchet baseline
+- **openspec:** Scaffold agent-turn-limit-headroom
+- **openspec:** Scaffold llm-base-model-selection
+- **knip:** Drop stale ignoreIssues entry for model-hints.ts
+- Drop stale facade comment in llm-orchestrator-invoke
+- **openspec:** Scaffold opencode-agent-clarify-forward-commands
+- **mutation:** Ratchet baseline
+- **mutation:** Ratchet baseline
+- **openspec:** Scaffold opencode-agent-follow-up-command
+
+### Testing
+
+- **byok-routes:** Restore fetch mock in afterEach so it survives assertion failures
+- **opencode-agent:** Pin stale resumeFrom survival in INIT_OR_CLARIFY re-entry tests
 ## [6.14.7] - 2026-09-09
 
 ### Added
