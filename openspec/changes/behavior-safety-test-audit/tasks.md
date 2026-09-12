@@ -4,7 +4,7 @@ Research-only change: no production/test code is written or edited (see design.m
 
 ## 1. Branch shape & staleness (metadata-only)
 
-- [ ] 1.1 Fetch origin and pin divergence evidence: capture `master` and `origin/plugin-core-separation` SHAs, `git log --oneline master..origin/plugin-core-separation`, and `git diff --stat master...origin/plugin-core-separation`; write the header block (SHAs + divergence date) to `reports/audit/issue-448/behavior-safety-audit.md` — verify: `git fetch origin && git log --oneline master..origin/plugin-core-separation && git diff --stat master...origin/plugin-core-separation`
+- [x] 1.1 Fetch origin and pin divergence evidence: capture `master` and `origin/plugin-core-separation` SHAs, `git log --oneline master..origin/plugin-core-separation`, and `git diff --stat master...origin/plugin-core-separation`; write the header block (SHAs + divergence date) to `reports/audit/issue-448/behavior-safety-audit.md` — verify: `git fetch origin && git log --oneline master..origin/plugin-core-separation && git diff --stat master...origin/plugin-core-separation`
 - [ ] 1.2 Read `openspec/changes/plugin-core-separation-toolgate/` and `openspec/changes/hermetic-e2e-core-separation-proof/`; draft the module-extraction map (planned `src/modules/`, `src/ports/`, `src/composition/` extractions onto current master modules: `src/plugins/`, `src/llm-orchestrator*`, chat providers) as report section 1 — verify: `grep -n "plugin-core-separation" reports/audit/issue-448/behavior-safety-audit.md`
 
 ## 2. Static taxonomy (sub-second data first)
