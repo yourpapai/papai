@@ -25,6 +25,14 @@ const comment = (authorLogin: string, body: string, id = 1): IssueComment => ({ 
 
 const at = (phase: Phase): AgentState => ({ ...initialState(42), phase })
 
+/**
+ * The phases that refuse `CONTINUE` — every phase except the two that accept
+ * it: the wall-clock park the command resumes, and the parked triage it
+ * re-enters in place. Named at module level so the matrix and the re-entry
+ * tests beside it read as one answer.
+ */
+const CONTINUE_REFUSED_IN: Phase[] = PHASES.filter((phase) => phase !== 'INCOMPLETE' && phase !== 'INIT_OR_CLARIFY')
+
 describe('blocks', () => {
   test('round-trips an arbitrary payload', () => {
     expect(readBlock(renderBlock('AGENT_SPEC', { text: 'hi' }), 'AGENT_SPEC')).toEqual({ text: 'hi' })
@@ -472,7 +480,7 @@ describe('transition', () => {
   })
 
   test('rejects a signal the current phase does not accept', () => {
-    expect(() => transition(initialState(1), 'APPROVED')).toThrow(InvalidTransitionError)
+    expect(() => transition(initialState(1), 'CHANGES_REQUESTED')).toThrow(InvalidTransitionError)
     expect(() => transition(at('DESIGN_SPEC'), 'PLAN_POSTED')).toThrow(InvalidTransitionError)
     expect(() => transition(at('PLAN_REVIEW'), 'CAPTURED')).toThrow(InvalidTransitionError)
   })
@@ -700,10 +708,45 @@ describe('transition', () => {
     expect(transition(parked, 'CONTINUE').attempts).toBe(2)
   })
 
-  test.each<Phase>([...PHASES].filter((phase) => phase !== 'INCOMPLETE'))('CONTINUE is refused in %s', (phase) => {
-    // `/continue` means "you were not finished", which is a claim only the phase
-    // a wall-clock stop parks in can make. Everywhere else it is refused through
-    // `refuseCommand`, which names what the phase does accept.
+  test('CONTINUE out of a parked INIT_OR_CLARIFY re-enters triage where it stands', () => {
+    // The forward path out of the clarifying park: the command applies the
+    // ANSWERED patch — the phase does not move, so the cascade re-runs the
+    // triage handler exactly where the issue is parked — clearing the failure
+    // budget and the recorded error, and leaving `resumeFrom` alone. The stale
+    // point is the D2 property: `resumeTransition` would consume it and fling
+    // the park into `PLANNING`.
+    const parked: AgentState = { ...at('INIT_OR_CLARIFY'), attempts: 2, lastError: 'boom', resumeFrom: 'PLANNING' }
+
+    const continued = transition(parked, 'CONTINUE')
+
+    expect(canTransition('INIT_OR_CLARIFY', 'CONTINUE')).toBe(true)
+    expect(continued.phase).toBe('INIT_OR_CLARIFY')
+    expect(continued.resumeFrom).toBe('PLANNING')
+    expect(continued.attempts).toBe(0)
+    expect(continued.lastError).toBeNull()
+  })
+
+  test('APPROVED in a parked INIT_OR_CLARIFY is the same re-entry through the self-loop', () => {
+    // The `/approve` shape of the same forward path: the row loops back to the
+    // phase it started in, so the forwardTransition machinery does the work —
+    // same cleared budget, same cleared error, same untouched resume point
+    // (`forwardTransition` never reads it — the D2 property, asserted stale).
+    const parked: AgentState = { ...at('INIT_OR_CLARIFY'), attempts: 2, lastError: 'boom', resumeFrom: 'PLANNING' }
+
+    const approved = transition(parked, 'APPROVED')
+
+    expect(canTransition('INIT_OR_CLARIFY', 'APPROVED')).toBe(true)
+    expect(approved.phase).toBe('INIT_OR_CLARIFY')
+    expect(approved.resumeFrom).toBe('PLANNING')
+    expect(approved.attempts).toBe(0)
+    expect(approved.lastError).toBeNull()
+  })
+
+  test.each<Phase>(CONTINUE_REFUSED_IN)('CONTINUE is refused in %s', (phase) => {
+    // `/continue` means "you were not finished" — a claim a wall-clock park
+    // makes, and the forward path out of a parked triage. Everywhere else it
+    // is refused through `refuseCommand`, which names what the phase does
+    // accept.
     expect(canTransition(phase, 'CONTINUE')).toBe(false)
   })
 
