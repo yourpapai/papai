@@ -1430,16 +1430,16 @@
     "scored": 45
   },
   "src/llm-orchestrator-events.ts": {
-    "score": 0.6031746031746031,
-    "killed": 38,
+    "score": 0.7205882352941176,
+    "killed": 49,
     "timeout": 0,
-    "scored": 63
+    "scored": 68
   },
   "src/llm-orchestrator-invoke.ts": {
-    "score": 0.71,
-    "killed": 70,
+    "score": 0.8703703703703703,
+    "killed": 93,
     "timeout": 1,
-    "scored": 100
+    "scored": 108
   },
   "src/llm-orchestrator-send.ts": {
     "score": 0.7764705882352941,
@@ -1586,6 +1586,12 @@
     "killed": 139,
     "timeout": 0,
     "scored": 219
+  },
+  "src/run-control/turn-limit.ts": {
+    "score": 1,
+    "killed": 10,
+    "timeout": 0,
+    "scored": 10
   },
   "src/runtime/production-background.ts": 0.9423076923076923,
   "src/runtime/production-extensions.ts": 0,
