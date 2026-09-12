@@ -11,9 +11,11 @@ import type { AgentState, TransitionSignal } from './types.js'
  *
  * `/continue` is deliberately not a second spelling of `/retry`. That one means
  * "the thing that broke, again" and is accepted in `FAILED`; this one means "you
- * were not finished" and is accepted only in `INCOMPLETE`, where a wall-clock
- * stop parks. One command for both would need the state to say which kind of park
- * it is carrying, and every reader of the phase would have to ask.
+ * were not finished" and is accepted in `INCOMPLETE`, where a wall-clock stop
+ * parks, and in `INIT_OR_CLARIFY`, where it re-runs triage where the issue
+ * stands (issue #438) rather than resuming anything. One command for both parks
+ * would need the state to say which kind of park it is carrying, and every
+ * reader of the phase would have to ask.
  */
 export const SLASH_COMMANDS = [
   '/approve',

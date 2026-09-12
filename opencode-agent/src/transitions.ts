@@ -3,6 +3,7 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
+import { TRANSITIONS } from './transition-table.js'
 import { agentStateSchema, InvalidTransitionError, STATE_VERSION } from './types.js'
 import type { AgentState, Phase, TransitionSignal } from './types.js'
 
@@ -17,99 +18,13 @@ import type { AgentState, Phase, TransitionSignal } from './types.js'
  * describing its table and its restore scan in two separate voices, and the file
  * reached `max-lines` when a wall-clock park and the command out of it arrived.
  *
+ * The table itself has since moved the same way: `transition-table.ts` holds
+ * the rows and the audit of every deliberate absence, and this file is what
+ * reads them.
+ *
  * Nothing here talks to GitHub or reads a comment: a value in and a value out, which
- * is what lets the whole audit below be asserted as arithmetic.
+ * is what lets the whole audit be asserted as arithmetic.
  */
-
-/**
- * Where each signal leads. Signals absent from a phase's row are rejected, so a
- * command arriving in the wrong phase is a loud no-op rather than a silent
- * corruption of the persisted state.
- *
- * `ANSWERED` is deliberately not in this table at all — see {@link transition}.
- * Every entry here names a phase the machine *moves to*; a signal that leaves
- * the phase alone has no business being expressed as a row per phase.
- *
- * `CI_FAILED` appears in exactly two rows, and the four absences are the
- * decision rather than an oversight. A red run is worth acting on only where
- * the branch is already pushed *and* no job of this pipeline is working it:
- * `COMPLETE` is the ordinary case, and `PR_DELIVERY` is the genuine race.
- * Phase 3 pushes the branch and posts a state block naming `PR_DELIVERY`
- * before phase 4 opens the pull request, and a delivery that dies after the
- * pull request exists leaves exactly that block behind — so the branch is live,
- * the checks are red, and the row that used to be missing had `applyCiTrigger`
- * refuse the run, post nothing and spend nothing. Silence is the failure mode
- * the whole CI path is built around, so it was the wrong row to leave out.
- *
- * The four phases before the branch exists — `INIT_OR_CLARIFY`, `DESIGN_SPEC`,
- * `PLANNING`, `PLAN_REVIEW` — have nothing pushed to repair, and
- * `handleCiFix` would happily run the configured checks against a branch cut
- * fresh from the base and commit the base's own failures onto the issue.
- *
- * `REVIEW_AND_MUTATE` and `CI_FIX` are out because the machine never persists
- * them: a state block is written only when a handler posts, and both of those
- * handlers post the phase they moved *to* (`PR_DELIVERY`, `COMPLETE`). A red
- * run appearing to find one is reading a hand-edited block, and honouring it
- * would put a second agent job on a branch another job is mid-commit on. The
- * workflow's concurrency group (`opencode-agent-<branch>`,
- * `cancel-in-progress: false`) does queue those two runs rather than overlap
- * them — but it keys a CI run off `workflow_run.head_branch` and an issue run
- * off `agent/issue-<n>`, so it holds only while those two strings agree, which
- * is a narrow coincidence to hang a push race on rather than a proof.
- *
- * `FAILED` is deliberately absent and is the close call, because there the
- * branch *is* pushed, a pull request may well be open, and its checks do go red
- * with nobody acting. It stays out because `FAILED`'s entire content is a
- * recorded pipeline failure plus the `resumeFrom` that undoes it, and
- * `CI_FAILED` is a forward move: it would reset `attempts`, and it would leave
- * `FAILED` for a phase where `/retry` is refused — `resumeFrom` survives the
- * move but nothing can ever act on it again — so a fix that went green would
- * land the issue in `COMPLETE`, announcing success for a pipeline that never
- * finished delivering. Nor is this the silence the `PR_DELIVERY` row is about:
- * a failed run has already posted "this failed, reply `/retry`", and that
- * `/retry` resumes the phase that broke, delivers, and reaches `COMPLETE`,
- * where the next red run is picked up as usual. The red checks are deferred
- * behind a maintainer, not abandoned.
- *
- * `REVIEW_REQUESTED` names exactly one row, and its absences are the same audit
- * with one answer changed. The four phases before the branch exists have nothing
- * to review; `REVIEW_AND_MUTATE`, `CODE_REVIEW` and `CI_FIX` are never
- * persisted, so a `/review` appearing to find one is reading a hand-edited block
- * and honouring it would put a second job on a branch another is mid-commit on;
- * and `FAILED` is parked under a comment asking for `/retry`, where reviewing a
- * delivery that did not finish reviews a branch nobody has claimed is complete.
- *
- * `PR_DELIVERY` is the one that differs from `CI_FAILED`, deliberately. That row
- * exists because a refused red run is **silent** — nothing posted, nothing
- * spent, and a maintainer with no way to learn the run was dropped. A refused
- * `/review` answers on the issue through `refuseCommand`, naming what the phase
- * does accept, so there is no silence to fix; and in `PR_DELIVERY` the pull
- * request may not exist yet, which is precisely what the review reports against.
- *
- * `INCOMPLETE` carries an empty row for the reason `FAILED` does: both signals that
- * reach it — `OUT_OF_TIME` in, `CONTINUE` out — are explicit branches in
- * {@link transition}, neither being a plain forward move. Its two absences are that
- * same audit again: `CI_FAILED` and `REVIEW_REQUESTED` stay out even though the
- * branch *is* pushed there, the one condition those rows normally want, because the
- * work is by definition unfinished and CI-fixing or reviewing a half-done increment
- * is worse than waiting for the `/continue` that finishes it.
- */
-const TRANSITIONS: Record<Phase, Partial<Record<TransitionSignal, Phase>>> = {
-  INIT_OR_CLARIFY: { NEEDS_CLARIFICATION: 'INIT_OR_CLARIFY', CAPTURED: 'DESIGN_SPEC' },
-  DESIGN_SPEC: { CHANGES_REQUESTED: 'INIT_OR_CLARIFY', APPROVED: 'PLANNING' },
-  PLANNING: { PLAN_POSTED: 'PLAN_REVIEW' },
-  PLAN_REVIEW: { CHANGES_REQUESTED: 'PLANNING', APPROVED: 'REVIEW_AND_MUTATE' },
-  // D6 — steering-drift: a scope-affecting comment mid-implementation routes to PLANNING.
-  REVIEW_AND_MUTATE: { CHANGES_REQUESTED: 'PLANNING', CHANGES_COMMITTED: 'PR_DELIVERY' },
-  PR_DELIVERY: { PR_OPENED: 'COMPLETE', CI_FAILED: 'CI_FIX' },
-  CODE_REVIEW: { REVIEW_DONE: 'COMPLETE' },
-  CI_FIX: { CI_FIXED: 'COMPLETE' },
-  // D7 — archive door: merged PR → ARCHIVE → COMPLETE. Never persisted as waiting.
-  ARCHIVE: { ARCHIVED: 'COMPLETE' },
-  COMPLETE: { CI_FAILED: 'CI_FIX', REVIEW_REQUESTED: 'CODE_REVIEW', PR_MERGED: 'ARCHIVE' },
-  FAILED: {},
-  INCOMPLETE: {},
-}
 
 /**
  * Phases a wall-clock stop may park, and therefore the phases `OUT_OF_TIME` is
@@ -152,10 +67,12 @@ export const canTransition = (phase: Phase, signal: TransitionSignal): boolean =
   if (signal === 'RETRY') return phase === 'FAILED'
   if (signal === 'OUT_OF_TIME') return TIME_STOPPABLE.has(phase)
   // The mirror image of `RETRY`, and narrower on purpose: `/continue` means "you
-  // were not finished", a claim only the phase a wall-clock stop parks in can
-  // make. Anywhere else it is refused before the signal is applied, through the
-  // door that names what the phase does accept.
-  if (signal === 'CONTINUE') return phase === 'INCOMPLETE'
+  // were not finished" — a claim a wall-clock park makes, and the forward path
+  // out of a parked triage (issue #438), where it re-runs the handler where the
+  // issue stands rather than resuming anything. Anywhere else it is refused
+  // before the signal is applied, through the door that names what the phase
+  // does accept.
+  if (signal === 'CONTINUE') return phase === 'INCOMPLETE' || phase === 'INIT_OR_CLARIFY'
   return TRANSITIONS[phase][signal] !== undefined
 }
 
@@ -235,6 +152,10 @@ const timeStopTransition = (state: AgentState, patch: Partial<AgentState>): Part
  * {@link canTransition} already says. A parallel branch would be a second spelling
  * of one move, free to disagree with the first.
  *
+ * The third `CONTINUE` never gets here: out of `INIT_OR_CLARIFY` the command is
+ * the ANSWERED shape handled in {@link transition} below — a parked triage has
+ * nothing to resume.
+ *
  * The `INIT_OR_CLARIFY` fallback is for a hand-edited block that names no resume
  * point: a state block is attacker-editable text, and starting the conversation
  * over is a better answer than throwing out of the pipeline.
@@ -281,6 +202,12 @@ export const transition = (
   if (signal === 'CANCELLED') return applyPatch(state, { phase: 'COMPLETE', resumeFrom: null, ...patch })
 
   if (signal === 'OUT_OF_TIME') return applyPatch(state, timeStopTransition(state, patch))
+  // `/continue` out of the clarifying park is not a resume — nothing is parked.
+  // It is the ANSWERED shape: the phase does not move (the cascade re-runs the
+  // triage handler where the issue stands), `resumeFrom` is untouched, and the
+  // failure budget and error clear the way any handler success does.
+  if (signal === 'CONTINUE' && state.phase === 'INIT_OR_CLARIFY')
+    return applyPatch(state, { attempts: 0, lastError: null, ...patch })
   if (signal === 'RETRY' || signal === 'CONTINUE') return applyPatch(state, resumeTransition(state, patch))
 
   const next = TRANSITIONS[state.phase][signal]

@@ -285,3 +285,20 @@ describe('the wrong-command refusal lists /follow-up exactly where delivery has 
     expect(rendered).not.toContain('`/follow-up`')
   })
 })
+
+/**
+ * The forward path out of the clarifying park (issue #438): both re-entries
+ * re-run triage where the issue stands — `/continue` through the ANSWERED
+ * patch, `/approve` through the phase's own self-loop — and the offer derives
+ * from the same table the gate reads, so a refusal in this phase names them.
+ */
+describe('acceptedCommands for a parked INIT_OR_CLARIFY', () => {
+  test('is exactly the two re-entries plus /ask and /cancel', () => {
+    // Pre-capture (`changeName: null`): no branch for /sync to merge into, no
+    // pull request for /review or /fix to act on, and no phase move /changes
+    // or /retry could make from here.
+    const parked = state('INIT_OR_CLARIFY', { changeName: null })
+
+    expect(acceptedCommands(parked)).toEqual(['/approve', '/ask', '/cancel', '/continue'])
+  })
+})
