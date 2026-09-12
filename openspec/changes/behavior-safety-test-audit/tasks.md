@@ -22,7 +22,7 @@ Research-only change: no production/test code is written or edited (see design.m
 
 ## 4. Synthesis: matrix, gaps, verdict
 
-- [ ] 4.1 Build the critical-path protection matrix (message pipeline `bot-message-handler`, tool-call loop `llm-orchestrator-*`, response delivery, settings persistence + DB migrations, deferred-prompts scheduling/firing, opencode-agent phases, git/issue flows) × (protecting tests, red lane); empty cell = gap; write report section 4 — verify: `grep -n "Protection matrix" reports/audit/issue-448/behavior-safety-audit.md`
+- [x] 4.1 Build the critical-path protection matrix (message pipeline `bot-message-handler`, tool-call loop `llm-orchestrator-*`, response delivery, settings persistence + DB migrations, deferred-prompts scheduling/firing, opencode-agent phases, git/issue flows) × (protecting tests, red lane); empty cell = gap; write report section 4 — verify: `grep -n "Protection matrix" reports/audit/issue-448/behavior-safety-audit.md`
 - [ ] 4.2 Score each gap as criticality × refactor exposure (exposure from the 1.2 extraction map); write one line per gap naming the behavior-pinning assertion — the user-observable contract a new test would pin, never an internal; write report section 6 — verify: `grep -n "Gap map" reports/audit/issue-448/behavior-safety-audit.md`
 - [ ] 4.3 Apply the mechanical verdict rule (restart-safe ⇔ both coverage floors green AND no empty matrix cell on a path the branch extracts); otherwise list the ordered minimum coverage additions, each one testable contract; write report section 7 — verify: `grep -n "Verdict" reports/audit/issue-448/behavior-safety-audit.md`
 
