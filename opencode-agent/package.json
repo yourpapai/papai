@@ -16,11 +16,11 @@
     "verify-skills": "cd .. && bun run opencode-agent/scripts/verify-skills.ts"
   },
   "dependencies": {
-    "zod": "^4.5.4"
+    "zod": "^4.6.5"
   },
   "devDependencies": {
     "@octokit/rest": "^22.0.0",
-    "@opencode-ai/sdk": "^1.18.25",
+    "@opencode-ai/sdk": "^1.18.31",
     "typescript": "^7.0.2"
   },
   "engines": {
