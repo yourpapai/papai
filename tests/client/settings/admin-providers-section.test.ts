@@ -116,6 +116,7 @@ const recordingRoute =
   }
 
 let target: HTMLElement
+let component: Record<string, unknown> | null = null
 
 beforeEach(() => {
   target = document.createElement('div')
@@ -123,7 +124,10 @@ beforeEach(() => {
 })
 
 afterEach(() => {
-  void unmount(target)
+  if (component !== null) {
+    void unmount(component)
+    component = null
+  }
   target.remove()
   restoreFetch()
   setCsrfToken('')
@@ -132,7 +136,7 @@ afterEach(() => {
 describe('AdminProvidersSection', () => {
   test('renders the provider list', async () => {
     setMockFetch(() => Promise.resolve(json(populatedPayload)))
-    mount(AdminProvidersSection, { target })
+    component = mount(AdminProvidersSection, { target })
     await drain()
 
     expect(document.body.textContent).toContain('OpenAI')
@@ -141,7 +145,7 @@ describe('AdminProvidersSection', () => {
 
   test('shows add-provider form on button click', async () => {
     setMockFetch(() => Promise.resolve(json(populatedPayload)))
-    mount(AdminProvidersSection, { target })
+    component = mount(AdminProvidersSection, { target })
     await drain()
 
     const addBtn = document.querySelector<HTMLButtonElement>('[data-testid="admin-providers-add"]')!
@@ -153,7 +157,7 @@ describe('AdminProvidersSection', () => {
 
   test('shows empty state when no providers', async () => {
     setMockFetch(() => Promise.resolve(json({ providers: [] })))
-    mount(AdminProvidersSection, { target })
+    component = mount(AdminProvidersSection, { target })
     await drain()
 
     expect(document.body.textContent).toContain('No providers')
@@ -161,7 +165,7 @@ describe('AdminProvidersSection', () => {
 
   test('renders error state', async () => {
     setMockFetch(() => Promise.resolve(json({ error: 'boom' }, 500)))
-    mount(AdminProvidersSection, { target })
+    component = mount(AdminProvidersSection, { target })
     await drain()
 
     expect(document.body.textContent).toContain('boom')
@@ -169,7 +173,7 @@ describe('AdminProvidersSection', () => {
 
   test('shows edit form in edit mode on edit button click', async () => {
     setMockFetch(() => Promise.resolve(json(populatedPayload)))
-    mount(AdminProvidersSection, { target })
+    component = mount(AdminProvidersSection, { target })
     await drain()
 
     const editBtn = document.querySelector<HTMLButtonElement>('[data-testid="admin-providers-edit-prov_1"]')!
@@ -187,7 +191,7 @@ describe('AdminProvidersSection', () => {
       captureCall(calls, url, init)
       return Promise.resolve(json(populatedPayload))
     })
-    mount(AdminProvidersSection, { target })
+    component = mount(AdminProvidersSection, { target })
     await drain()
 
     const refreshBtn = document.querySelector<HTMLButtonElement>(
@@ -201,7 +205,7 @@ describe('AdminProvidersSection', () => {
 
   test('shows models editor textarea on models button click', async () => {
     setMockFetch(() => Promise.resolve(json(populatedPayload)))
-    mount(AdminProvidersSection, { target })
+    component = mount(AdminProvidersSection, { target })
     await drain()
 
     const modelsBtn = document.querySelector<HTMLButtonElement>('[data-testid="admin-providers-models-prov_1"]')!
@@ -215,7 +219,7 @@ describe('AdminProvidersSection', () => {
 
   test('the add form exposes optional base-reference fields with a pre-save hint', async () => {
     setMockFetch(routeProvidersWithMetadata(populatedPayload))
-    mount(AdminProvidersSection, { target })
+    component = mount(AdminProvidersSection, { target })
     await drain()
 
     document.querySelector<HTMLButtonElement>('[data-testid="admin-providers-add"]')!.click()
@@ -235,7 +239,7 @@ describe('AdminProvidersSection', () => {
   test('saving with base references sends them in the create payload', async () => {
     const calls: CapturedRequest[] = []
     setMockFetch(recordingRoute(calls, populatedPayload, true))
-    mount(AdminProvidersSection, { target })
+    component = mount(AdminProvidersSection, { target })
     await drain()
 
     document.querySelector<HTMLButtonElement>('[data-testid="admin-providers-add"]')!.click()
@@ -257,7 +261,7 @@ describe('AdminProvidersSection', () => {
   test('the edit form prefills base references and patches them', async () => {
     const calls: CapturedRequest[] = []
     setMockFetch(recordingRoute(calls, populatedPayload, false))
-    mount(AdminProvidersSection, { target })
+    component = mount(AdminProvidersSection, { target })
     await drain()
 
     document.querySelector<HTMLButtonElement>('[data-testid="admin-providers-edit-prov_1"]')!.click()
@@ -297,7 +301,7 @@ describe('AdminProvidersSection', () => {
 
   test('the edit form renders the hints editor with the enumerated models and stored hints', async () => {
     setMockFetch(recordingRoute([], hintsPayload, true))
-    mount(AdminProvidersSection, { target })
+    component = mount(AdminProvidersSection, { target })
     await drain()
 
     document.querySelector<HTMLButtonElement>('[data-testid="admin-providers-edit-prov_1"]')!.click()
@@ -318,7 +322,7 @@ describe('AdminProvidersSection', () => {
   test('saving the edit form carries modelHints in the PATCH body', async () => {
     const calls: CapturedRequest[] = []
     setMockFetch(recordingRoute(calls, hintsPayload, true))
-    mount(AdminProvidersSection, { target })
+    component = mount(AdminProvidersSection, { target })
     await drain()
 
     document.querySelector<HTMLButtonElement>('[data-testid="admin-providers-edit-prov_1"]')!.click()
@@ -342,7 +346,7 @@ describe('AdminProvidersSection', () => {
   test('saving trims whitespace in model hint aliases (D7 form boundary)', async () => {
     const calls: CapturedRequest[] = []
     setMockFetch(recordingRoute(calls, hintsPayload, true))
-    mount(AdminProvidersSection, { target })
+    component = mount(AdminProvidersSection, { target })
     await drain()
 
     document.querySelector<HTMLButtonElement>('[data-testid="admin-providers-edit-prov_1"]')!.click()
@@ -366,7 +370,7 @@ describe('AdminProvidersSection', () => {
 
   test('an incomplete hint row disables saving until the hint is filled', async () => {
     setMockFetch(recordingRoute([], hintsPayload, true))
-    mount(AdminProvidersSection, { target })
+    component = mount(AdminProvidersSection, { target })
     await drain()
 
     document.querySelector<HTMLButtonElement>('[data-testid="admin-providers-edit-prov_1"]')!.click()
@@ -393,7 +397,7 @@ describe('AdminProvidersSection', () => {
 
   test('a rejected edit save surfaces the server error next to the form', async () => {
     setMockFetch(patchRejectsRoute(hintsPayload, 422))
-    mount(AdminProvidersSection, { target })
+    component = mount(AdminProvidersSection, { target })
     await drain()
 
     document.querySelector<HTMLButtonElement>('[data-testid="admin-providers-edit-prov_1"]')!.click()
@@ -409,7 +413,7 @@ describe('AdminProvidersSection', () => {
 
   test('opening the edit form clears a stale error left by a failed refresh', async () => {
     setMockFetch(postRejectsRoute(populatedPayload, 500))
-    mount(AdminProvidersSection, { target })
+    component = mount(AdminProvidersSection, { target })
     await drain()
 
     document.querySelector<HTMLButtonElement>('[data-testid="admin-providers-refresh-models-prov_1"]')!.click()
@@ -424,7 +428,7 @@ describe('AdminProvidersSection', () => {
 
   test('the create form does not render the hints editor', async () => {
     setMockFetch(routeProvidersWithMetadata(populatedPayload))
-    mount(AdminProvidersSection, { target })
+    component = mount(AdminProvidersSection, { target })
     await drain()
 
     document.querySelector<HTMLButtonElement>('[data-testid="admin-providers-add"]')!.click()

@@ -67,6 +67,7 @@ const mainHint = (): Element | null =>
   document.querySelector('[data-testid="role-main"] [data-testid="model-metadata-hint"]')
 
 let target: HTMLElement
+let component: Record<string, unknown> | null = null
 
 beforeEach(() => {
   target = document.createElement('div')
@@ -74,7 +75,10 @@ beforeEach(() => {
 })
 
 afterEach(() => {
-  void unmount(target)
+  if (component !== null) {
+    void unmount(component)
+    component = null
+  }
   target.remove()
   restoreFetch()
   setCsrfToken('')
@@ -83,7 +87,7 @@ afterEach(() => {
 describe('AdminModelsSection', () => {
   test('renders three role blocks', async () => {
     setMockFetch(routeLlmFetch)
-    mount(AdminModelsSection, { target })
+    component = mount(AdminModelsSection, { target })
     await drain()
 
     expect(document.querySelector('[data-testid="role-main"]')).not.toBeNull()
@@ -93,7 +97,7 @@ describe('AdminModelsSection', () => {
 
   test('main role block has no inherit checkbox', async () => {
     setMockFetch(routeLlmFetch)
-    mount(AdminModelsSection, { target })
+    component = mount(AdminModelsSection, { target })
     await drain()
 
     expect(document.querySelector('[data-testid="role-main-inherit"]')).toBeNull()
@@ -101,7 +105,7 @@ describe('AdminModelsSection', () => {
 
   test('small role shows inherit checkbox checked when null', async () => {
     setMockFetch(routeLlmFetch)
-    mount(AdminModelsSection, { target })
+    component = mount(AdminModelsSection, { target })
     await drain()
 
     const checkbox = document.querySelector<HTMLInputElement>('[data-testid="role-small-inherit"]')
@@ -111,7 +115,7 @@ describe('AdminModelsSection', () => {
 
   test('shows the model metadata hint under a role with a bound model', async () => {
     setMockFetch(routeFetch)
-    mount(AdminModelsSection, { target })
+    component = mount(AdminModelsSection, { target })
     await drain()
 
     await waitFor(() => {
@@ -125,7 +129,7 @@ describe('AdminModelsSection', () => {
 
   test('hides the metadata hint when the model field is cleared', async () => {
     setMockFetch(routeFetch)
-    mount(AdminModelsSection, { target })
+    component = mount(AdminModelsSection, { target })
     await drain()
     await waitFor(() => {
       flushSync()
