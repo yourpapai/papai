@@ -32,7 +32,7 @@
 - [x] 4.6 Bump `oxlint` 1.94.0 and `oxlint-tsgolint` 7.0.2008 together; run `bun run lint` and `bun run typecheck`, fix new findings without disable comments, and verify both exit 0.
 - [x] 4.7 Run `bun run format` after the oxfmt 0.79 bump; inspect the HTML/Svelte diff and verify `bun run format:check` exits 0.
 - [x] 4.8 Bump `@playwright/test` 1.65.1; verify `bun run test:e2e` and `bun run shoot` pass under Bun. Do not add `onlyFailures` reporters: the project uses `list` + rprtr, and a failure-only artifact path is a separate change.
-- [ ] 4.9 Commit Wave 3 as one commit per major migration; verify each commit reverts independently with `git revert --no-commit` plus `bun install --frozen-lockfile`.
+- [x] 4.9 Commit Wave 3 as one commit per major migration; verify each commit reverts independently with `git revert --no-commit` plus `bun install --frozen-lockfile`.
 
 ## 5. Wave 4 — visual and developer extras
 
