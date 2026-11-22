@@ -112,7 +112,7 @@ For each source file, `pairedRun` resolves the test set in this priority:
    Each candidate is then run once with `bun test --coverage` (lane-aware, see
    `scripts/mutation/coverage-runner.ts`): tests under `tests/client/**` run
    with the `test:client` preset (`--conditions=browser --preload
-./tests/client-setup.ts --path-ignore-patterns ''`) because bunfig's
+   ./tests/client-setup.ts --path-ignore-patterns ''`) because bunfig's
    `pathIgnorePatterns` otherwise hides them from discovery; `tests/e2e/**` and
    `tests/stories/**` are excluded from the candidate universe entirely (Docker
    / sandboxed story runner — not spawnable per-file). The source is
@@ -369,7 +369,7 @@ Migration below); the two shapes coexist in the one committed sorted map.
   the run measured no gateable files (e.g. a docs- or scripts-only merge) — so
   the commit step no-ops gracefully instead of failing on a missing artifact.
 - **Commit-step re-seed** (`test:mutate:seed --scores=reports/paired/scores.json
-[--fresh-base=SHA]`): master can move while mutation testing runs (e.g. a
+  [--fresh-base=SHA]`): master can move while mutation testing runs (e.g. a
   release bump push), which would reject a naive push and lose the seed. The CI
   commit step instead loops: reset to the fresh `origin/master`, re-apply the
   persisted scores via `seedMerge` (per-key max, so retries never conflict and

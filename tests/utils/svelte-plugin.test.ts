@@ -41,7 +41,7 @@ describe('svelte-plugin (test-runner loader)', () => {
         format: 'esm',
         // The temp dir has no node_modules; the compiled component's svelte
         // runtime imports are irrelevant to the transform under test.
-        external: ['svelte/internal/client', 'svelte/internal/disclose-version'],
+        external: ['svelte/internal/client', 'svelte/internal/disclose-version', 'svelte/internal/init-operations'],
         plugins: [sveltePlugin()],
       })
 

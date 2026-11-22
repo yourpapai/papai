@@ -154,7 +154,7 @@ screen-section entry is used.
 
 8. **Verify the result.** After generating code for a mapped component or
    section, run the compare loop (`bun run figma:verify --story <baseline>
---figma <png-or-node-id>`; see "Verifying generated code against designs"
+   --figma <png-or-node-id>`; see "Verifying generated code against designs"
    in `docs/architecture/storybook-screenshots.md`) and report the measured
    diff. Report-only: it never edits code or baselines.
 

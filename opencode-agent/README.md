@@ -1777,7 +1777,7 @@ have to refuse):
   byte-identical to the route's original form. Per-token Console billing.
 - **`CLAUDE_CODE_OAUTH_TOKEN` → the native profile.** No `--bare`; every
   invocation carries `--setting-sources ''` plus `--strict-mcp-config
---mcp-config <an empty JSON document>` — the neutralization pair that keeps
+  --mcp-config <an empty JSON document>` — the neutralization pair that keeps
   repository state (`.mcp.json` auto-connect, repository skill discovery,
   settings files) out of the job — and the OAuth token rides the child
   environment as the CLI's native path expects. Subscription billing, and

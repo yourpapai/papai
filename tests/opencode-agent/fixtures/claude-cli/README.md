@@ -16,7 +16,7 @@ State of this directory:
 
 - `auth-error-turn.ndjson` — **genuinely recorded** from `claude` 2.1.239 on
   2026-08-24, driven `--bare -p --output-format stream-json --verbose
---permission-mode default` with no credential set. An un-credentialed turn
+  --permission-mode default` with no credential set. An un-credentialed turn
   costs nothing and still emits the real `system`/`assistant`/`result` line
   shapes — with `is_error: true`, `terminal_reason: "api_error"` and exit code
   0, which is itself a load-bearing recorded fact: the error-to-non-zero-exit
@@ -36,7 +36,7 @@ State of this directory:
   succeeding, fails the recorder loudly.
 - `native-auth-error.ndjson` — written by the native mode's dummy-token
   negative leg (`CLAUDE_CODE_OAUTH_TOKEN=<dummy> bun run
-opencode-agent:test:claude-live`): the whole stream of a neutralized native
+  opencode-agent:test:claude-live`): the whole stream of a neutralized native
   invocation (`--setting-sources '' --strict-mcp-config --mcp-config` over the
   empty document) whose env carried only a deliberately invalid OAuth token.
   Recorded on 2.1.239: the refusal is **prompt** (~2s, two `api_retry` lines
@@ -103,7 +103,7 @@ opencode-agent:test:claude-live`): the whole stream of a neutralized native
 - `success-turn.ndjson`, `adversarial-plan-bash-refused.ndjson`,
   `resume-turn.ndjson` — **provisional, documented shapes**. An API-key-mode
   credentialed recorder run (`ANTHROPIC_API_KEY=<key> bun run
-opencode-agent:test:claude-live`) replaces the bare corpus with
+  opencode-agent:test:claude-live`) replaces the bare corpus with
   recordings from the live pinned CLI. These three files stay
   shape-documentation until such a run re-records them — the native mode
   stamps `VERSION` and its own fixtures without touching them (that

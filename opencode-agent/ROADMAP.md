@@ -554,7 +554,7 @@ honest:_
   the authoritative fallback. Verified against this repo's real git: the local
   probe fails, the remote probe returns `master`._
 - _The workflow **stopped** passing `AGENT_BASE_BRANCH:
-${{ github.event.repository.default_branch }}`. That line was what masked the
+  ${{ github.event.repository.default_branch }}`. That line was what masked the
   bug in CI, and keeping it would have left the resolution chain untested on the
   only path that runs for real._
 
@@ -2217,7 +2217,7 @@ Two distinct failures, not one, and telling them apart took the whole thread:
   reporting a **second** `opencode` process, a `bun`, three `bash` and a `curl`
   left alive. A foreground child that never exited.
 - **Runs 2 and 3** died mid-turn with `The socket connection was closed
-unexpectedly`, Bun's wording for a `fetch` whose peer went away.
+  unexpectedly`, Bun's wording for a `fetch` whose peer went away.
 
 That message names neither end of the socket, so it reads as a provider problem.
 It was not: the `session.get` that `tokensUsed()` makes next failed too — the

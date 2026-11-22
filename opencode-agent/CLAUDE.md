@@ -943,7 +943,7 @@ findings: `ROADMAP.md`.
   nothing, for the reason `settledPullRequest` sets out: CI fires on every push,
   so a comment per red run is spam.
 - **A refusal a `/retry` cannot change is translated, not repeated.** `Actions is
-not permitted to create or approve pull requests` is a repository or
+  not permitted to create or approve pull requests` is a repository or
   organisation setting, and the bare API message posted as-is reads like a bug in
   the agent: it names a setting without saying where it lives, hides the fact
   that the branch is pushed and only the API call is left, and leaves `/retry` as
