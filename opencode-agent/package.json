@@ -20,7 +20,7 @@
   },
   "devDependencies": {
     "@octokit/rest": "^22.0.0",
-    "@opencode-ai/sdk": "^1.18.25",
+    "@opencode-ai/sdk": "1.19.6",
     "typescript": "^7.0.2"
   },
   "engines": {

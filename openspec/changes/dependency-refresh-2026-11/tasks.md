@@ -36,11 +36,11 @@
 
 ## 5. Wave 4 — visual and developer extras
 
-- [ ] 5.1 Bump `@crvy/rprtr` 0.4.6 and set `reportOnlyFailedTests: process.env['CI'] === 'true'` in its reporter options, so local runs keep the full report; verify `bun run shoot` produces the reduced CI report and the full local report still works.
-- [ ] 5.2 Bump `@crvy/strybk` 0.0.10; run `bun run shoot:gen` and verify story extraction waits for preview readiness without a timeout.
-- [ ] 5.3 Sync `@opencode-ai/plugin` and `@opencode-ai/sdk` to exactly 1.19.6 in root, and `@opencode-ai/sdk` to 1.19.6 in `opencode-agent/package.json`; verify `bun run opencode-agent:test`, `bun run opencode-agent:typecheck`, and `bun run test:hooks` pass.
-- [ ] 5.4 Bump `@stryker-mutator/core` to 10.1.1 while keeping `@hughescr/stryker-bun-runner@1.3.8` and its patch; verify `bun run test:mutate:changed --base=HEAD~1` passes and the patch still applies.
-- [ ] 5.5 Commit Wave 4; verify the diff contains only the expected manifests, lockfile, and reporter config.
+- [x] 5.1 Bump `@crvy/rprtr` 0.4.6 and set `reportOnlyFailedTests: process.env['CI'] === 'true'` in its reporter options, so local runs keep the full report; verify `bun run shoot` produces the reduced CI report and the full local report still works.
+- [x] 5.2 Bump `@crvy/strybk` 0.0.10; run `bun run shoot:gen` and verify story extraction waits for preview readiness without a timeout.
+- [x] 5.3 Sync `@opencode-ai/plugin` and `@opencode-ai/sdk` to exactly 1.19.6 in root, and `@opencode-ai/sdk` to 1.19.6 in `opencode-agent/package.json`; verify `bun run opencode-agent:test`, `bun run opencode-agent:typecheck`, and `bun run test:hooks` pass.
+- [x] 5.4 Bump `@stryker-mutator/core` to 10.1.1 while keeping `@hughescr/stryker-bun-runner@1.3.8` and its patch; verify `bun run test:mutate:changed --base=HEAD~1` passes and the patch still applies.
+- [x] 5.5 Commit Wave 4; verify the diff contains only the expected manifests, lockfile, and reporter config.
 
 ## 6. Cleanup and integration
 

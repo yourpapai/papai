@@ -25,7 +25,7 @@ export default defineConfig({
   reporter: [
     ['list'],
     // Optional review/approval DX. Remove this single line to drop rprtr.
-    ['@crvy/rprtr', { screenshotDir: '.storybook-shots' }],
+    ['@crvy/rprtr', { screenshotDir: '.storybook-shots', reportOnlyFailedTests: process.env['CI'] === 'true' }],
   ],
   use: {
     baseURL: STORYBOOK_URL,

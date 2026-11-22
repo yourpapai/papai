@@ -28,20 +28,20 @@
         "zod": "^4.6.7",
       },
       "devDependencies": {
-        "@crvy/rprtr": "^0.3.2",
-        "@crvy/strybk": "^0.0.7",
+        "@crvy/rprtr": "^0.4.6",
+        "@crvy/strybk": "^0.0.10",
         "@gramio/types": "^10.3.1",
         "@grammyjs/types": "^5.1.0",
         "@happy-dom/global-registrator": "^21.0.4",
         "@hughescr/stryker-bun-runner": "^1.3.8",
-        "@opencode-ai/plugin": "1.18.25",
-        "@opencode-ai/sdk": "^1.18.25",
+        "@opencode-ai/plugin": "1.19.6",
+        "@opencode-ai/sdk": "1.19.6",
         "@oxc-parser/binding-wasm32-wasip1": "0.159.0",
         "@playwright/test": "^1.65.1",
         "@storybook/addon-a11y": "^10.6.8",
         "@storybook/addon-svelte-csf": "^5.1.6",
         "@storybook/svelte-vite": "^10.6.8",
-        "@stryker-mutator/core": "^10.0.0",
+        "@stryker-mutator/core": "^10.1.1",
         "@sveltejs/vite-plugin-svelte": "^7.3.1",
         "@types/bun": "1.4.0",
         "@types/pngjs": "^6.0.5",
@@ -82,7 +82,7 @@
       },
       "devDependencies": {
         "@octokit/rest": "^22.0.0",
-        "@opencode-ai/sdk": "^1.18.25",
+        "@opencode-ai/sdk": "1.19.6",
         "typescript": "^7.0.2",
       },
     },
@@ -191,9 +191,9 @@
 
     "@babel/types": ["@babel/types@8.0.4", "", { "dependencies": { "@babel/helper-string-parser": "^8.0.0", "@babel/helper-validator-identifier": "^8.0.4" } }, "sha512-eY+Yn3dCqTGmyiq2QRU66lA5FL8lqqqvecHt0fF3uHONIa7ToYsaCiWV8lOKqAs0Rb2SjixiKFROngnulPtt2g=="],
 
-    "@crvy/rprtr": ["@crvy/rprtr@0.3.2", "", { "dependencies": { "p-limit": "^7.3.0", "package-manager-detector": "^1.6.0", "ws": "^8.18.3", "zod": "^4.3.6" }, "peerDependencies": { "@playwright/test": ">=1.40" }, "bin": { "crvy-rprtr": "dist/cli.js" } }, "sha512-wYlZkWzi2AuFCYsUL72Ci8kCzJ3PYCfr4g0XU9IgXjuEnvWKIaO1+V0iIu6vFN7LZnSBHzxanSml/WTZMt1hEA=="],
+    "@crvy/rprtr": ["@crvy/rprtr@0.4.6", "", { "dependencies": { "p-limit": "^7.3.0", "package-manager-detector": "^1.6.0", "ws": "^8.18.3", "zod": "^4.3.6" }, "peerDependencies": { "@playwright/test": ">=1.40", "vitest": ">=4 <5" }, "optionalPeers": ["@playwright/test", "vitest"], "bin": { "crvy-rprtr": "dist/cli.js" } }, "sha512-nZr2yk5W7/Q6E8V9vFlBfNGGGFgYj2u9FJxPLsnd9Jj2e7XdHVWY8/1aQdEGoGI0A6za2XGrr8cRSpsgetqJHA=="],
 
-    "@crvy/strybk": ["@crvy/strybk@0.0.7", "", { "dependencies": { "glob": "^11.0.3" }, "peerDependencies": { "@playwright/test": ">=1.59.0" }, "bin": { "crvy-strybk": "dist/src/cli.js" } }, "sha512-lBLHN9IyLFPQ4HLGpyrKHVXRr/6sRXp368kKwPSVOr9+8Pqggn4XJycRnM624LC3tBzTnojQBfDz0UauCPaLbg=="],
+    "@crvy/strybk": ["@crvy/strybk@0.0.10", "", { "dependencies": { "glob": "^11.0.3" }, "peerDependencies": { "@playwright/test": ">=1.59.0", "@vitest/browser-playwright": ">=4 <5", "vitest": ">=4 <5" }, "optionalPeers": ["@vitest/browser-playwright", "vitest"], "bin": { "crvy-strybk": "dist/src/cli.js" } }, "sha512-qE9oWFjkbKm0/IYVmHAjstuvBsVFN3XSezdVuwTUk+DysoStJKNihqthAF5jQi9vOXV1IRkN0LhC31NA3AcsQw=="],
 
     "@discordjs/builders": ["@discordjs/builders@1.15.0", "", { "dependencies": { "@discordjs/formatters": "^0.6.2", "@discordjs/util": "^1.2.0", "@sapphire/shapeshift": "^4.0.0", "discord-api-types": "^0.38.50", "fast-deep-equal": "^3.1.3", "ts-mixer": "^6.0.4", "tslib": "^2.6.3" } }, "sha512-AifaDWTw6WUDhKBn8E6mwwoyjDAcfsYq+ZE0nKSu1dMH1NLR22D3hGkNx+ctEv8NqHEHdAZnP5REteHDmn1lkA=="],
 
@@ -375,9 +375,9 @@
 
     "@open-draft/until": ["@open-draft/until@3.0.1", "", {}, "sha512-s7/9ELP4aP9YZtW7RJaa0Xf3RISaRH9+EFN18FtykJYRHGNrl8f9ymvoNXzjhrjmftFvkQudtuDU9RYhk0xs3A=="],
 
-    "@opencode-ai/plugin": ["@opencode-ai/plugin@1.18.25", "", { "dependencies": { "@ai-sdk/provider": "3.0.8", "@opencode-ai/sdk": "1.18.25", "effect": "4.0.0-beta.83", "zod": "4.1.8" }, "peerDependencies": { "@opentui/core": ">=0.4.5", "@opentui/keymap": ">=0.4.5", "@opentui/solid": ">=0.4.5" }, "optionalPeers": ["@opentui/core", "@opentui/keymap", "@opentui/solid"] }, "sha512-Kb34zFqYosFNiMd1IuYiZGjX17z+18Srm7tHZMCz+uMVRTYNkEw1FTrfAK2FLbggwYdgzifGwKMNF1slLT8eLw=="],
+    "@opencode-ai/plugin": ["@opencode-ai/plugin@1.19.6", "", { "dependencies": { "@ai-sdk/provider": "3.0.8", "@opencode-ai/sdk": "1.19.6", "effect": "4.0.0-beta.83", "zod": "4.1.8" }, "peerDependencies": { "@opentui/core": ">=0.4.5", "@opentui/keymap": ">=0.4.5", "@opentui/solid": ">=0.4.5" }, "optionalPeers": ["@opentui/core", "@opentui/keymap", "@opentui/solid"] }, "sha512-eq1+T75FdIwPTiB8WQLV3Kii0TDAqHsC0baQtbpPS5bzgSc2UhGouy10FxedwKXbC/Prm2FgDhoARwwKDd3yhw=="],
 
-    "@opencode-ai/sdk": ["@opencode-ai/sdk@1.18.25", "", { "dependencies": { "cross-spawn": "7.0.6" } }, "sha512-GwgwhW+vE8FWSDw730SjzqNhsWXB0uJjbFOiqFkmM+USFuG13HuTlGe6SR2ixt+WXxoD6FV1hILWqsXyqej9hQ=="],
+    "@opencode-ai/sdk": ["@opencode-ai/sdk@1.19.6", "", { "dependencies": { "cross-spawn": "7.0.6" } }, "sha512-jYV7s+Tlc5jDILOyWFIgISkPlfk7z3ByqeC8/T9aESZBgSZosQR784U2UoM3ZrJ8S0LJ2cB+IA9xZN7Jj8tnhQ=="],
 
     "@oxc-parser/binding-android-arm-eabi": ["@oxc-parser/binding-android-arm-eabi@0.159.0", "", { "os": "android", "cpu": "arm" }, "sha512-9/yHxYVeyVzS3CEilO17axbtudUEmySuCL5x4nRz63nld21u4sdxXNhAOLeLCw/c8puAu9RmMb1+FWpq6jJYeQ=="],
 
@@ -617,11 +617,11 @@
 
     "@stryker-mutator/api": ["@stryker-mutator/api@9.6.1", "", { "dependencies": { "mutation-testing-metrics": "3.7.3", "mutation-testing-report-schema": "3.7.3", "tslib": "~2.8.0", "typed-inject": "~5.0.0" } }, "sha512-g8VNoFWQWbx0pdal3Vt8jVCZW+v3sc3gi94iI0GVtVgUGTqphAjJF6EAruPTx0lqvtonsaAxn5TD36hcG1d6Wg=="],
 
-    "@stryker-mutator/core": ["@stryker-mutator/core@10.0.0", "", { "dependencies": { "@inquirer/prompts": "^8.0.0", "@stryker-mutator/api": "10.0.0", "@stryker-mutator/instrumenter": "10.0.0", "@stryker-mutator/util": "10.0.0", "ajv": "~8.20.0", "chalk": "~5.6.0", "commander": "~14.0.0", "diff-match-patch": "1.0.5", "emoji-regex": "~10.6.0", "execa": "~9.6.0", "json-rpc-2.0": "^1.7.0", "lodash.groupby": "~4.6.0", "minimatch": "~10.2.4", "mutation-server-protocol": "~0.4.0", "mutation-testing-elements": "3.8.4", "mutation-testing-metrics": "3.8.4", "mutation-testing-report-schema": "3.8.4", "npm-run-path": "~6.0.0", "progress": "~2.0.3", "rxjs": "~7.8.1", "semver": "^7.6.3", "source-map": "~0.7.4", "tree-kill": "~1.2.2", "tslib": "2.8.1", "typed-inject": "~5.0.0", "typed-rest-client": "~2.3.0" }, "bin": { "stryker": "bin/stryker.js" } }, "sha512-ZvMsRyaXQQ5e6Thcid9pkuODv6Fn9E3nrBQJUap+hcJuGJ4unm26afo3m6YKSjn8kinyxJ/3TXf0cTWRDaTxVw=="],
+    "@stryker-mutator/core": ["@stryker-mutator/core@10.1.1", "", { "dependencies": { "@inquirer/prompts": "^8.0.0", "@stryker-mutator/api": "10.1.1", "@stryker-mutator/instrumenter": "10.1.1", "@stryker-mutator/util": "10.1.1", "ajv": "~8.20.0", "chalk": "~5.6.0", "commander": "~14.0.0", "diff-match-patch": "1.0.5", "emoji-regex": "~10.6.0", "execa": "~9.6.0", "json-rpc-2.0": "^1.7.0", "lodash.groupby": "~4.6.0", "minimatch": "~10.2.4", "mutation-server-protocol": "~0.4.0", "mutation-testing-elements": "3.8.4", "mutation-testing-metrics": "3.8.4", "mutation-testing-report-schema": "3.8.4", "npm-run-path": "~6.0.0", "progress": "~2.0.3", "rxjs": "~7.8.1", "semver": "^7.6.3", "source-map": "~0.7.4", "tree-kill": "~1.2.2", "tslib": "2.8.1", "typed-inject": "~5.0.0", "typed-rest-client": "~2.3.0" }, "bin": { "stryker": "bin/stryker.js" } }, "sha512-4xJAOCw9utJMLyrTk9gINi434tBxnyuwt8lU/InyoKagKd2/zh/2ui7ncWoD0qZeJrxClYzblg8iUh5ewBAB3Q=="],
 
-    "@stryker-mutator/instrumenter": ["@stryker-mutator/instrumenter@10.0.0", "", { "dependencies": { "@babel/core": "~8.0.0", "@babel/generator": "~8.0.0", "@babel/parser": "~8.0.0", "@babel/plugin-proposal-decorators": "~8.0.0", "@babel/plugin-transform-explicit-resource-management": "^8.0.0", "@babel/preset-react": "~8.0.0", "@babel/preset-typescript": "~8.0.0", "@babel/traverse": "~8.0.4", "@stryker-mutator/api": "10.0.0", "@stryker-mutator/util": "10.0.0", "angular-html-parser": "~10.11.0", "semver": "~7.8.0", "tslib": "2.8.1", "weapon-regex": "~2.0.0" } }, "sha512-B7Wmn1KlEWyFeOz6D6oGvQGRfi5Xw3VemG6dEKvFQp4qLvxD9Mf4kcZghfxffgnYwXd3bFgqXsJ+ZGlhdfIOrQ=="],
+    "@stryker-mutator/instrumenter": ["@stryker-mutator/instrumenter@10.1.1", "", { "dependencies": { "@babel/core": "~8.0.0", "@babel/generator": "~8.0.0", "@babel/parser": "~8.0.0", "@babel/plugin-proposal-decorators": "~8.0.0", "@babel/plugin-transform-explicit-resource-management": "^8.0.0", "@babel/preset-react": "~8.0.0", "@babel/preset-typescript": "~8.0.0", "@babel/traverse": "~8.0.4", "@stryker-mutator/api": "10.1.1", "@stryker-mutator/util": "10.1.1", "angular-html-parser": "~10.11.0", "semver": "~7.8.0", "tslib": "2.8.1", "weapon-regex": "~2.0.0" } }, "sha512-Vyude2i8LhDciLV1q6J55KtdA7gZpRuMfZcBcmWV6hLHAvWocoPKnCKc5BlZt1mwGWkX3Olc0457I7Ue6F1WEg=="],
 
-    "@stryker-mutator/util": ["@stryker-mutator/util@10.0.0", "", {}, "sha512-LzOpHiJaCp2ABQgnPMlrQQcsK43bd5Vo/2FGL78aN62yDoeRQ+4j3tzeuXxK5OAHdC3fUz6TDoy4IsoAuLAd3w=="],
+    "@stryker-mutator/util": ["@stryker-mutator/util@10.1.1", "", {}, "sha512-Z0zDzsmhoSykE1gT3DvD1knFxySgNMfBlpSSs1j87kWvjEMfeMqfLOk0bqEPRg/rTFIUNSEXLZapxePUhZmfZA=="],
 
     "@sveltejs/acorn-typescript": ["@sveltejs/acorn-typescript@1.0.13", "", { "peerDependencies": { "acorn": "^8.9.0" } }, "sha512-wgKggnhZVL9Bfx1OaKKTrYY9BFRk6C8UAkQNUcIv1+llzYrIqy+RZm5HPKzn0NpEBvTVhTqB4kQyllZywsRBRQ=="],
 
@@ -1661,9 +1661,9 @@
 
     "@stryker-mutator/api/mutation-testing-report-schema": ["mutation-testing-report-schema@3.7.3", "", {}, "sha512-BHm3MYq+ckO+t5CtlG8zpqxc75rdJCkxVlE+fGuGJM3F7tNCQ/OW2N+TQVHN3BHsYa84+BFc6g3AwDYkUsw2MA=="],
 
-    "@stryker-mutator/core/@stryker-mutator/api": ["@stryker-mutator/api@10.0.0", "", { "dependencies": { "mutation-testing-metrics": "3.8.4", "mutation-testing-report-schema": "3.8.4", "tslib": "~2.8.0", "typed-inject": "~5.0.0" } }, "sha512-ZtAJ0ZT3MVRCWJTBE2h90XB/6E+4lifHYtcTyNG6nU2nLekPgTo4gD5esjX6Okxo1b/JB4jJzyxYB54fwKAoJw=="],
+    "@stryker-mutator/core/@stryker-mutator/api": ["@stryker-mutator/api@10.1.1", "", { "dependencies": { "mutation-testing-metrics": "3.8.4", "mutation-testing-report-schema": "3.8.4", "tslib": "~2.8.0", "typed-inject": "~5.0.0" } }, "sha512-3s/ECsrD1Tf1WEB7amBk0HxjN7zgkabKvmqnI2C831rTNszJ6o2HoV9PVxtElDEWxb2+t4iavK5x25G+DTUOUA=="],
 
-    "@stryker-mutator/instrumenter/@stryker-mutator/api": ["@stryker-mutator/api@10.0.0", "", { "dependencies": { "mutation-testing-metrics": "3.8.4", "mutation-testing-report-schema": "3.8.4", "tslib": "~2.8.0", "typed-inject": "~5.0.0" } }, "sha512-ZtAJ0ZT3MVRCWJTBE2h90XB/6E+4lifHYtcTyNG6nU2nLekPgTo4gD5esjX6Okxo1b/JB4jJzyxYB54fwKAoJw=="],
+    "@stryker-mutator/instrumenter/@stryker-mutator/api": ["@stryker-mutator/api@10.1.1", "", { "dependencies": { "mutation-testing-metrics": "3.8.4", "mutation-testing-report-schema": "3.8.4", "tslib": "~2.8.0", "typed-inject": "~5.0.0" } }, "sha512-3s/ECsrD1Tf1WEB7amBk0HxjN7zgkabKvmqnI2C831rTNszJ6o2HoV9PVxtElDEWxb2+t4iavK5x25G+DTUOUA=="],
 
     "@sveltejs/vite-plugin-svelte/magic-string": ["magic-string@1.2.0", "", { "dependencies": { "@jridgewell/sourcemap-codec": "^1.5.5" } }, "sha512-ptco+HFxTLgjafSLim2LojBSwfg5feBjd+SqyiwdGkzC38UPdZy3zgrHMI2CoTf5fJL38tbHMYWVzIH8BxGqJw=="],
 
