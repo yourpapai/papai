@@ -200,7 +200,7 @@ export class MetabaseClient {
     if (typeof result !== "object" || result === null) {
       throw new MetabaseApiError(`query card ${cardId} returned no object`);
     }
-    return result as QueryResult;
+    return result;
   }
 
   async renderDashboardPdf(dashboardId: number): Promise<Uint8Array> {

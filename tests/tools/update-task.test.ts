@@ -411,7 +411,7 @@ describe('update_task identity resolution', () => {
       )
 
       // 09:00 JST (Asia/Tokyo) = 00:00 UTC
-      const callArgs = updateTask.mock.calls[0] as [string, { dueDate?: string }] | undefined
+      const callArgs = updateTask.mock.calls[0]
       expect(callArgs?.[1]?.dueDate).toContain('00:00')
     })
 
@@ -440,7 +440,7 @@ describe('update_task identity resolution', () => {
       )
 
       // With UTC fallback, 14:00 stays 14:00
-      const callArgs = updateTask.mock.calls[0] as [string, { dueDate?: string }] | undefined
+      const callArgs = updateTask.mock.calls[0]
       expect(callArgs?.[1]?.dueDate).toContain('14:00')
     })
 
@@ -475,7 +475,7 @@ describe('update_task identity resolution', () => {
 
       // 14:00 JST = 05:00 UTC. A regression that used the thread-scoped id would miss the
       // config and leave 14:00 (UTC) — whose ISO seconds field would not contain '05:00'.
-      const callArgs = updateTask.mock.calls[0] as [string, { dueDate?: string }] | undefined
+      const callArgs = updateTask.mock.calls[0]
       expect(callArgs?.[1]?.dueDate).toContain('05:00')
     })
   })

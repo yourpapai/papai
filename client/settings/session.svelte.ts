@@ -7,10 +7,8 @@ import { FetchError } from '../shared/fetcher-helpers.js'
 import type { AvailableContext, BootstrapData } from './fetcher-schemas.js'
 import { exchangeCode, fetchBootstrap, onUnauthorized, setCsrfToken } from './fetchers.js'
 
-type Status = 'loading' | 'ready' | 'unauthenticated' | 'failed'
-
 export const settingsSession = $state({
-  status: 'loading' as Status,
+  status: 'loading',
   /** Non-empty only while status is 'failed': what stopped the bootstrap. */
   failureMessage: '',
   display: '',

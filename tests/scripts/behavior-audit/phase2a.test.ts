@@ -729,7 +729,7 @@ describe('behavior-audit phase 2a classification', () => {
       {
         ...createPhase2aDeps(),
         maxRetries: 2,
-      } as Partial<Phase2aDeps>,
+      },
     )
 
     expect(classifyBehaviorWithRetryCalls).toBe(0)

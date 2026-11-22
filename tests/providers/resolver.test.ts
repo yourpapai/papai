@@ -488,7 +488,7 @@ describe('TaskProviderResolver', () => {
         capabilities: new Set(),
         traits: new Set(),
       }),
-      getConfig: getConfig as TaskProviderResolverDeps['getConfig'],
+      getConfig: getConfig,
       createProvider: (name, config) => {
         created.push({ name, config })
         return createMockProvider({ name })
@@ -530,7 +530,7 @@ describe('TaskProviderResolver', () => {
         status: 'active',
         createdAt: '2026-05-28T00:00:00.000Z',
       }),
-      getConfig: getConfig as TaskProviderResolverDeps['getConfig'],
+      getConfig: getConfig,
       createProvider: (
         type: string,
         config: Record<string, string>,

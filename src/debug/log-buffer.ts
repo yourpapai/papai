@@ -49,7 +49,7 @@ export class LogRingBuffer {
       this.buffer[this.head] = entry
       this.head = (this.head + 1) % this.capacity
     }
-    emitGlobal('log:entry', entry as Record<string, unknown>)
+    emitGlobal('log:entry', entry)
   }
 
   entries(): LogEntry[] {

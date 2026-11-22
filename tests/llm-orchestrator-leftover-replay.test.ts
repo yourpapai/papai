@@ -24,10 +24,10 @@ const invocationSource: Omit<InvocationSource, 'history'> = {
 describe('replayLeftoverSteerAsFreshTurn', () => {
   test('no-op when there are no leftover messages', async () => {
     let calls = 0
-    const processMessage: ProcessMessageFn = (() => {
+    const processMessage: ProcessMessageFn = () => {
       calls++
       return Promise.resolve()
-    }) as ProcessMessageFn
+    }
     await replayLeftoverSteerAsFreshTurn([], {
       invocationSource,
       configContextId: undefined,
@@ -44,7 +44,7 @@ describe('replayLeftoverSteerAsFreshTurn', () => {
       turnId?: string
       originatingMessageIds?: readonly string[]
     } = {}
-    const processMessage: ProcessMessageFn = ((
+    const processMessage: ProcessMessageFn = (
       _reply,
       _contextId,
       _chatUserId,
@@ -63,7 +63,7 @@ describe('replayLeftoverSteerAsFreshTurn', () => {
       captured.turnId = turnId
       captured.originatingMessageIds = originatingMessageIds
       return Promise.resolve()
-    }) as ProcessMessageFn
+    }
     await replayLeftoverSteerAsFreshTurn([{ text: 'only project X' }, { text: 'and use tabs' }], {
       invocationSource,
       configContextId: undefined,
@@ -78,7 +78,7 @@ describe('replayLeftoverSteerAsFreshTurn', () => {
 
   test('forwards isBotAdmin and platformInstanceId from the invocation source', async () => {
     const captured: { isBotAdmin?: boolean; platformInstanceId?: string; segments?: unknown } = {}
-    const processMessage: ProcessMessageFn = ((
+    const processMessage: ProcessMessageFn = (
       _reply,
       _contextId,
       _chatUserId,
@@ -99,7 +99,7 @@ describe('replayLeftoverSteerAsFreshTurn', () => {
       captured.isBotAdmin = isBotAdmin
       captured.platformInstanceId = platformInstanceId
       return Promise.resolve()
-    }) as ProcessMessageFn
+    }
     await replayLeftoverSteerAsFreshTurn([{ text: 'replay me' }], {
       invocationSource: { ...invocationSource, isBotAdmin: true, platformInstanceId: 'pi-1' },
       configContextId: undefined,

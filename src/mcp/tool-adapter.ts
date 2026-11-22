@@ -129,7 +129,7 @@ function extractText(content: unknown): string[] {
 function isTextContent(item: unknown): item is { type: string; text: string } {
   if (typeof item !== 'object' || item === null) return false
   if (!('type' in item) || !('text' in item)) return false
-  const { type, text } = item as { type: unknown; text: unknown }
+  const { type, text } = item
   return type === 'text' && typeof text === 'string'
 }
 

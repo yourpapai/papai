@@ -83,10 +83,7 @@ export function buildScheduleUpdates(
       startDate === undefined
         ? getRecurrenceAnchor(updates, existing)
         : localDatetimeToUtc(startDate, startTime, timezone)
-    const compiled = recurrenceSpecToRrule(
-      { ...scheduleRest, dtstart: anchor } as Omit<Parameters<typeof recurrenceSpecToRrule>[0], 'timezone'>,
-      timezone,
-    )
+    const compiled = recurrenceSpecToRrule({ ...scheduleRest, dtstart: anchor }, timezone)
     updates.rrule = compiled.rrule
     updates.dtstartUtc = compiled.dtstartUtc
     updates.timezone = compiled.timezone

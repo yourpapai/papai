@@ -38,9 +38,7 @@ interface SearchOut {
 }
 
 function isSearchOut(val: unknown): val is SearchOut {
-  return (
-    val !== null && typeof val === 'object' && 'results' in val && Array.isArray((val as { results: unknown }).results)
-  )
+  return val !== null && typeof val === 'object' && 'results' in val && Array.isArray(val.results)
 }
 
 describe('search_tools', () => {

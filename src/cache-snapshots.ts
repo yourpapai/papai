@@ -105,7 +105,7 @@ export function getSessionSnapshots(userId: string): SessionSnapshot[] {
   const snapshots: SessionSnapshot[] = []
   for (const [id, cache] of userCachesForTesting) {
     if (id !== userId) continue
-    snapshots.push(buildSnapshot(id, cache as UserCacheEntry))
+    snapshots.push(buildSnapshot(id, cache))
   }
   return snapshots
 }

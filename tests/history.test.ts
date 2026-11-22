@@ -41,19 +41,18 @@ function findCall(tracked: TrackedLoggerMock, level: LogCall['level'], message: 
   return tracked.getCallsByLevel(level).find((call) => call.args[1] === message)
 }
 
-const makeUserMsg = (messageId: string, text: string): ModelMessage =>
-  ({
-    role: 'user',
-    content: text,
-    providerOptions: {
-      papai: {
-        messageIds: [messageId],
-        segments: [{ messageId, text, username: null }],
-        isThread: false,
-        isDm: true,
-      },
+const makeUserMsg = (messageId: string, text: string): ModelMessage => ({
+  role: 'user',
+  content: text,
+  providerOptions: {
+    papai: {
+      messageIds: [messageId],
+      segments: [{ messageId, text, username: null }],
+      isThread: false,
+      isDm: true,
     },
-  }) as ModelMessage
+  },
+})
 
 describe('history log contracts and clearHistory', () => {
   let db: Awaited<ReturnType<typeof setupTestDb>>
@@ -149,10 +148,10 @@ describe('history log contracts and clearHistory', () => {
     const history = await loadHistoryModule(tracked)
     history.appendHistory('ctx-trim-hit', [
       makeUserMsg('m0', 'earlier turn'),
-      { role: 'assistant', content: 'earlier answer' } as ModelMessage,
+      { role: 'assistant', content: 'earlier answer' },
       makeUserMsg('m1', 'hello'),
-      { role: 'assistant', content: 'old answer' } as ModelMessage,
-      { role: 'tool', content: [] } as ModelMessage,
+      { role: 'assistant', content: 'old answer' },
+      { role: 'tool', content: [] },
     ])
 
     expect(history.trimTurnForRegeneration('ctx-trim-hit', 'm1')).toBe(true)

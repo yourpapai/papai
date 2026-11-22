@@ -124,7 +124,7 @@ function hasBlockedUrlParts(url: URL): boolean {
 
 async function lookupPublicAddresses(hostname: string): Promise<LookupAddress[]> {
   try {
-    return await lookup(hostname, { all: true, verbatim: true })
+    return await lookup(hostname, { all: true, order: 'verbatim' })
   } catch {
     return throwWebFetchError(webFetchError.blockedHost(), 'Host lookup failed')
   }

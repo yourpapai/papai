@@ -84,10 +84,7 @@ function buildScheduleUpdates(
     startDate === undefined
       ? (existingDtstart ?? midnightUtcForTimezone(userTimezone))
       : localDatetimeToUtc(startDate, startTime, userTimezone)
-  const compiled = recurrenceSpecToRrule(
-    { ...scheduleRest, dtstart } as Omit<Parameters<typeof recurrenceSpecToRrule>[0], 'timezone'>,
-    userTimezone,
-  )
+  const compiled = recurrenceSpecToRrule({ ...scheduleRest, dtstart }, userTimezone)
   return {
     triggerType: 'cron' as const,
     rrule: compiled.rrule,

@@ -63,7 +63,7 @@ const decryptConfig = (contextId: string, encryptedConfig: string | null): Decry
   if (encryptedConfig === null) return { kind: 'readable', config: null }
 
   try {
-    return { kind: 'readable', config: cleanConfig(decryptSecretPayload(encryptedConfig) as PartialByokLlmConfig) }
+    return { kind: 'readable', config: cleanConfig(decryptSecretPayload(encryptedConfig)) }
   } catch {
     log.warn({ contextId }, 'BYOK LLM config is unreadable')
     return { kind: 'unreadable', error: UNREADABLE_BYOK_CONFIG_ERROR }
@@ -91,11 +91,11 @@ const stateForRow = (row: ByokLlmCredentialRow): ByokCredentialState =>
 
 const toSecretPayload = (config: PartialByokLlmConfig): SecretPayload =>
   Object.fromEntries(
-    BYOK_LLM_KEYS.flatMap((key) => {
+    BYOK_LLM_KEYS.flatMap((key): Array<[string, string]> => {
       const value = config[key]
       return value === undefined ? [] : [[key, value]]
     }),
-  ) as SecretPayload
+  )
 
 const findRow = (contextId: string): ByokLlmCredentialRow | undefined =>
   getDrizzleDb().select().from(byokLlmCredentials).where(eq(byokLlmCredentials.contextId, contextId)).get()

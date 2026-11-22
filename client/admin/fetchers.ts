@@ -41,7 +41,7 @@ export const fetchStatsGlobal = async (window: StatsWindow | undefined): Promise
   const res = await fetch(path)
   const body = await readBody(res)
   requireOk(res, body)
-  return GlobalStatsSchema.parse(body) as GlobalStats
+  return GlobalStatsSchema.parse(body)
 }
 
 export const fetchBillingSubjects = async (window: BillingWindow): Promise<FetchBillingSubjectsResult> => {
@@ -66,7 +66,7 @@ export const fetchStatsSubject = async (storageContextId: string): Promise<Subje
   const res = await fetch(`/stats/subject/${encodeURIComponent(storageContextId)}`)
   const body = await readBody(res)
   requireOk(res, body)
-  return SubjectStatsSchema.parse(body) as SubjectStats
+  return SubjectStatsSchema.parse(body)
 }
 
 export const fetchMemos = async (userId: string, state: 'active' | 'archived'): Promise<Memo[]> => {
@@ -74,21 +74,21 @@ export const fetchMemos = async (userId: string, state: 'active' | 'archived'): 
   const res = await fetch(path)
   const body = await readBody(res)
   requireOk(res, body)
-  return z.array(MemoSchema).parse(body) as Memo[]
+  return z.array(MemoSchema).parse(body)
 }
 
 export const fetchRecurringTasks = async (userId: string): Promise<RecurringTask[]> => {
   const res = await fetch(`/recurring?userId=${encodeURIComponent(userId)}`)
   const body = await readBody(res)
   requireOk(res, body)
-  return z.array(RecurringTaskSchema).parse(body) as RecurringTask[]
+  return z.array(RecurringTaskSchema).parse(body)
 }
 
 export const fetchDeferredPrompts = async (userId: string): Promise<DeferredPrompt[]> => {
   const res = await fetch(`/deferred?userId=${encodeURIComponent(userId)}`)
   const body = await readBody(res)
   requireOk(res, body)
-  return z.array(DeferredPromptSchema).parse(body) as DeferredPrompt[]
+  return z.array(DeferredPromptSchema).parse(body)
 }
 
 export const fetchAdminIdentity = async (userId: string, provider: string): Promise<IdentityMappingEntry | null> => {
@@ -97,14 +97,14 @@ export const fetchAdminIdentity = async (userId: string, provider: string): Prom
   const body = await readBody(res)
   if (res.status === 404) return null
   requireOk(res, body)
-  return IdentityMappingEntrySchema.parse(body) as IdentityMappingEntry
+  return IdentityMappingEntrySchema.parse(body)
 }
 
 export const fetchAdminIdentityMappings = async (): Promise<IdentityMappingEntry[]> => {
   const res = await fetch('/admin/identity/mappings')
   const body = await readBody(res)
   requireOk(res, body)
-  return z.array(IdentityMappingEntrySchema).parse(body) as IdentityMappingEntry[]
+  return z.array(IdentityMappingEntrySchema).parse(body)
 }
 
 export const fetchRecentRequests = async (

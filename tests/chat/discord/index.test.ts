@@ -38,7 +38,7 @@ type GenericListener = (...args: unknown[]) => void
 
 function makeOnceReadyRouter(readyListeners: ReadyListener[]): (event: string, listener: GenericListener) => void {
   return (event: string, listener: GenericListener): void => {
-    if (event === 'ready') readyListeners.push(listener as ReadyListener)
+    if (event === 'ready') readyListeners.push(listener)
   }
 }
 

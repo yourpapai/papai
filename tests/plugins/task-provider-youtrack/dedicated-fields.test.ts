@@ -14,12 +14,11 @@ import { providerError } from '../../../src/errors.js'
 
 type PCF = z.infer<typeof ProjectCustomFieldSchema>
 
-const field = (name: string, typeId: string, bundleType?: string, localizedName?: string): PCF =>
-  ({
-    $type: 'ProjectCustomField',
-    field: { name, fieldType: { id: typeId }, ...(localizedName === undefined ? {} : { localizedName }) },
-    ...(bundleType === undefined ? {} : { bundle: { id: 'b-1', $type: bundleType } }),
-  }) as PCF
+const field = (name: string, typeId: string, bundleType?: string, localizedName?: string): PCF => ({
+  $type: 'ProjectCustomField',
+  field: { name, fieldType: { id: typeId }, ...(localizedName === undefined ? {} : { localizedName }) },
+  ...(bundleType === undefined ? {} : { bundle: { id: 'b-1', $type: bundleType } }),
+})
 
 const captureError = (fn: () => unknown): YouTrackClassifiedError => {
   try {

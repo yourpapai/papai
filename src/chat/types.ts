@@ -214,7 +214,7 @@ export type ReplyTarget = { readonly platform: 'telegram' | 'discord' | 'matterm
 export type ReplyFn = {
   text: { (content: string): Promise<void>; (content: string, options: ReplyOptions): Promise<void> }
   formatted: { (markdown: string): Promise<void>; (markdown: string, options: ReplyOptions): Promise<void> }
-  typing: () => void
+  typing: () => void | Promise<void>
   buttons: (content: string, options: ButtonReplyOptions) => Promise<PromptHandle | undefined>
 } & Partial<{
   /** Replaces the current interactive message in place. Prefer only for button interaction flows; fall back to `text` when unavailable. */

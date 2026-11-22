@@ -98,7 +98,7 @@ describe('applyEditToHistory', () => {
   })
 
   test('no-op on legacy user turn without providerOptions.papai', () => {
-    appendHistory('ctx-legacy', [{ role: 'user', content: 'plain' } as ModelMessage])
+    appendHistory('ctx-legacy', [{ role: 'user', content: 'plain' }])
 
     expect(applyEditToHistory('ctx-legacy', 'm1', 'edited')).toBe(false)
 
@@ -267,7 +267,7 @@ describe('trimTurnForRegeneration', () => {
   })
 
   test('no-op on legacy user turn without providerOptions.papai', () => {
-    appendHistory('ctx-legacy', [{ role: 'user', content: 'plain' } as ModelMessage])
+    appendHistory('ctx-legacy', [{ role: 'user', content: 'plain' }])
 
     expect(trimTurnForRegeneration('ctx-legacy', 'm1')).toBe(false)
     expect(loadHistory('ctx-legacy').length).toBe(1)

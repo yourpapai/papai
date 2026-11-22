@@ -166,7 +166,7 @@ export const handleWorkItems = (ctx: FakeYouTrackCtx): Response | undefined => {
       return noContent()
     }
     if (method === 'POST') {
-      applyWorkItemBody(item, (ctx.body ?? {}) as WorkItemBody)
+      applyWorkItemBody(item, ctx.body ?? {})
       return json(workItemProjection(item))
     }
     return undefined

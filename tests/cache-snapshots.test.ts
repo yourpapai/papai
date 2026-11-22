@@ -38,8 +38,8 @@ describe('getSessionSnapshots', () => {
     const userId = 'test-user-123'
     const cache: UserCache = {
       history: [
-        { role: 'user', content: 'Hello' } as ModelMessage,
-        { role: 'assistant', content: 'Hi there' } as ModelMessage,
+        { role: 'user', content: 'Hello' },
+        { role: 'assistant', content: 'Hi there' },
       ],
       summary: 'Test conversation summary',
       facts: [

@@ -74,7 +74,7 @@ export function applyEditToHistory(contextId: string, messageId: string, newText
         ...(msg as ModelMessage).providerOptions,
         papai: { ...meta, segments },
       },
-    } as ModelMessage
+    }
   })
   if (!mutated) {
     log.debug({ contextId, messageId }, 'applyEditToHistory: messageId not found in any user turn')

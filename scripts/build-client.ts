@@ -92,7 +92,7 @@ function viteInlineConfig(config: BundleConfig): InlineConfig {
       emptyOutDir: false,
       write: false,
       cssCodeSplit: false,
-      rollupOptions: {
+      rolldownOptions: {
         input: path.join(ROOT, config.entry),
         output: {
           format: 'iife',

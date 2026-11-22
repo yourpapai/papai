@@ -125,7 +125,7 @@ async function consolidateSingle(
   try {
     const result = await verboseGenerateText({
       model,
-      system: SYSTEM_PROMPT,
+      instructions: SYSTEM_PROMPT,
       prompt,
       maxOutputTokens: 16384,
       tools,

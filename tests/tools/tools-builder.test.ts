@@ -21,7 +21,6 @@ import { listMemos } from '../../src/memos.js'
 import { contributionRegistry } from '../../src/plugins/contributions.js'
 import { pluginRegistry, setPluginEnabledForContext } from '../../src/plugins/registry.js'
 import { PLUGIN_API_VERSION, type DiscoveredPlugin } from '../../src/plugins/types.js'
-import type { TaskProvider } from '../../src/providers/types.js'
 import { listRecurringTasks } from '../../src/recurring.js'
 import { makeTools } from '../../src/tools/index.js'
 import { buildProviderlessTools, buildTools } from '../../src/tools/tools-builder.js'
@@ -79,7 +78,7 @@ describe('buildTools', () => {
   it('should not expose get_current_user when provider getCurrentUser is missing', () => {
     const provider = createMockProvider({
       getCurrentUser: undefined,
-    } as Partial<TaskProvider>)
+    })
 
     const tools = buildTools(provider, 'user-123', 'user-123', 'normal')
 
@@ -89,7 +88,7 @@ describe('buildTools', () => {
   it('should not expose get_current_user when provider identityResolver is missing', () => {
     const provider = createMockProvider({
       identityResolver: undefined,
-    } as Partial<TaskProvider>)
+    })
 
     const tools = buildTools(provider, 'user-123', 'user-123', 'normal')
 
@@ -335,7 +334,7 @@ describe('buildTools', () => {
         'projects.delete',
         'projects.team',
       ]),
-    } as Partial<TaskProvider>)
+    })
 
     const tools = buildTools(provider, 'user-123', 'user-123', 'normal')
 
@@ -353,7 +352,7 @@ describe('buildTools', () => {
     const provider = createMockProvider({
       capabilities: new Set(['projects.read']),
       getProject: undefined,
-    } as Partial<TaskProvider>)
+    })
 
     const tools = buildTools(provider, 'user-123', 'user-123', 'normal')
 
@@ -369,7 +368,7 @@ describe('buildTools', () => {
         'comments.delete',
         'comments.reactions',
       ]),
-    } as Partial<TaskProvider>)
+    })
 
     const tools = buildTools(provider, 'user-123', 'user-123', 'normal')
 
@@ -384,7 +383,7 @@ describe('buildTools', () => {
   it('should expose remove_label when labels.delete capability is present', () => {
     const provider = createMockProvider({
       capabilities: new Set(['labels.delete']),
-    } as Partial<TaskProvider>)
+    })
 
     const tools = buildTools(provider, 'user-123', 'user-123', 'normal')
 
@@ -716,7 +715,7 @@ describe('buildTools', () => {
       const provider = createMockProvider({
         capabilities: new Set(['attachments.upload']),
         uploadAttachment,
-      } as Partial<TaskProvider>)
+      })
 
       const tools = buildTools(provider, chatUserId, contextId, 'normal', 'group')
       const execute = getToolExecutor(tools['upload_attachment'])

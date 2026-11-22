@@ -50,7 +50,7 @@ function makeUserTurn(messageId: string, text: string): ModelMessage {
         isDm: true,
       },
     },
-  } as ModelMessage
+  }
 }
 
 // A bare mock model: the stubbed generateText never actually drives it, but the
@@ -127,7 +127,7 @@ describe('W2 regeneration — real processMessage integration', () => {
     }
     cacheObservedIncomingMessage(original, authFor(ctxId))
     await flushPendingWrites()
-    appendHistory(ctxId, [makeUserTurn('m1', 'hello'), { role: 'assistant', content: 'old answer' } as ModelMessage])
+    appendHistory(ctxId, [makeUserTurn('m1', 'hello'), { role: 'assistant', content: 'old answer' }])
 
     lastTurnRegistry.record(ctxId, {
       originatingMessageIds: ['m1'],

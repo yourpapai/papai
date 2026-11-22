@@ -12,12 +12,11 @@ import type { ProjectCustomFieldSchema } from '../../../plugins/task-provider-yo
 
 type PCF = z.infer<typeof ProjectCustomFieldSchema> & { field: { name: string } }
 
-const field = (name: string, typeId: string, bundleType?: string): PCF =>
-  ({
-    $type: 'ProjectCustomField',
-    field: { name, fieldType: { id: typeId } },
-    ...(bundleType === undefined ? {} : { bundle: { id: 'b-1', $type: bundleType } }),
-  }) as PCF
+const field = (name: string, typeId: string, bundleType?: string): PCF => ({
+  $type: 'ProjectCustomField',
+  field: { name, fieldType: { id: typeId } },
+  ...(bundleType === undefined ? {} : { bundle: { id: 'b-1', $type: bundleType } }),
+})
 
 const byName = (fields: PCF[]): Map<string, PCF> => new Map(fields.map((f) => [f.field.name, f]))
 

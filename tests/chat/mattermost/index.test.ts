@@ -61,7 +61,7 @@ function isMattermostActionDispatch(value: unknown): value is MattermostActionDi
 }
 
 function getPostedEventHandler(provider: MattermostChatProvider): PostedEventHandler {
-  const handler = Reflect.get(provider as object, 'handlePostedEvent') as unknown
+  const handler = Reflect.get(provider, 'handlePostedEvent') as unknown
   if (!isPostedEventHandler(handler)) throw new Error('Expected Mattermost posted event handler')
   return handler
 }
@@ -528,7 +528,7 @@ describe('MattermostChatProvider', () => {
     }
     Reflect.set(provider, 'apiFetch', apiFetch)
 
-    const dispatchValue = Reflect.get(provider as object, 'dispatchMattermostAction') as unknown
+    const dispatchValue = Reflect.get(provider, 'dispatchMattermostAction') as unknown
     assert(isMattermostActionDispatch(dispatchValue), 'Expected Mattermost action dispatcher')
     const response = await dispatchValue.call(provider, {
       userId: 'user-1',

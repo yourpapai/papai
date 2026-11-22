@@ -115,7 +115,7 @@ export function runtimeCtx(
       list: () => ({ specs: [], meta: { lastPushAt: null } }),
       get: () => ({ ok: false, reason: 'not-found' }),
     },
-  } as PluginToolRuntimeContext
+  }
 }
 
 export function runtimeCtxWithKv(
@@ -166,7 +166,7 @@ export function runtimeCtxWithKv(
       list: () => ({ specs: [], meta: { lastPushAt: null } }),
       get: () => ({ ok: false, reason: 'not-found' }),
     },
-  } as PluginToolRuntimeContext
+  }
 }
 
 export function options(): ToolExecutionOptions<unknown> {

@@ -56,7 +56,7 @@ const withPapaiMeta = (msg: ModelMessage, meta: PapaiTurnMeta | undefined): Mode
   return {
     ...msg,
     providerOptions: { ...msg.providerOptions, papai: meta },
-  } as ModelMessage
+  }
 }
 
 const recordToPart = (record: StoredAttachment): AttachmentPart | null => {
@@ -173,7 +173,7 @@ export const buildUserTurnMessages = (
   const prefixedText = `${timeTag}\n${text}`
   const textOnly = {
     modelMessage: { role: 'user', content: prefixedText } as ModelMessage,
-    historyMessage: withPapaiMeta({ role: 'user', content: prefixedText } as ModelMessage, papaiMeta),
+    historyMessage: withPapaiMeta({ role: 'user', content: prefixedText }, papaiMeta),
   }
   if (!isS3Configured()) return Promise.resolve(textOnly)
   const activeAttachments = listActiveAttachments(contextId)
@@ -188,9 +188,9 @@ export const buildUserTurnMessages = (
   if (!supportsAttachmentModelInput(modelName) && !hasContextTransformers(contextId)) {
     const { liveLines, historyLines } = buildTurnLines(selected, new Map())
     return Promise.resolve({
-      modelMessage: { role: 'user', content: formatTurnContent(timeTag, liveLines, text) } as ModelMessage,
+      modelMessage: { role: 'user', content: formatTurnContent(timeTag, liveLines, text) },
       historyMessage: withPapaiMeta(
-        { role: 'user', content: formatTurnContent(timeTag, historyLines, text) } as ModelMessage,
+        { role: 'user', content: formatTurnContent(timeTag, historyLines, text) },
         papaiMeta,
       ),
     })

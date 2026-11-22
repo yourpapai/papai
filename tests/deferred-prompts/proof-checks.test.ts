@@ -261,7 +261,7 @@ const makeHandlers = (
         context_snapshot: input.execution.context_snapshot ?? null,
       }
     }
-    return { ...row, status: 'updated' } as UpdateResult
+    return { ...row, status: 'updated' }
   },
   executeGet: (userId: string, input: { id: string }): GetResult => {
     const row = world.scheduled.get(input.id) ?? world.alerts.get(input.id)
@@ -342,7 +342,7 @@ const makeTrace = (overrides: Partial<LlmTrace> = {}): LlmTrace => ({
 })
 
 const historyMessages = (...contents: string[]): ModelMessage[] =>
-  contents.map((content) => ({ role: 'user', content }) as ModelMessage)
+  contents.map((content) => ({ role: 'user', content }))
 
 const innerTimeTag = (ms: number): string =>
   formatCurrentTimeTag(new Date(ms), 'UTC')
@@ -1071,11 +1071,6 @@ describe('proof checks runner', () => {
   })
 
   describe('poller delivery record seam (D9)', () => {
-    type RefusingChatProvider = ChatProvider & {
-      isInstanceActive: (id: string) => boolean
-      sendMessage: (platformInstanceId: string, target: DeferredDeliveryTarget, text: string) => Promise<false>
-    }
-
     interface DeliveryRecordCall {
       runId: string
       responseText: string
@@ -1213,7 +1208,7 @@ describe('proof checks runner', () => {
         isInstanceActive: (_id: string): boolean => true,
         sendMessage: (_platformInstanceId: string, _target: DeferredDeliveryTarget, _text: string): Promise<false> =>
           Promise.resolve(false),
-      } as RefusingChatProvider
+      }
 
       await pollScheduledOnce(chat, () => createMockProvider())
 

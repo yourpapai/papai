@@ -1825,11 +1825,11 @@ describe('obra-skills', () => {
 
 /** Helpers keep the `??` fallbacks out of the test bodies, per repo lint. */
 const permissionsOf = (settings: OpenAiSettings): Record<string, unknown> =>
-  (buildOpencodeConfig(settings).permission ?? {}) as Record<string, unknown>
+  buildOpencodeConfig(settings).permission ?? {}
 
 const agentPermission = (settings: OpenAiSettings, name: string): Record<string, unknown> => {
   const agent = buildOpencodeConfig(settings).agent?.[name]
-  return (agent?.permission ?? {}) as Record<string, unknown>
+  return agent?.permission ?? {}
 }
 
 const inlinedConfig = (settings: OpenAiSettings): unknown =>

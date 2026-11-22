@@ -123,7 +123,7 @@ function createMockRuntimeContext(
       list: () => ({ specs: [], meta: { lastPushAt: null } }),
       get: () => ({ ok: false, reason: 'not-found' }),
     },
-  } as PluginToolRuntimeContext
+  }
 }
 
 function createMockOptions(): ToolExecutionOptions<unknown> {

@@ -33,7 +33,7 @@ export interface CappedRegistryStore {
 export const cappedRegistryPath = (workDir: string): string => path.join(workDir, 'capped.json')
 
 const isEnoent = (error: unknown): boolean =>
-  typeof error === 'object' && error !== null && 'code' in error && (error as { code: unknown }).code === 'ENOENT'
+  typeof error === 'object' && error !== null && 'code' in error && error.code === 'ENOENT'
 
 // Cross-run memory of files whose tests-only mutation-score ceiling landed
 // below the threshold. A capped file was merged at its ceiling once already,

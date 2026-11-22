@@ -6,7 +6,7 @@
 import { beforeEach, describe, expect, mock, it } from 'bun:test'
 import assert from 'node:assert/strict'
 
-import type { LanguageModel, ModelMessage } from 'ai'
+import type { ModelMessage } from 'ai'
 
 import { updateByokLlmConfig } from '../../src/byok-llm/store.js'
 import {
@@ -193,7 +193,7 @@ describe('executeLookupGroupHistory with history', () => {
     const result = await executeLookupGroupHistory('group456', ['API decision'], {
       getCachedHistory: () => mockHistory,
       generateText: generateTextImpl,
-      getSmallModel: () => 'test-model' as LanguageModel,
+      getSmallModel: () => 'test-model',
     })
     expect(result).toBe('The team decided to use REST for the API.')
   })
@@ -245,7 +245,7 @@ describe('executeLookupGroupHistory with history', () => {
     const result = await executeLookupGroupHistory('group456', ['test'], {
       getCachedHistory: () => [{ role: 'user', content: 'test' }],
       generateText: generateTextImpl,
-      getSmallModel: () => 'test-model' as LanguageModel,
+      getSmallModel: () => 'test-model',
     })
     expect(result).toBe('Error searching main chat history.')
   })

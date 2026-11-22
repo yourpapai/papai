@@ -70,7 +70,7 @@ const parseBody = async <S extends z.ZodType>(
   if (!parsed.ok) return { ok: false, response: parsed.response }
   const body = schema.safeParse(parsed.value)
   if (!body.success) return { ok: false, response: settingsJson(422, { error: 'invalid request' }) }
-  return { ok: true, data: body.data as z.infer<S> }
+  return { ok: true, data: body.data }
 }
 
 export const handleCreateSink = async (

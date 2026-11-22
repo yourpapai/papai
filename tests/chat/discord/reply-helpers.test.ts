@@ -102,7 +102,7 @@ describe('createDiscordReplyFn', () => {
   test('typing() calls channel.sendTyping', () => {
     const { channel, typingCalls } = makeChannel()
     const reply = createDiscordReplyFn({ channel, replyToMessageId: undefined })
-    reply.typing()
+    void reply.typing()
     expect(typingCalls.length).toBeGreaterThanOrEqual(1)
   })
 

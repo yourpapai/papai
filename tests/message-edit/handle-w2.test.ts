@@ -47,7 +47,7 @@ function makeUserTurn(messageId: string, text: string): ModelMessage {
         isDm: true,
       },
     },
-  } as ModelMessage
+  }
 }
 
 type ProcessCall = {

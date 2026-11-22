@@ -148,10 +148,10 @@ describe('buildMcpToolSet', () => {
         ] as McpEndpointConfig[]),
       ),
     })
-    deps.getOrCreate = mock((() => {
+    deps.getOrCreate = mock(() => {
       hashCounter++
       return Promise.resolve({ hash: `h${hashCounter}`, client: makeMockClient(toolA) })
-    }) as GetOrCreateFn)
+    })
 
     const result = await buildMcpToolSet('ctx-1', deps)
 

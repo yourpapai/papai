@@ -12,7 +12,6 @@ import { rruleInputSchema } from '../deferred-prompts/types.js'
 import { logger } from '../logger.js'
 import { describeCompiledRecurrence, recurrenceSpecToRrule, type CompiledRecurrence } from '../recurrence.js'
 import { type TriggerType, createRecurringTask as defaultCreateRecurringTask } from '../recurring.js'
-import type { RecurrenceSpec } from '../types/recurrence.js'
 import type { RecurringTaskInput, RecurringTaskRecord } from '../types/recurring.js'
 import { getUserTimezoneOrDefault } from '../utils/config-timezone.js'
 import { localDatetimeToUtc, midnightUtcForTimezone, utcToLocal } from '../utils/datetime.js'
@@ -76,7 +75,7 @@ function executeCreate(userId: string, input: Input, deps: CreateRecurringTaskDe
       startDate === undefined
         ? midnightUtcForTimezone(userTimezone)
         : localDatetimeToUtc(startDate, startTime, userTimezone)
-    compiled = recurrenceSpecToRrule({ ...scheduleRest, dtstart } as Omit<RecurrenceSpec, 'timezone'>, userTimezone)
+    compiled = recurrenceSpecToRrule({ ...scheduleRest, dtstart }, userTimezone)
   }
 
   const record = deps.createRecurringTask({

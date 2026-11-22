@@ -43,12 +43,7 @@ type RecallRecord = Readonly<{ content: string; provenance: string }>
 type RecallResult = Readonly<{ records: readonly RecallRecord[] }>
 
 function assertRecallResult(value: unknown): asserts value is RecallResult {
-  if (
-    typeof value !== 'object' ||
-    value === null ||
-    !('records' in value) ||
-    !Array.isArray((value as { records: unknown }).records)
-  ) {
+  if (typeof value !== 'object' || value === null || !('records' in value) || !Array.isArray(value.records)) {
     throw new Error('Expected recall result with records array')
   }
 }

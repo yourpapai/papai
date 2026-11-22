@@ -71,7 +71,7 @@ async function extractSingle(
   try {
     const result = await verboseGenerateText({
       model,
-      system: SYSTEM_PROMPT,
+      instructions: SYSTEM_PROMPT,
       prompt,
       maxOutputTokens: 8192,
       tools: makeAuditTools(),

@@ -543,7 +543,7 @@ describe('registerContextCommand', () => {
       const handler = await registerContextHandler(commands, chat, snapshotDeps(null))
 
       const { reply, textCalls } = createMockReply()
-      removeEmbedReply(reply as Record<string, unknown>)
+      removeEmbedReply(reply)
 
       await handler(createDmMessage('user1'), reply, createAuth('user1', { isBotAdmin: true }))
 
@@ -570,7 +570,7 @@ describe('registerContextCommand', () => {
       const handler = await registerContextHandler(commands, chat, snapshotDeps(null))
 
       const { reply, textCalls } = createMockReply()
-      removeEmbedReply(reply as Record<string, unknown>)
+      removeEmbedReply(reply)
 
       await handler(createDmMessage('user1'), reply, createAuth('user1', { isBotAdmin: true }))
 

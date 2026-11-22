@@ -224,7 +224,7 @@ describe('story runner reports and compatibility', () => {
       discoverStories: () => Promise.resolve(['tests/stories/a.story.test.ts']),
       discoverContracts: () => Promise.resolve([]),
       platform: 'freebsd' as NodeJS.Platform,
-    } as Parameters<typeof runStoryTests>[1])
+    })
 
     expect(exitCode).toBe(2)
     expect(spawned).toBe(false)
@@ -260,7 +260,7 @@ describe('story runner reports and compatibility', () => {
         discoverStories: () => Promise.resolve([]),
         discoverContracts: () => Promise.resolve([]),
         platform: platform as NodeJS.Platform,
-      } as Parameters<typeof runStoryTests>[1])
+      })
 
       expect(exitCode).toBe(2)
       expect(actions).toEqual(['preflight'])

@@ -63,7 +63,7 @@ function makeUserTurn(messageId: string, text: string): ModelMessage {
         isDm: true,
       },
     },
-  } as ModelMessage
+  }
 }
 
 type ButtonCall = { content: string; options: ButtonReplyOptions }

@@ -104,7 +104,7 @@ function isBotWithSendMessage(
 function getProviderBot(provider: TelegramChatProvider): {
   api: { sendMessage: (...args: SendMessageCall) => Promise<unknown> }
 } {
-  const value = Reflect.get(provider as object, 'bot') as unknown
+  const value = Reflect.get(provider, 'bot') as unknown
   if (!isBotWithSendMessage(value)) {
     throw new TypeError('Expected provider bot to expose api.sendMessage')
   }
@@ -530,7 +530,7 @@ describe('TelegramChatProvider', () => {
 
     test('registerCommand passes scoped storage context for active platform instance', async () => {
       const provider = new TelegramChatProvider({ token: 'test-token', platformInstanceId: 'telegram-secondary' })
-      const bot = requireBotCommandRegistrar(Reflect.get(provider as object, 'bot'))
+      const bot = requireBotCommandRegistrar(Reflect.get(provider, 'bot'))
       let registeredHandler: ((ctx: unknown) => Promise<void>) | undefined
       bot.command = (_name, handler): void => {
         registeredHandler = handler
@@ -780,7 +780,7 @@ describe('TelegramChatProvider', () => {
   describe('message edit handling', () => {
     test('onMessageEdit subscribes to edited_message updates', () => {
       const provider = createTelegramProvider()
-      const botValue = Reflect.get(provider as object, 'bot') as unknown
+      const botValue = Reflect.get(provider, 'bot') as unknown
       assert(isBotWithLifecycleMethods(botValue), 'Expected Telegram provider bot to expose lifecycle methods')
 
       const filters: Array<string | string[]> = []
@@ -795,7 +795,7 @@ describe('TelegramChatProvider', () => {
 
     test('delivers edited_message to onMessageEdit with editedAt and messageId', async () => {
       const provider = createTelegramProvider()
-      const botValue = Reflect.get(provider as object, 'bot') as unknown
+      const botValue = Reflect.get(provider, 'bot') as unknown
       assert(isBotWithLifecycleMethods(botValue), 'Expected Telegram provider bot to expose lifecycle methods')
 
       const handlers = new Map<string | string[], (...args: unknown[]) => unknown>()
@@ -830,7 +830,7 @@ describe('TelegramChatProvider', () => {
 
     test('editedAt falls back to 0 when edit_date is missing', async () => {
       const provider = createTelegramProvider()
-      const botValue = Reflect.get(provider as object, 'bot') as unknown
+      const botValue = Reflect.get(provider, 'bot') as unknown
       assert(isBotWithLifecycleMethods(botValue), 'Expected Telegram provider bot to expose lifecycle methods')
 
       const handlers = new Map<string | string[], (...args: unknown[]) => unknown>()
@@ -861,7 +861,7 @@ describe('TelegramChatProvider', () => {
 
     test('ignores edited messages without text', async () => {
       const provider = createTelegramProvider()
-      const botValue = Reflect.get(provider as object, 'bot') as unknown
+      const botValue = Reflect.get(provider, 'bot') as unknown
       assert(isBotWithLifecycleMethods(botValue), 'Expected Telegram provider bot to expose lifecycle methods')
 
       const handlers = new Map<string | string[], (...args: unknown[]) => unknown>()
@@ -901,7 +901,7 @@ describe('TelegramChatProvider', () => {
   describe('start lifecycle', () => {
     test('does not register callback query middleware during start', async () => {
       const provider = createTelegramProvider()
-      const botValue = Reflect.get(provider as object, 'bot') as unknown
+      const botValue = Reflect.get(provider, 'bot') as unknown
       assert(isBotWithLifecycleMethods(botValue), 'Expected Telegram provider bot to expose lifecycle methods')
 
       const onCalls: Array<{

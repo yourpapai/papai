@@ -54,7 +54,7 @@ function makeUserTurn(messageId: string, text: string): ModelMessage {
         isDm: true,
       },
     },
-  } as ModelMessage
+  }
 }
 
 const recordFacts = (): { observer: AnalyticsObserver; facts: AnalyticsSourceFact[] } => {

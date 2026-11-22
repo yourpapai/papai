@@ -101,9 +101,7 @@ function isPromiseLike(value: unknown): value is Promise<unknown> {
  * When given, `onOutcome` reports exactly one bounded success/failure.
  */
 function sendTypingSafely(reply: ReplyFn, onOutcome?: (ok: boolean) => void): void {
-  // Cast to unknown-returning function since implementations may return
-  // a Promise (even though ReplyFn.typing is typed as () => void)
-  const typingFn = reply.typing as () => unknown
+  const typingFn = reply.typing
 
   // Call typing and capture result, handling both sync errors and async rejections
   let result: unknown

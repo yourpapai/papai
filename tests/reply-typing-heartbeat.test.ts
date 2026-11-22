@@ -120,8 +120,7 @@ describe('reply typing heartbeat', () => {
         textCalls.push(content)
         return Promise.resolve()
       },
-      // Cast to handle both sync and async typing signatures
-      typing: makeTypingWithOneInitialError(typingCalls) as () => void,
+      typing: makeTypingWithOneInitialError(typingCalls),
       buttons: (): Promise<undefined> => Promise.resolve(undefined),
     }
 
@@ -150,8 +149,7 @@ describe('reply typing heartbeat', () => {
         textCalls.push(content)
         return Promise.resolve()
       },
-      // Cast to handle both sync and async typing signatures
-      typing: makeTypingWithTwoInitialErrors(typingCalls) as () => void,
+      typing: makeTypingWithTwoInitialErrors(typingCalls),
       buttons: (): Promise<undefined> => Promise.resolve(undefined),
     }
 
@@ -239,11 +237,10 @@ describe('reply typing heartbeat', () => {
         textCalls.push(content)
         return Promise.resolve()
       },
-      // Cast to handle both sync and async typing signatures
-      typing: ((): unknown => {
+      typing: (): Promise<void> => {
         typingCalls.push(Date.now())
         return Promise.resolve()
-      }) as () => void,
+      },
       buttons: (): Promise<undefined> => Promise.resolve(undefined),
     }
 
@@ -362,7 +359,7 @@ describe('analytics heartbeat observer', () => {
         return Promise.resolve()
       },
       formatted: (): Promise<void> => Promise.resolve(),
-      typing: ((): unknown => Promise.reject(new Error('async typing error'))) as () => void,
+      typing: (): Promise<void> => Promise.reject(new Error('async typing error')),
       buttons: (): Promise<undefined> => Promise.resolve(undefined),
     }
     const { analytics, events } = makeHeartbeatObserver()

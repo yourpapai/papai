@@ -39,7 +39,7 @@ export async function loadCommandCatalog(): Promise<CommandCatalogFn> {
   try {
     const mod = await import('../../src/commands/index.js')
     if (typeof mod.listCommandCatalogEntries === 'function') {
-      return mod.listCommandCatalogEntries as CommandCatalogFn
+      return mod.listCommandCatalogEntries
     }
   } catch {
     // fall through
@@ -51,7 +51,7 @@ export async function loadToolRegistry(): Promise<ToolRegistryFn> {
   try {
     const mod = await import('../../src/tools/index.js')
     if (typeof mod.listToolNames === 'function') {
-      return mod.listToolNames as ToolRegistryFn
+      return mod.listToolNames
     }
   } catch {
     // fall through
@@ -63,7 +63,7 @@ export async function loadRouteRegistry(): Promise<RouteRegistryFn> {
   try {
     const mod = await import('../../src/debug/server.js')
     if (typeof mod.listRoutes === 'function') {
-      return mod.listRoutes as RouteRegistryFn
+      return mod.listRoutes
     }
   } catch {
     // fall through

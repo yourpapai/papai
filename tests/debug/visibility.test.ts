@@ -25,7 +25,7 @@ describe('isVisibleToAdmin', () => {
   test('rejects null, undefined and non-string scope kinds', () => {
     expect(isVisibleToAdmin(null, vis)).toBe(false)
     expect(isVisibleToAdmin(undefined, vis)).toBe(false)
-    expect(isVisibleToAdmin({} as { kind?: string }, vis)).toBe(false)
+    expect(isVisibleToAdmin({}, vis)).toBe(false)
   })
 
   test('global scope is visible to every admin', () => {

@@ -271,10 +271,7 @@ export function transcribeRecord(
 }
 
 export const describeLoadFailure = (result: unknown): string => {
-  const error =
-    typeof result === 'object' && result !== null && 'error' in result
-      ? String((result as { error: unknown }).error)
-      : 'unknown'
+  const error = typeof result === 'object' && result !== null && 'error' in result ? String(result.error) : 'unknown'
   if (error === 'audio_too_large') return `file too large (max ${Math.floor(MAX_AUDIO_BYTES / (1024 * 1024))} MiB)`
   if (error === 'attachment_not_found') return 'attachment not found'
   if (error === 'unsupported_media_type') return 'unsupported media type'

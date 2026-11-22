@@ -952,7 +952,7 @@ const folderReadInput = (options: FolderReadOptions): { input: PhaseInput; io: S
       state,
       issue: { number: 42, title: 'Add a retry helper', body: 'Please add a retry helper.' },
       trigger,
-      command: { command: '/ask', argument: 'what is the plan?' } as ParsedCommand,
+      command: { command: '/ask', argument: 'what is the plan?' },
       thread: built.io.thread,
       deps: built.deps,
     },

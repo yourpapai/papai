@@ -32,9 +32,7 @@ export interface MeasuredScore {
 
 function isRetryable(error: unknown): boolean {
   if (error instanceof ReportReadError) return true
-  return (
-    typeof error === 'object' && error !== null && 'code' in error && (error as { code: unknown }).code === 'ENOENT'
-  )
+  return typeof error === 'object' && error !== null && 'code' in error && error.code === 'ENOENT'
 }
 
 export async function measureMutationScore(

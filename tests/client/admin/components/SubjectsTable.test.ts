@@ -23,7 +23,7 @@ function subject(over: Partial<BillingSubject> = {}): BillingSubject {
     toolCalls: 385,
     lastActiveAt: Date.parse('2026-05-21T20:42:00Z'),
     ...over,
-  } as BillingSubject
+  }
 }
 
 describe('SubjectsTable.svelte', () => {

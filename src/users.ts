@@ -28,7 +28,7 @@ export interface UserRecord {
   blocked_at: string | null
 }
 
-type AddUserInputWithoutUsername = Readonly<Record<never, never>>
+type AddUserInputWithoutUsername = object
 
 export type AddUserInput = Readonly<{
   userId: string

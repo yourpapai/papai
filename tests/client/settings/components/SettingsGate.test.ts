@@ -74,7 +74,7 @@ describe('SettingsGate', () => {
     document.querySelector<HTMLButtonElement>('[data-testid="gate-retry"]')!.click()
     for (let i = 0; i < 20; i++) await Promise.resolve()
     flushSync()
-    expect(settingsSession.status as string).toBe('ready')
+    expect(settingsSession.status).toBe('ready')
     void unmount(c)
   })
 

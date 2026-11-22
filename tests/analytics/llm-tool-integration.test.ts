@@ -192,7 +192,7 @@ type RecordedEvent = ReturnType<typeof createRecordingSinks>['events'][number]
 const eventsNamed = (events: readonly RecordedEvent[], name: string): RecordedEvent[] =>
   events.filter((item) => item.event.event.name === name)
 
-const llmProps = (item: RecordedEvent): Record<string, unknown> => item.event.props as Record<string, unknown>
+const llmProps = (item: RecordedEvent): Record<string, unknown> => item.event.props
 
 type AttemptObservation = Readonly<{
   rawAttemptId: string

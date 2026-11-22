@@ -14,7 +14,7 @@ export type ResolvedAddress = Readonly<{ address: string; family: IpFamily }>
 export type LookupAll = (hostname: string) => Promise<readonly ResolvedAddress[]>
 
 export const defaultLookupAll: LookupAll = async (hostname) => {
-  const answers = await lookup(hostname, { all: true, verbatim: true })
+  const answers = await lookup(hostname, { all: true, order: 'verbatim' })
   return answers.map((answer) => ({ address: answer.address, family: answer.family === 6 ? 6 : 4 }))
 }
 

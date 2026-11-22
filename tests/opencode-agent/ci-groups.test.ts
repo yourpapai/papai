@@ -43,10 +43,10 @@ describe('createCiGroups', () => {
     // on stdout is a stray line in every suite run that never opened a group.
     const written: string[] = []
     const original = process.stdout.write.bind(process.stdout)
-    process.stdout.write = ((chunk: string): boolean => {
+    process.stdout.write = (chunk: string): boolean => {
       written.push(chunk)
       return true
-    }) as typeof process.stdout.write
+    }
 
     try {
       createCiGroups().endGroup()

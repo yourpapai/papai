@@ -25,13 +25,12 @@ const TASK_INSTANCE_ID = 'task-inst-auto-1'
 const CHAT_USER_ID = 'chat-user-1'
 const PLATFORM_INSTANCE_ID = 'telegram-default'
 
-const makeReply = (): ReplyFn =>
-  ({
-    text: mock(() => Promise.resolve()),
-    formatted: mock(() => Promise.resolve()),
-    typing: mock(() => {}),
-    buttons: mock(() => Promise.resolve(undefined)),
-  }) as ReplyFn
+const makeReply = (): ReplyFn => ({
+  text: mock(() => Promise.resolve()),
+  formatted: mock(() => Promise.resolve()),
+  typing: mock(() => {}),
+  buttons: mock(() => Promise.resolve(undefined)),
+})
 
 const registerAutoProvisionHook = (
   hook: (ctx: TaskProviderAutoProvisionContext) => Promise<boolean> | boolean,

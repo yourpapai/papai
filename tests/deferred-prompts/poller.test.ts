@@ -68,7 +68,6 @@ type GenerateTextResult = {
 }
 
 type RouterLikeChatProvider = ChatProvider & { getInstance: (id: string) => unknown }
-type ActiveAwareChatProvider = ChatProvider & { isInstanceActive: (id: string) => boolean }
 
 // --- Tests ---
 
@@ -235,7 +234,7 @@ describe('pollScheduledOnce', () => {
   })
 
   test('keeps due prompt active when routed platform instance is stopped', async () => {
-    chat = { ...chat, isInstanceActive: (_id: string): boolean => false } as ActiveAwareChatProvider
+    chat = { ...chat, isInstanceActive: (_id: string): boolean => false }
     let callCount = 0
     generateTextImpl = (): Promise<GenerateTextResult> => {
       callCount++
@@ -266,7 +265,7 @@ describe('pollScheduledOnce', () => {
       isInstanceActive: (_id: string): boolean => true,
       sendMessage: (_platformInstanceId: string, _target: DeferredDeliveryTarget, _text: string): Promise<false> =>
         Promise.resolve(false),
-    } as ActiveAwareChatProvider
+    }
     const pastTime = new Date(Date.now() - 60_000).toISOString()
     const created = createScheduledPrompt(USER_ID, 'Check my overdue tasks', { fireAt: pastTime })
 
@@ -909,7 +908,7 @@ describe('pollAlertsOnce', () => {
   })
 
   test('skips alert task-provider work when routed platform instance is stopped', async () => {
-    chat = { ...chat, isInstanceActive: (_id: string): boolean => false } as ActiveAwareChatProvider
+    chat = { ...chat, isInstanceActive: (_id: string): boolean => false }
     let buildProviderCalls = 0
     let callCount = 0
     generateTextImpl = (): Promise<GenerateTextResult> => {

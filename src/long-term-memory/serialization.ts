@@ -19,7 +19,7 @@ export const parseEvidence = (json: string): MemoryEvidence => {
   try {
     const parsed: unknown = JSON.parse(json)
     if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) return {}
-    return parsed as MemoryEvidence
+    return parsed
   } catch {
     return {}
   }

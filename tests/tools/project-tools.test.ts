@@ -65,11 +65,7 @@ interface ConfirmationResultWithMessage {
 }
 
 function isConfirmationResultWithMessage(val: unknown): val is ConfirmationResultWithMessage {
-  return (
-    isConfirmationResult(val) &&
-    'message' in val &&
-    typeof (val as { status: string; message: unknown })['message'] === 'string'
-  )
+  return isConfirmationResult(val) && 'message' in val && typeof val['message'] === 'string'
 }
 
 function resolveProjectName(name: string | undefined, fallback: string): string {

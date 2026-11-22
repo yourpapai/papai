@@ -187,12 +187,7 @@ describe('attemptAutoLink', () => {
 
   it('should return not_found when provider has no identity resolver', async () => {
     const providerWithoutResolver = { ...mockProvider, identityResolver: undefined }
-    const result = await attemptAutoLink(
-      testContextId,
-      'jsmith',
-      providerWithoutResolver as TaskProvider,
-      NO_ANALYTICS_SCOPE,
-    )
+    const result = await attemptAutoLink(testContextId, 'jsmith', providerWithoutResolver, NO_ANALYTICS_SCOPE)
     expect(result.type).toBe('not_found')
   })
 
@@ -202,7 +197,7 @@ describe('attemptAutoLink', () => {
       identityResolver: {
         searchUsers: () => Promise.reject(new Error('Network error')),
       },
-    } as TaskProvider
+    }
 
     const result = await attemptAutoLink(testContextId, 'jsmith', providerWithFailingResolver, NO_ANALYTICS_SCOPE)
     expect(result.type).toBe('not_found')
@@ -225,7 +220,7 @@ describe('attemptAutoLink', () => {
     const emailLoginProvider: TaskProvider = {
       ...mockProvider,
       identityResolver: { searchUsers: searchUsersEmailLogin },
-    } as TaskProvider
+    }
 
     const result = await attemptAutoLink(testContextId, 'jsmith', emailLoginProvider, NO_ANALYTICS_SCOPE)
     expect(result.type).toBe('found')
@@ -242,7 +237,7 @@ describe('attemptAutoLink', () => {
     const emailLoginProvider: TaskProvider = {
       ...mockProvider,
       identityResolver: { searchUsers: searchUsersEmailLoginExact },
-    } as TaskProvider
+    }
 
     const result = await attemptAutoLink(testContextId, 'jsmith@example.com', emailLoginProvider, NO_ANALYTICS_SCOPE)
     expect(result.type).toBe('found')
@@ -260,7 +255,7 @@ describe('attemptAutoLink', () => {
           return searchUsersDefault(query)
         },
       },
-    } as TaskProvider
+    }
 
     const result = await attemptAutoLink(testContextId, 'jsmith', scopedProvider, NO_ANALYTICS_SCOPE)
     expect(result.type).toBe('found')
@@ -277,7 +272,7 @@ describe('attemptAutoLink', () => {
           return searchUsersDefault(query)
         },
       },
-    } as TaskProvider
+    }
 
     const omittedScopes: Parameters<typeof attemptAutoLink>[3][] = []
     const result = await attemptAutoLink(testContextId, 'jsmith', scopedProvider, omittedScopes[0]!)

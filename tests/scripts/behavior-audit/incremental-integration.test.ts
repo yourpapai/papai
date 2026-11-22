@@ -959,7 +959,7 @@ describe('behavior-audit incremental manifest', () => {
     const consoleErrorSpy = spyOn(console, 'error').mockImplementation((...args: readonly unknown[]) => {
       errorCalls.push(args.map(String).join(' '))
     })
-    const processExitSpy = spyOn(process, 'exit').mockImplementation(makeProcessExitThrow as typeof process.exit)
+    const processExitSpy = spyOn(process, 'exit').mockImplementation(makeProcessExitThrow)
 
     await expect(loadBehaviorAuditEntryPoint(crypto.randomUUID())).rejects.toThrow('process.exit:1')
     expect(await Bun.file(manifestPath).text()).toBe('{broken json')
@@ -985,7 +985,7 @@ describe('behavior-audit incremental manifest', () => {
     const consoleErrorSpy = spyOn(console, 'error').mockImplementation((...args: readonly unknown[]) => {
       errorCalls.push(args.map(String).join(' '))
     })
-    const processExitSpy = spyOn(process, 'exit').mockImplementation(makeProcessExitThrow as typeof process.exit)
+    const processExitSpy = spyOn(process, 'exit').mockImplementation(makeProcessExitThrow)
 
     await expect(loadBehaviorAuditEntryPoint(crypto.randomUUID())).rejects.toThrow('process.exit:1')
     expect(await Bun.file(manifestPath).text()).toBe('{"version":2,"tests":{}}')

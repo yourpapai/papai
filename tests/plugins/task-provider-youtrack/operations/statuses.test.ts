@@ -59,7 +59,7 @@ const makeCustomField = (bundleId = 'bundle-123'): Record<string, unknown> => ({
 
 const extractResultMessage = (result: unknown): unknown => {
   if (result !== null && typeof result === 'object' && 'message' in result) {
-    return (result as { message: unknown }).message
+    return result.message
   }
   return undefined
 }

@@ -69,7 +69,7 @@ describe('mid-run steering routing', () => {
     enqueueCallCount = 0
 
     const { provider: mockChat, getMessageHandler: getHandler } = createMockChatForBot()
-    getMessageHandler = getHandler as typeof getMessageHandler
+    getMessageHandler = getHandler
 
     const botDeps: BotDeps = {
       processMessage: (): Promise<void> => Promise.resolve(),
@@ -151,7 +151,7 @@ describe('mid-run steering analytics', () => {
       stop: (): Promise<void> => Promise.resolve(),
     }
     const { provider: mockChat, getMessageHandler: getHandler } = createMockChatForBot()
-    getMessageHandler = getHandler as typeof getMessageHandler
+    getMessageHandler = getHandler
 
     const botDeps: BotDeps = {
       processMessage: (): Promise<void> => Promise.resolve(),
@@ -202,7 +202,7 @@ describe('steer ack per locale', () => {
     seedCommonTestPlatformInstances()
     runRegistry.clear()
     const { provider: mockChat, getMessageHandler: getHandler } = createMockChatForBot()
-    getMessageHandler = getHandler as typeof getMessageHandler
+    getMessageHandler = getHandler
     setupBot(mockChat, ADMIN_ID, { processMessage: (): Promise<void> => Promise.resolve() })
   })
 

@@ -519,6 +519,7 @@ describe('invokeModel repairToolCall wiring', () => {
       toolCall: { type: 'tool-call', toolCallId: 'call-1', toolName: 'list_tasks', input: '{}' },
       tools,
       instructions: undefined,
+      // `system` is required by the SDK's RepairOptions type even though deprecated.
       system: undefined,
       messages: [],
       inputSchema: () => Promise.resolve({ type: 'object' }),

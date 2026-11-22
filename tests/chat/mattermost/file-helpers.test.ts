@@ -9,7 +9,7 @@
 
 import { beforeEach, describe, expect, mock, test } from 'bun:test'
 
-import { resolveMattermostUserId, type MattermostApiFetch } from '../../../src/chat/mattermost/file-helpers.js'
+import { resolveMattermostUserId } from '../../../src/chat/mattermost/file-helpers.js'
 import { mockLogger } from '../../utils/test-helpers.js'
 
 describe('file-helpers', () => {
@@ -23,7 +23,7 @@ describe('file-helpers', () => {
         Promise.resolve({ id: 'user-123', username: 'testuser' }),
       )
 
-      const result = await resolveMattermostUserId('@testuser', mockFetch as MattermostApiFetch)
+      const result = await resolveMattermostUserId('@testuser', mockFetch)
       expect(result).toBe('user-123')
       expect(mockFetch).toHaveBeenCalledWith('GET', '/api/v4/users/username/testuser', undefined)
     })
@@ -31,14 +31,14 @@ describe('file-helpers', () => {
     test('returns null when API call fails', async () => {
       const mockFetch = mock(() => Promise.reject(new Error('Network error')))
 
-      const result = await resolveMattermostUserId('unknown', mockFetch as MattermostApiFetch)
+      const result = await resolveMattermostUserId('unknown', mockFetch)
       expect(result).toBeNull()
     })
 
     test('returns null when response parsing fails', async () => {
       const mockFetch = mock(() => Promise.resolve({ invalid: 'data' }))
 
-      const result = await resolveMattermostUserId('testuser', mockFetch as MattermostApiFetch)
+      const result = await resolveMattermostUserId('testuser', mockFetch)
       expect(result).toBeNull()
     })
 
@@ -47,7 +47,7 @@ describe('file-helpers', () => {
         Promise.resolve({ id: 'user-456', username: 'plainuser' }),
       )
 
-      const result = await resolveMattermostUserId('plainuser', mockFetch as MattermostApiFetch)
+      const result = await resolveMattermostUserId('plainuser', mockFetch)
       expect(result).toBe('user-456')
       expect(mockFetch).toHaveBeenCalledWith('GET', '/api/v4/users/username/plainuser', undefined)
     })
@@ -55,7 +55,7 @@ describe('file-helpers', () => {
     test('strips @ prefix from username', async () => {
       const mockFetch = mock(() => Promise.resolve({ id: 'user-789', username: 'withat' }))
 
-      await resolveMattermostUserId('@withat', mockFetch as MattermostApiFetch)
+      await resolveMattermostUserId('@withat', mockFetch)
       expect(mockFetch).toHaveBeenCalledWith('GET', '/api/v4/users/username/withat', undefined)
     })
   })

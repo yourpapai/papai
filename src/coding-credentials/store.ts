@@ -8,7 +8,7 @@ import { and, eq, sql } from 'drizzle-orm'
 import { codingSessionCredentials, type CodingSessionCredentialRow } from '../db/coding-credentials-schema.js'
 import { getDrizzleDb } from '../db/drizzle.js'
 import { logger } from '../logger.js'
-import { decryptSecretPayload, encryptSecretPayload, type SecretPayload } from '../secret-payload-crypto.js'
+import { decryptSecretPayload, encryptSecretPayload } from '../secret-payload-crypto.js'
 import {
   type CodingCredentialConfig,
   type CodingCredentialState,
@@ -41,7 +41,7 @@ const findRow = (contextId: string, namespace: CodingNamespace): CodingSessionCr
 
 const decrypt = (contextId: string, blob: string): CodingCredentialConfig | 'unreadable' => {
   try {
-    return decryptSecretPayload(blob) as CodingCredentialConfig
+    return decryptSecretPayload(blob)
   } catch {
     log.warn({ contextId }, UNREADABLE)
     return 'unreadable'
@@ -94,7 +94,7 @@ export function updateCodingCredentials(
     merged[key] = value.length === 0 ? undefined : value
   }
   const cleaned = cleanConfig(namespace, merged)
-  const encryptedConfig = encryptSecretPayload(cleaned as SecretPayload)
+  const encryptedConfig = encryptSecretPayload(cleaned)
   getDrizzleDb()
     .insert(codingSessionCredentials)
     .values({ contextId, namespace, encryptedConfig, updatedAt: now(), updatedBy })

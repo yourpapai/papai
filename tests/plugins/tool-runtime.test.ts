@@ -347,7 +347,7 @@ describe('buildPluginToolRuntimeContext', () => {
           taskProviderTypes: ['identity-provider-a', 'identity-provider-b'],
           attachmentTransformers: [],
         },
-      } as PluginManifest,
+      },
       { provider: createMockProvider(), storageContextId: 'ctx-1', chatUserId: 'chat-user-1' },
     )
 

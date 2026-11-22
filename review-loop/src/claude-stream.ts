@@ -78,7 +78,7 @@ function parseRaw(line: string): RawLine | null {
   } catch {
     return null
   }
-  return isObject(raw) ? (raw as RawLine) : null
+  return isObject(raw) ? raw : null
 }
 
 function contentBlocks(message: RawMessage | undefined): RawContentBlock[] {

@@ -73,7 +73,7 @@ const GlobalStatsSchema = z.object({
 export type GlobalStats = z.infer<typeof GlobalStatsSchema>
 
 export const adminGlobals = $state({
-  window: '30d' as StatsWindow,
+  window: '30d',
   loading: false,
   data: null as GlobalStats | null,
   fetchedAt: null as number | null,

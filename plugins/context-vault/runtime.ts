@@ -5,7 +5,6 @@
 
 import { z } from 'zod'
 
-import type { SpecStage } from '../../src/context-vault/reducer.js'
 import type { ContextVaultListFilter } from '../../src/plugins/context-vault-facade.js'
 import type { PluginContext } from '../../src/plugins/context.js'
 import type { PluginToolRuntimeContext } from '../../src/plugins/types.js'
@@ -54,7 +53,7 @@ const GetInputSchema = z.strictObject({
 
 const toFilter = (parsed: z.infer<typeof ListInputSchema>): ContextVaultListFilter => ({
   ...(parsed.repo === undefined ? {} : { repo: parsed.repo }),
-  ...(parsed.status === undefined ? {} : { status: parsed.status as SpecStage }),
+  ...(parsed.status === undefined ? {} : { status: parsed.status }),
   ...(parsed.changedSince === undefined ? {} : { changedSince: parsed.changedSince }),
 })
 

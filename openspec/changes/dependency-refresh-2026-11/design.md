@@ -108,6 +108,8 @@ Alternative considered: downgrade TypeScript to 6. Rejected: the project's typec
 
 New rule options worth enabling only if they surface real issues: `typescript/no-misused-promises` `flagUnions`, `eslint/no-redeclare` `ignoreDeclarationMerge`, and `promise/prefer-catch` suggestions.
 
+The migration auto-fixed 132 unnecessary assertions with `bun run lint:fix` and resolved the rest by hand. The one scoped exception is `typescript/no-deprecated` for the two tests that construct the SDK's `RepairOptions`: `system` is required by that type even though deprecated. Production call sites use `instructions`; the exception lives in `.oxlintrc.json` and applies to `tests/llm-orchestrator-invoke.test.ts` and `tests/tools/disclosure/repair-tool-call.test.ts` only.
+
 ### D10 — Low-risk feature adoptions only
 
 These are safe, opt-in, and do not change runtime behavior:
