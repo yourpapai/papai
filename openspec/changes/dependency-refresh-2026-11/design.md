@@ -78,7 +78,11 @@ pixelmatch 8 replaces YIQ with OKLab/HyAB, so identical thresholds produce diffe
 - The new `windowSize` option can suppress scattered anti-aliasing noise without hiding compact changes; `ignoreMask` is not needed by the current story/Figma pair.
 - Do not change `playwright.config.ts`'s 0.2/0.02 thresholds for this bump; they belong to Playwright's own comparator. If Playwright 1.65 changes screenshots, treat that as a separate visual-baseline review under D1's Playwright task.
 
+Measured on 2026-11-22 against a 1280x720 story baseline: identical renders diff 0 under both metrics; a real change covering 12.8% of the image measured 128000/921600 = 0.138889 under both; a 10% global tint measured 0 pixels under v7 and 122 pixels under v8 (ratio 0.000132); a 15% tint measured 0.978 under both. The default 0.1 keeps the known-good pass and the known-bad fail, so the threshold and `windowSize` stay unchanged.
+
 Alternative considered: keep pixelmatch 7. Rejected because the Figma verification loop benefits from the corrected metric, and the recalibration is a one-time cost.
+
+
 
 ### D6 — oxc-parser moves as an exact pin
 

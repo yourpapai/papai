@@ -174,7 +174,7 @@
     "oxfmt": "^0.79.0",
     "oxlint": "1.80.0",
     "oxlint-tsgolint": "^0.22.1",
-    "pixelmatch": "^7.2.0",
+    "pixelmatch": "^8.0.0",
     "pngjs": "^7.0.0",
     "react": "^19.3.1",
     "storybook": "^10.6.8",
