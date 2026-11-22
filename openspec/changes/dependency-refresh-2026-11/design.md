@@ -88,6 +88,8 @@ Alternative considered: keep pixelmatch 7. Rejected because the Figma verificati
 
 `package.json` pins `"oxc-parser": "0.147.0"`; it becomes `"0.159.0"` (still exact). The 0.159 release includes a breaking AST change (`LabelId` on `LabelIdentifier`). `src/ts-ast/source-parser.ts` walks with the package's `visitorKeys` and does not inspect label identifiers, so the expected change is type-only. Verification: `tests/plugins/discovery-import-scan*`, `tests/story/*`, and the story-manifest smoke tests, which exercise every `walkNodes` path.
 
+0.159 also adds a `browser` export that resolves to the WASM build. The client lane runs with `--conditions=browser` and reaches the scanner through the plugin import graph, so `@oxc-parser/binding-wasm32-wasip1@0.159.0` is pinned as a dev dependency to keep that resolution working; without it the client lane fails to load every test file.
+
 Alternative considered: caret range. Rejected: oxc 0.x minors break the AST and the seam is a frozen story-enforcement input.
 
 ### D7 — zod 4.6 is verified through the JSON-Schema tests
