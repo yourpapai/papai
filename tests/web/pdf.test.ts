@@ -6,7 +6,7 @@
 import { beforeEach, describe, expect, mock, test } from 'bun:test'
 import assert from 'node:assert/strict'
 
-import { getDocumentProxy } from 'unpdf'
+import { extractText as extractPdfTextFromDocument, getDocumentProxy } from 'unpdf'
 
 import { extractPdfText, type PdfDeps } from '../../src/web/pdf.js'
 import { mockLogger } from '../utils/test-helpers.js'
@@ -53,7 +53,7 @@ describe('extractPdfText', () => {
 
   test('returns merged PDF text', async () => {
     const bytes = new Uint8Array([37, 80, 68, 70])
-    const document = await getDocumentProxy(MINIMAL_PDF)
+    const document = await getDocumentProxy(new Uint8Array(MINIMAL_PDF))
     const extractTextSpy = mock((_data: Parameters<PdfDeps['extractText']>[0], _options: { mergePages: true }) =>
       Promise.resolve({ text: '\nPage one\n\nPage two\n', totalPages: 2 }),
     )
@@ -86,5 +86,12 @@ describe('extractPdfText', () => {
     await expect(extractPdfText(bytes, deps)).resolves.toBe('Page one\n\nPage two')
     expect(deps.getDocumentProxy).toHaveBeenCalledWith(bytes)
     expect(extractTextSpy).toHaveBeenCalledWith(document, { mergePages: true })
+  })
+
+  test('extracts text from a real PDF with the installed unpdf runtime', async () => {
+    const document = await getDocumentProxy(new Uint8Array(MINIMAL_PDF))
+    const { text, totalPages } = await extractPdfTextFromDocument(document, { mergePages: true })
+    expect(totalPages).toBe(1)
+    expect(text).toContain('Hello')
   })
 })
