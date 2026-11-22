@@ -15,6 +15,7 @@ import type { EffectiveLlmConfig } from './llm-providers/types.js'
 import type { TaskProvider } from './providers/types.js'
 import type { SteeringHandle } from './run-control/types.js'
 import type { DisclosureSession } from './tools/disclosure/registry.js'
+import type { ToolApprovalFn } from './tools/permission-gate.js'
 
 export type LlmOrchestratorDeps = {
   // Non-generic DI seam over the AI SDK `generateText`: the real generic export stays
@@ -76,6 +77,8 @@ export type InvokeModelArgs = {
   messages: ModelMessage[]
   deps: LlmOrchestratorDeps
   providerRequestScope: ProviderRequestScope
+  /** Pre-execution approval resolver; required so no model call offers an ask tool ungated. */
+  toolApproval: ToolApprovalFn
 } & Partial<Record<'progressReporter', AiProgressReporter>> &
   Partial<Record<'disclosure', DisclosureSession>> &
   Partial<Record<'liveStatus', LiveStatusReporter>>
@@ -110,4 +113,5 @@ export type GenerateArgs = {
   deps: LlmOrchestratorDeps
   disclosure: InvokeModelArgs['disclosure']
   ctx: ToolCallContext
+  toolApproval: ToolApprovalFn
 }

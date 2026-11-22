@@ -17,7 +17,7 @@ import { maybeSeedAdminToolDefaults } from './admin-tool-defaults.js'
 import { BUILTIN_TOOL_NAMES } from './builtin-names.js'
 import { maybeAddDiagnosticsTools } from './diagnostics.js'
 import { emitResolvedSurfaceOpportunities } from './feature-opportunities.js'
-import { extendSchemaForAsk, gatedExecute, type AskPermissionFn } from './permission-gate.js'
+import { extendSchemaForAsk, stripPermissionReason } from './permission-gate.js'
 import { getToolMetadata } from './tool-metadata.js'
 import { getToolPrefs, resolveToolPermission } from './tool-preferences.js'
 import { buildProviderlessTools, buildTools } from './tools-builder.js'
@@ -37,11 +37,7 @@ export function listToolNames(): readonly string[] {
   return BUILTIN_TOOL_NAMES
 }
 
-export function applyToolPreferences(
-  tools: ToolSet,
-  contextId: string | undefined,
-  askPermission: AskPermissionFn | undefined,
-): ToolSet {
+export function applyToolPreferences(tools: ToolSet, contextId: string | undefined): ToolSet {
   if (contextId === undefined) return tools
   const prefsContextId = getConfigContextIdFromStorageContextId(contextId)
   maybeSeedAdminToolDefaults(prefsContextId)
@@ -55,12 +51,13 @@ export function applyToolPreferences(
       out[name] = t
       continue
     }
-    // perm === 'ask'
+    // perm === 'ask': expose the extended schema; approval runs before execution
+    // through the invocation's toolApproval resolver, so execute only strips the reason.
     const extendedSchema = extendSchemaForAsk(t.inputSchema)
     const wrappedExecute =
       t.execute === undefined
         ? undefined
-        : gatedExecute((input, opts) => Promise.resolve(t.execute!(input, opts)), name, askPermission)
+        : stripPermissionReason((input, opts) => Promise.resolve(t.execute!(input, opts)))
     out[name] = { ...t, inputSchema: extendedSchema, execute: wrappedExecute }
   }
   return out
@@ -293,5 +290,5 @@ export async function makeTools(
     hasProvider: true,
     tools: descriptors,
   })
-  return applyToolPreferences(descriptors, options.storageContextId, options.askPermission)
+  return applyToolPreferences(descriptors, options.storageContextId)
 }

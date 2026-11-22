@@ -10,7 +10,6 @@
  */
 
 import type { ToolFailureResult } from './tool-failure.js'
-import { isPermissionDeniedResult } from './tools/permission-gate.js'
 
 export type ToolExecutionOutcome = 'semantic_success' | 'structured_failure' | 'thrown_failure' | 'permission_denied'
 
@@ -60,15 +59,6 @@ export const classifyToolTerminal = (
       statusClass: statusClassOf(errorClass),
       retryable: failure?.retryable ?? null,
       recoveredSameTurn: failure?.recovered ?? false,
-    }
-  }
-  if (isPermissionDeniedResult(result.output)) {
-    return {
-      outcome: 'permission_denied',
-      errorClass: 'permission',
-      statusClass: 'none',
-      retryable: null,
-      recoveredSameTurn: false,
     }
   }
   if (failure !== null) {

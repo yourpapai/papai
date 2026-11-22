@@ -244,7 +244,7 @@ describe('analytics confirmation lifecycle', () => {
     await tickAsync()
     const id = extractButtons(getButtonCall()!)[0]!.callbackData.replace('perm:a:', '')
 
-    await expect(promise).resolves.toBe('deny')
+    await expect(promise).resolves.toBe('ignored')
     expect(requested).toHaveLength(1)
     expect(requested[0]!.timeoutMs).toBe(25)
     expect(resolved).toHaveLength(1)
@@ -375,7 +375,7 @@ describe('expired-prompt redaction', () => {
     )
     await tickAsync()
 
-    await expect(decision).resolves.toBe('deny')
+    await expect(decision).resolves.toBe('ignored')
     expect(redactions).toEqual(['⌛ Время истекло — отклонено.'])
   })
 })

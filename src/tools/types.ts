@@ -47,12 +47,6 @@ export type MakeToolsOptions = {
   contextType?: ContextType
   stagedDownloadFn?: import('../attachments/types.js').StagedFileDownloadFn
   /**
-   * Per-turn callback used to gate tools whose effective permission is 'ask'.
-   * The orchestrator constructs this closure with the user's chat reply bound
-   * inside it. When undefined, ask-marked tools deny on each call.
-   */
-  askPermission?: import('./permission-gate.js').AskPermissionFn
-  /**
    * Resolver for chat group participants by name — used by resolve_chat_participant.
    * Absent in DM context or when no ChatRouter is available.
    */

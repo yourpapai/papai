@@ -21,6 +21,7 @@ import { logger } from '../logger.js'
 import type { ModelMetadata } from '../models-dev/resolve.js'
 import { createDisclosurePrepareStep } from '../tools/disclosure/prepare-step.js'
 import { createRepairToolCall } from '../tools/disclosure/repair-tool-call.js'
+import { buildToolApproval } from '../tools/permission-gate.js'
 import { getContextLanguage } from '../utils/config-language.js'
 import { getLlmConfig, type LlmConfig } from './proactive-llm-config.js'
 import { buildFullMessages, buildFullToolSet } from './proactive-llm-full.js'
@@ -100,7 +101,14 @@ async function prepareFullGenerationInput(
     metadata,
     deliveryTarget.contextType,
   )
-  return { storageContextId, tools, systemPrompt, messages, disclosure }
+  return {
+    storageContextId,
+    tools,
+    systemPrompt,
+    messages,
+    disclosure,
+    toolApproval: buildToolApproval({ contextId: storageContextId, askPermission: undefined }),
+  }
 }
 
 type ScopedGenerationArgs = Readonly<{
@@ -117,7 +125,7 @@ type ScopedGenerationArgs = Readonly<{
   scope: Parameters<typeof runWithProviderRequestScope>[0]
 }>
 
-const buildFullGenerationBaseOptions = (
+export const buildFullGenerationBaseOptions = (
   prepared: FullGenerationInput,
   deps: ProactiveLlmDeps,
   model: LanguageModel,
@@ -127,6 +135,7 @@ const buildFullGenerationBaseOptions = (
     model,
     ...hoistSystemMessages(prepared.systemPrompt, prepared.messages),
     tools: prepared.tools,
+    toolApproval: prepared.toolApproval,
     stopWhen: deps.stepCountIs(25),
     timeout: 1_200_000,
     prepareStep: createDisclosurePrepareStep(prepared.disclosure, prepared.storageContextId, turnId),
@@ -148,7 +157,6 @@ const runScopedGeneration = async (args: ScopedGenerationArgs): Promise<string> 
     args.matchedTasksSummary,
     args.provider,
   )
-  const tools = prepared.tools
   const turnId = `proactive:${prepared.storageContextId}:${String(Date.now())}`
   log.debug(
     { userId: createdByUserId, mainModel: config.mainModel, historyLength: prepared.messages.length },
@@ -174,7 +182,14 @@ const runScopedGeneration = async (args: ScopedGenerationArgs): Promise<string> 
     result,
     createdByUserId,
     {
-      ...buildProactiveVerification(deps, model, tools, [...prepared.messages, ...assistantMessages], scope),
+      ...buildProactiveVerification(
+        deps,
+        model,
+        prepared.tools,
+        [...prepared.messages, ...assistantMessages],
+        scope,
+        prepared.toolApproval,
+      ),
       turnId,
       traceScope: prepared.storageContextId,
     },

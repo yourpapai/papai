@@ -408,6 +408,7 @@ describe('invokeWithLiveStatus locale', () => {
     messages: [{ role: 'user', content: 'привет' }],
     turnId: 'turn-live-status-locale',
     providerRequestScope: NO_ANALYTICS_SCOPE,
+    toolApproval: () => Promise.resolve('not-applicable'),
     deps: {
       generateText: (options) => generateText(options),
       stepCountIs,
@@ -527,6 +528,7 @@ describe('invokeWithLiveStatus anomalous empty-turn warn', () => {
         messages: [{ role: 'user', content: CANARY_USER_TEXT }],
         turnId: `turn-${contextId}`,
         providerRequestScope: NO_ANALYTICS_SCOPE,
+        toolApproval: () => Promise.resolve('not-applicable'),
         deps: {
           generateText: (options) => generateText(options),
           // Single-step turns: the mock model would otherwise answer identically

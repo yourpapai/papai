@@ -85,6 +85,9 @@ export function formatArguments(args: Record<string, unknown>): string {
 
 export type PermissionDecision = 'allow' | 'deny'
 
+/** The prompt's outcome: a decision, or `ignored` when it timed out (treated as a denial). */
+export type PermissionOutcome = PermissionDecision | 'ignored'
+
 export type ConfirmationLifecycleDecision = 'granted' | 'denied' | 'ignored' | 'prompt_failed'
 
 /**
@@ -106,7 +109,7 @@ export type AskPermissionOptions = Readonly<{
 interface PendingRequest {
   contextId: string
   toolName: string
-  resolve: (decision: PermissionDecision) => void
+  resolve: (decision: PermissionOutcome) => void
   timer: ReturnType<typeof setTimeout>
   handle?: PromptHandle
   analytics?: ConfirmationLifecycleObserver
@@ -218,14 +221,14 @@ export function askPermissionViaChat(
   contextId: string,
   req: { toolName: string; reason: string; args: Record<string, unknown> },
   options?: AskPermissionOptions,
-): Promise<PermissionDecision> {
+): Promise<PermissionOutcome> {
   const id = generateRequestId()
   const locale = getContextLanguage(getConfigContextIdFromStorageContextId(contextId))
   const body = formatPrompt(req.toolName, req.reason, req.args, locale)
   const timeoutMs = options?.timeoutMs ?? PERMISSION_TIMEOUT_MS
   const now = options?.now ?? Date.now
   const startedAtMs = now()
-  return new Promise<PermissionDecision>((resolve) => {
+  return new Promise<PermissionOutcome>((resolve) => {
     const timer = setTimeout(() => {
       const entry = pending.get(id)
       if (entry === undefined) return
@@ -233,7 +236,7 @@ export function askPermissionViaChat(
       log.warn({ contextId, toolName: req.toolName, id }, 'Permission prompt timed out; denying')
       void redactExpiredPrompt(entry, contextId, req.toolName, id)
       notifyResolved(entry, 'ignored')
-      entry.resolve('deny')
+      entry.resolve('ignored')
     }, timeoutMs)
     // Register before sending so a fast click (or a synchronously-resolving send)
     // can always find the entry in `resolvePermissionRequest`/the timeout handler.

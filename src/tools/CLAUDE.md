@@ -41,15 +41,22 @@ export function makeExampleTool(provider: Readonly<TaskProvider>): Tool {
   `toolOverrides[RENAMED_TOOL_ALIASES[name]]` (legacy name for renamed reminder/alert tools) →
   `domainDefaults[meta.domain]` → `riskDefaults[meta.risk]` → implicit `allow`. `deny` removes
   the tool from the returned `ToolSet` (cannot be invoked); `allow` exposes it unchanged; `ask`
-  exposes it wrapped so each call requires user permission (the input schema gains
-  `_permission_reason` and execution is gated). Preferences are keyed by the same
+  extends the input schema with `_permission_reason` and exposes the tool behind the invocation's
+  pre-execution approval resolver. Preferences are keyed by the same
   `storageContextId` used elsewhere. The `riskDefaults` tier is the sticky layer set by the
   settings-UI presets (`applyPreset`/`detectActivePreset`, keyed by `ToolRisk` from
   `tool-metadata.ts`); pruning of redundant overrides is computed against the same
   override→domain→risk→allow baseline so it stays symmetric with resolution.
-  An `ask` denial returns the structured `{ status: 'permission_denied', message }` shape
-  (`isPermissionDeniedResult` in `permission-gate.ts`), which the analytics terminal
-  classifies as its own `permission_denied` outcome rather than a failure. The analytics
+  Approval itself is never in a tool body: `buildToolApproval` (`permission-gate.ts`) is the
+  AI SDK `toolApproval` hook, built once per invocation in `buildLlmInvocationOpts` and carried
+  as a required field on `InvokeModelArgs`/`GenerateArgs`. It re-resolves `tool_prefs` per call and
+  returns `not-applicable` unless the permission is `ask`; an `ask` call awaits the chat prompt
+  (same buttons and five-minute timeout) and returns `approved` or `{ type: 'denied', reason }`
+  (user denial, timeout, or no chat surface). A denied call never executes — the SDK writes an
+  `execution-denied` tool-result the model reads and the turn continues. Assembly only strips
+  `_permission_reason` before `execute` (`stripPermissionReason`). The resolver also emits the
+  `permission_denied` tool-execution analytics terminal, because a denied call never reaches
+  `onToolExecutionEnd`. The analytics
   layer maps `tool-metadata.ts` domains/risks onto its bounded fact enums in
   `src/analytics/tool-classification.ts` (`open-world` → `open_world`, richer domains
   collapse onto `task|memo|schedule|attachment|web|identity|coding|config|meta|diagnostics|other`).

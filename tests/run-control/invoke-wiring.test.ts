@@ -62,6 +62,7 @@ function buildArgs(
     enabledToolNames: new Set<string>(),
     messages: [{ role: 'user' as const, content: 'hi' }],
     providerRequestScope: NO_ANALYTICS_SCOPE,
+    toolApproval: () => Promise.resolve('not-applicable'),
     deps: {
       ...defaultDeps,
       generateText: (opts) => {

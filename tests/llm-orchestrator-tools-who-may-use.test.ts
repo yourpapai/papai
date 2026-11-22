@@ -141,6 +141,7 @@ describe('buildFullToolSet / who-may-use filter (integration)', () => {
     userText: 'start a session',
     stagedDownloadFn: undefined,
     askPermission: undefined,
+    toolApproval: () => Promise.resolve('not-applicable'),
     providerRequestScope: NO_ANALYTICS_SCOPE,
   })
 

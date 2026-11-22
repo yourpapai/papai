@@ -258,15 +258,15 @@ describe('context-vault plugin tools', () => {
     }
 
     setToolPrefs(PREFS_CTX, { domainDefaults: {}, toolOverrides: { [LIST_WIRE]: 'deny' } })
-    const denied = applyToolPreferences(toolSet, PREFS_CTX, undefined)
+    const denied = applyToolPreferences(toolSet, PREFS_CTX)
     expect(Object.keys(denied).toSorted()).toEqual([GET_WIRE])
 
     setToolPrefs(PREFS_CTX, { domainDefaults: {}, toolOverrides: {} })
-    const allowed = applyToolPreferences(toolSet, PREFS_CTX, undefined)
+    const allowed = applyToolPreferences(toolSet, PREFS_CTX)
     expect(allowed[LIST_WIRE]).toBe(toolSet[LIST_WIRE])
   })
 
-  test('tool_prefs ask wraps execution in the confirmation flow', async () => {
+  test('tool_prefs ask strips the reason and executes without an in-body gate', async () => {
     seedSpec('papai', 'alpha', 100)
     const tools = activatePlugin()
     const ctx = makeRuntimeCtx(THREAD_CTX)
@@ -275,23 +275,12 @@ describe('context-vault plugin tools', () => {
     }
     setToolPrefs(PREFS_CTX, { domainDefaults: {}, toolOverrides: { [LIST_WIRE]: 'ask' } })
 
-    const confirmed = applyToolPreferences(toolSet, PREFS_CTX, () => Promise.resolve('allow' as const))
-    const confirmedExecute = requireSdkExecute(confirmed, LIST_WIRE)
+    const asked = applyToolPreferences(toolSet, PREFS_CTX)
+    const execute = requireSdkExecute(asked, LIST_WIRE)
     const out = ListOutputSchema.parse(
-      await confirmedExecute(
-        { _permission_reason: 'need spec status' },
-        { toolCallId: 't1', messages: [], context: {} },
-      ),
+      await execute({ _permission_reason: 'need spec status' }, { toolCallId: 't1', messages: [], context: {} }),
     )
     expect(out.specs.map((s) => s.id)).toEqual(['papai:alpha'])
-
-    const noGate = applyToolPreferences(toolSet, PREFS_CTX, undefined)
-    const deniedExecute = requireSdkExecute(noGate, LIST_WIRE)
-    const deniedOut: unknown = await deniedExecute(
-      { _permission_reason: 'need spec status' },
-      { toolCallId: 't2', messages: [], context: {} },
-    )
-    expect(deniedOut).toMatchObject({ status: 'permission_denied' })
   })
 
   test('both vault tools are eligible for the guest read-only toolset', () => {

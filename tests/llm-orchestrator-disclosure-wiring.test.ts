@@ -33,6 +33,7 @@ const optsFor = (contextId: string, userText: string): Parameters<typeof prepare
   userText,
   stagedDownloadFn: undefined,
   askPermission: undefined,
+  toolApproval: () => Promise.resolve('not-applicable'),
   providerRequestScope: NO_ANALYTICS_SCOPE,
 })
 

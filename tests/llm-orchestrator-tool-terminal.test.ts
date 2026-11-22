@@ -7,7 +7,6 @@ import { describe, expect, test } from 'bun:test'
 
 import { classifyToolTerminal } from '../src/llm-orchestrator-tool-terminal.js'
 import type { ToolFailureResult } from '../src/tool-failure.js'
-import { buildPermissionDenied } from '../src/tools/permission-gate.js'
 const failure = (overrides: Partial<ToolFailureResult>): ToolFailureResult => ({
   success: false,
   error: 'boom',
@@ -45,16 +44,6 @@ describe('classifyToolTerminal', () => {
       statusClass: 'other',
       retryable: false,
       recoveredSameTurn: true,
-    })
-  })
-
-  test('a permission-denied output is its own outcome without an http-style status', () => {
-    expect(classifyToolTerminal({ success: true, output: buildPermissionDenied('no') }, null)).toEqual({
-      outcome: 'permission_denied',
-      errorClass: 'permission',
-      statusClass: 'none',
-      retryable: null,
-      recoveredSameTurn: false,
     })
   })
 

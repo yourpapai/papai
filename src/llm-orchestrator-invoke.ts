@@ -86,7 +86,8 @@ type GeneratedTurn = {
 }
 
 const callGenerateText = async (a: GenerateArgs): Promise<GeneratedTurn> => {
-  const { contextId, turnId, model, systemPrompt, messages, tools, toolsContext, deps, disclosure, ctx } = a
+  const { contextId, turnId, model, systemPrompt, messages, tools, toolsContext, deps, disclosure, ctx, toolApproval } =
+    a
   const run = runRegistry.get(contextId)
   // Disclosure owns the single `prepareStep` hook: it only narrows `activeTools` and
   // never rebuilds `messages`, so it cannot drop a steering message.
@@ -108,6 +109,8 @@ const callGenerateText = async (a: GenerateArgs): Promise<GeneratedTurn> => {
       model,
       ...hoistSystemMessages(systemPrompt, messages),
       tools,
+      toolApproval,
+      runtimeContext: ctx,
       timeout: 1_200_000,
       stopWhen,
       ...(run === undefined ? {} : { abortSignal: run.abortController.signal, experimental_steering: run.steering }),
@@ -194,6 +197,7 @@ export const invokeModel = async (args: InvokeArgs): ReturnType<LlmOrchestratorD
     deps,
     disclosure,
     ctx,
+    toolApproval: args.toolApproval,
   })
   if (turnLimitHit) warnTurnLimitReached(contextId, turnId, result.steps.length)
   emitLlmEnd(contextId, chatUserId, contextType, mainModel, result, start, messages, tools, turnId, {

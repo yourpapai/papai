@@ -106,7 +106,7 @@ export function buildInvocationToolSet(
       chatUserId: actorUserId,
       mode: 'normal',
       contextType,
-    }).then((tools) => applyToolPreferences(tools, storageContextId, undefined))
+    }).then((tools) => applyToolPreferences(tools, storageContextId))
   }
 
   return makeTools(provider, {
@@ -163,5 +163,5 @@ function isToolSet(value: Record<string, unknown>): value is ToolSet {
 function buildDegradedToolSurface(storageContextId: string): ResolvedContextToolSurface {
   const cachedTools = toToolRecord(getLatestCachedToolsForContext(storageContextId))
   const toolSet = isToolSet(cachedTools) ? cachedTools : {}
-  return { definitions: toToolRecord(applyToolPreferences(toolSet, storageContextId, undefined)) }
+  return { definitions: toToolRecord(applyToolPreferences(toolSet, storageContextId)) }
 }

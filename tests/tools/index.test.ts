@@ -235,27 +235,27 @@ describe('applyToolPreferences (ask integration)', () => {
   test('deny removes tool from set', () => {
     setToolPrefs(contextId, { domainDefaults: {}, toolOverrides: { create_task: 'deny' } })
     const tools: ToolSet = { create_task: fakeTool('create_task'), list_tasks: fakeTool('list_tasks') }
-    const result = applyToolPreferences(tools, contextId, undefined)
+    const result = applyToolPreferences(tools, contextId)
     expect(Object.keys(result).toSorted()).toEqual(['list_tasks'])
   })
 
   test('allow leaves tool unwrapped', () => {
     setToolPrefs(contextId, { domainDefaults: {}, toolOverrides: {} })
     const tools: ToolSet = { create_task: fakeTool('create_task') }
-    const result = applyToolPreferences(tools, contextId, undefined)
+    const result = applyToolPreferences(tools, contextId)
     expect(result['create_task']).toBe(tools['create_task'])
   })
 
-  test('ask wraps execute and extends schema', async () => {
+  test('ask extends the schema and wraps execute with a reason-stripping pass-through', async () => {
     setToolPrefs(contextId, { domainDefaults: {}, toolOverrides: { create_task: 'ask' } })
     const tools: ToolSet = { create_task: fakeTool('create_task') }
-    const result = applyToolPreferences(tools, contextId, () => Promise.resolve('allow' as const))
+    const result = applyToolPreferences(tools, contextId)
     const wrapped = result['create_task']
     expect(wrapped).toBeDefined()
     // Schema must be extended: still a ZodObject but with _permission_reason added.
     expect(wrapped!.inputSchema).toBeInstanceOf(z.ZodObject)
     expect(wrapped!.inputSchema).not.toBe(tools['create_task']!.inputSchema)
-    // Execute must pass through when permission is granted.
+    // Execute runs directly (approval now happens before execution at the SDK boundary).
     const executeFn = wrapped!.execute
     expect(executeFn).toBeDefined()
     const out: unknown = await executeFn!(
@@ -265,17 +265,27 @@ describe('applyToolPreferences (ask integration)', () => {
     expect(out).toBe('create_task:X')
   })
 
-  test('ask denies when no askPermission provided', async () => {
+  test('ask strips _permission_reason before the tool body sees it', async () => {
     setToolPrefs(contextId, { domainDefaults: {}, toolOverrides: { create_task: 'ask' } })
-    const tools: ToolSet = { create_task: fakeTool('create_task') }
-    const result = applyToolPreferences(tools, contextId, undefined)
-    const executeFn = result['create_task']!.execute
-    expect(executeFn).toBeDefined()
-    const out: unknown = await executeFn!(
-      { id: 'X', _permission_reason: 'r' },
-      { toolCallId: 't1', messages: [], context: {} },
-    )
-    expect(out).toMatchObject({ status: 'permission_denied' })
+    let seen: unknown = null
+    const recorder: ToolSet = {
+      create_task: tool({
+        description: 'records its input',
+        inputSchema: z.object({ id: z.string() }),
+        execute: (input: { id: string }) => {
+          seen = input
+          return Promise.resolve('ok')
+        },
+      }),
+    }
+    const result = applyToolPreferences(recorder, contextId)
+    await expect(
+      result['create_task']!.execute!(
+        { id: 'X', _permission_reason: 'r' },
+        { toolCallId: 't1', messages: [], context: {} },
+      ),
+    ).resolves.toBe('ok')
+    expect(seen).toEqual({ id: 'X' })
   })
 })
 
@@ -291,14 +301,14 @@ describe('applyToolPreferences — create_alert condition forms unchanged', () =
   test('deny removes create_alert from the set', () => {
     setToolPrefs(contextId, { domainDefaults: {}, toolOverrides: { create_alert: 'deny' } })
     const tools: ToolSet = { create_alert: makeCreateAlertTool('alert-prefs-user', 'alert-prefs-user', 'dm') }
-    const result = applyToolPreferences(tools, contextId, undefined)
+    const result = applyToolPreferences(tools, contextId)
     expect(Object.keys(result)).toEqual([])
   })
 
-  test('ask requires the permission reason for string and object conditions and denies without a permission surface', async () => {
+  test('ask requires the permission reason for string and object conditions and executes directly after approval', async () => {
     setToolPrefs(contextId, { domainDefaults: {}, toolOverrides: { create_alert: 'ask' } })
     const tools: ToolSet = { create_alert: makeCreateAlertTool('alert-prefs-user', 'alert-prefs-user', 'dm') }
-    const result = applyToolPreferences(tools, contextId, undefined)
+    const result = applyToolPreferences(tools, contextId)
     const wrapped = result['create_alert']
     expect(wrapped).toBeDefined()
     expect(schemaValidates(wrapped!, { prompt: 'x', condition: stringCondition, _permission_reason: 'r' })).toBe(true)
@@ -310,6 +320,6 @@ describe('applyToolPreferences — create_alert condition forms unchanged', () =
       { prompt: 'x', condition: stringCondition, _permission_reason: 'r' },
       { toolCallId: 't1', messages: [], context: {} },
     )
-    expect(out).toMatchObject({ status: 'permission_denied' })
+    expect(out).not.toMatchObject({ status: 'permission_denied' })
   })
 })

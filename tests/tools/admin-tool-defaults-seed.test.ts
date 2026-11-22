@@ -37,7 +37,7 @@ describe('admin default seeding via applyToolPreferences', () => {
   test('seeds a fresh context and applies the default (web_fetch denied)', () => {
     setToolPrefs(adminToolDefaultsContextId(PI), DENY_WEB)
     const ctx = toScopedContextId({ platformInstanceId: PI, nativeContextId: 'u1' })
-    const applied = applyToolPreferences(stubTools(), ctx, undefined)
+    const applied = applyToolPreferences(stubTools(), ctx)
     expect(applied['web_fetch']).toBeUndefined()
     expect(getToolPrefs(ctx)).toEqual(DENY_WEB)
   })
@@ -46,9 +46,9 @@ describe('admin default seeding via applyToolPreferences', () => {
     setToolPrefs(adminToolDefaultsContextId(PI), DENY_WEB)
     const ctx = toScopedContextId({ platformInstanceId: PI, nativeContextId: 'u2' })
     // first build seeds DENY_WEB
-    applyToolPreferences(stubTools(), ctx, undefined)
+    applyToolPreferences(stubTools(), ctx)
     setToolPrefs(ctx, { riskDefaults: {}, domainDefaults: {}, toolOverrides: { web_fetch: 'allow' } })
-    const applied = applyToolPreferences(stubTools(), ctx, undefined)
+    const applied = applyToolPreferences(stubTools(), ctx)
     // user override wins; no re-seed
     expect(applied['web_fetch']).toBeDefined()
   })
@@ -57,16 +57,16 @@ describe('admin default seeding via applyToolPreferences', () => {
     setToolPrefs(adminToolDefaultsContextId(PI), DENY_WEB)
     const ctx = toScopedContextId({ platformInstanceId: PI, nativeContextId: 'u3' })
     // seeds DENY_WEB
-    applyToolPreferences(stubTools(), ctx, undefined)
+    applyToolPreferences(stubTools(), ctx)
     setToolPrefs(adminToolDefaultsContextId(PI), { riskDefaults: {}, domainDefaults: {}, toolOverrides: {} })
-    const applied = applyToolPreferences(stubTools(), ctx, undefined)
+    const applied = applyToolPreferences(stubTools(), ctx)
     // still the seeded DENY_WEB
     expect(applied['web_fetch']).toBeUndefined()
   })
 
   test('no admin default => allow-all baseline (web_fetch present)', () => {
     const ctx = toScopedContextId({ platformInstanceId: PI, nativeContextId: 'u4' })
-    const applied = applyToolPreferences(stubTools(), ctx, undefined)
+    const applied = applyToolPreferences(stubTools(), ctx)
     expect(applied['web_fetch']).toBeDefined()
   })
 })

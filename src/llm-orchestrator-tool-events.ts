@@ -212,6 +212,34 @@ const emitAnalyticsCompleted = (
   )
 }
 
+/** The resolver reports a denied call here: it never reaches `onToolExecutionEnd`. */
+export type ToolPermissionDeniedEvent = Readonly<{
+  toolName: string
+  toolCallId: string
+  input: unknown
+  durationMs: number
+}>
+
+export const emitToolPermissionDenied = (ctx: ToolCallContext, event: ToolPermissionDeniedEvent): void => {
+  if (alreadyTerminated(ctx, event.toolCallId)) return
+  markTerminated(ctx, event.toolCallId)
+  emitAnalyticsCompleted(
+    ctx,
+    {
+      toolCall: { toolName: event.toolName, toolCallId: event.toolCallId, input: event.input },
+      durationMs: event.durationMs,
+      success: true,
+    },
+    {
+      outcome: 'permission_denied',
+      errorClass: 'permission',
+      statusClass: 'none',
+      retryable: null,
+      recoveredSameTurn: false,
+    },
+  )
+}
+
 export const handleToolCallFinishEvent = (ctx: ToolCallContext, event: ToolCallFinishEvent): void => {
   const failure = event.success
     ? isToolFailureResult(event.output)

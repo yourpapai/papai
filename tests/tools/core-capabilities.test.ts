@@ -164,7 +164,7 @@ describe('core tool capabilities', () => {
       toolOverrides: { create_task: 'deny' },
     })
 
-    const nextTurnTools = applyToolPreferences(offered('create_task', 'get_task'), 'ctx-denied-core', undefined)
+    const nextTurnTools = applyToolPreferences(offered('create_task', 'get_task'), 'ctx-denied-core')
 
     expect(Object.hasOwn(nextTurnTools, catalog.resolve('tasks.create'))).toBe(false)
   })

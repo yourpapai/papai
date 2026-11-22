@@ -89,6 +89,48 @@ describe('detectToolFailure', () => {
     expect(detectToolFailure(messages)).toBe(true)
   })
 
+  test('detects an execution-denied tool result', () => {
+    const messages: ModelMessage[] = [
+      {
+        role: 'tool',
+        content: [
+          {
+            type: 'tool-result',
+            toolCallId: 'c1',
+            toolName: 'delete_task',
+            output: { type: 'execution-denied', reason: "User denied execution of 'delete_task'." },
+          },
+        ],
+      },
+    ]
+    expect(detectToolFailure(messages)).toBe(true)
+  })
+
+  test('an execution-denied turn is classified partial', () => {
+    const messages: ModelMessage[] = [
+      {
+        role: 'tool',
+        content: [
+          {
+            type: 'tool-result',
+            toolCallId: 'c1',
+            toolName: 'delete_task',
+            output: { type: 'execution-denied', reason: "User denied execution of 'delete_task'." },
+          },
+        ],
+      },
+    ]
+    expect(
+      deriveVerdict({
+        history: messages,
+        finishReason: 'stop',
+        hadToolFailure: detectToolFailure(messages),
+        hadToolActivity: turnHasToolActivity(messages),
+        finalText: 'I could not delete the task.',
+      }),
+    ).toBe('partial')
+  })
+
   test('returns false when no tool result is a failure', () => {
     const messages: ModelMessage[] = [
       { role: 'assistant', content: 'hi' },

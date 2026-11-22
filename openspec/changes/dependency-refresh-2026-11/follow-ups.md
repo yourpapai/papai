@@ -23,12 +23,16 @@ These are the feature candidates deferred by `design.md`. Each needs its own Ope
 - **Required spec delta:** extend `mid-run-steering` with delivery outcomes for the interrupted and after-task paths, interrupt budget/billing bounds, queue ordering, and the not-delivered fallback for each.
 - **Starting points:** `src/run-control/steering.ts:18` (`requestSteer`), `src/bot-message-handler.ts:202` (`steerActiveRun`), `src/commands/stop.ts:16`, `src/llm-orchestrator-invoke.ts:33` (`AGENT_MAX_STEPS`), `src/llm-orchestrator-leftover-replay.ts:23`.
 
-## 3. SDK tool approvals
+## 3. SDK tool approvals — delivered by `sdk-tool-approvals`
 
 - **Source version:** `ai` 7.0.x tool approvals (approval replay present in 7.0.179).
-- **Papai fit:** could replace the `_permission_reason` ask wrapper at `src/tools/permission-gate.ts:40` and the decision call at `src/tools/permission-gate.ts:125`. `tool_prefs` (`allow`/`ask`/`deny`) stays the source of truth; approvals would replay through the SDK instead of the current structured denial.
-- **Required spec delta:** tool-permission requirements for the approval request/response shape, replay across steps, and the interaction with `tool_prefs` resolution and confirmations. The current denial result for `ask` without a user decision must remain.
-- **Starting points:** `src/tools/permission-gate.ts:40` (`PERMISSION_REASON_FIELD`), `src/tools/permission-gate.ts:125` (`askPermission`).
+- **Status:** the awaited `toolApproval` resolver shipped in `openspec/changes/sdk-tool-approvals/`. `buildToolApproval` (`src/tools/permission-gate.ts`) is built once per invocation in `buildLlmInvocationOpts` and passed to every model call as the required `toolApproval` field; it re-resolves `tool_prefs`, awaits the existing chat confirmation for `ask` tools, and returns `approved` or `{ type: 'denied', reason }`. A denial never executes and reaches the model as an SDK `execution-denied` tool-result; assembly only extends the schema and strips `_permission_reason` (`stripPermissionReason`). Approval replay/suspension stayed a non-goal.
+- **Remaining:** none for this candidate.
+
+## 3a. Historical Papai fit (pre-delivery)
+
+- **Papai fit:** used to be a possible replacement for the `_permission_reason` ask wrapper at `src/tools/permission-gate.ts:40` and the decision call at `src/tools/permission-gate.ts:125`. `tool_prefs` (`allow`/`ask`/`deny`) stayed the source of truth; the shipped change uses the SDK's awaited approval hook instead of approval replay.
+- **Required spec delta:** tool-permission requirements for the approval boundary before execution, the model-visible denial, and the interaction with `tool_prefs` resolution and confirmations. The no-decision denial (`ask` without a chat surface) remains.
 
 ## 4. Native tool search
 
@@ -37,4 +41,4 @@ These are the feature candidates deferred by `design.md`. Each needs its own Ope
 - **Required spec delta:** tool-disclosure requirements for result-ranking parity with the embedding retriever, the open-all fallback after zero `load_tool` activity, and the disclosure `activeTools` intersection. Needs a feature flag and fallback path before it becomes the default.
 - **Starting points:** `src/tools/disclosure/search-tools.ts:38`, `src/tools/disclosure/load-tool.ts:15`, `src/tools/disclosure/core.ts:29`.
 
-Ordering: native steering shipped; its two remaining pieces (candidate 2) come next because they extend the handle papai now owns, then tool approvals (touches `tool_prefs`), then native tool search (needs parity proof with the embedding retriever).
+Ordering: native steering shipped; its two remaining pieces (candidate 2) come next because they extend the handle papai now owns, then tool approvals (delivered), then native tool search (needs parity proof with the embedding retriever).

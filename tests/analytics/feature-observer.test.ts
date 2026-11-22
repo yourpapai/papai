@@ -561,6 +561,7 @@ describe('per-invocation opportunity emission', () => {
       userText: 'hello',
       stagedDownloadFn: undefined,
       askPermission: undefined,
+      toolApproval: () => Promise.resolve('not-applicable'),
       providerRequestScope: makeActorScope(),
     })
 

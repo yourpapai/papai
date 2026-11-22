@@ -16,6 +16,7 @@ import { resolveCodingGuardrails } from './coding-credentials/guardrails.js'
 import { buildMessagesWithMemory } from './conversation.js'
 import { resolveTimezone } from './llm-orchestrator-config.js'
 import { getOrCreateDescriptors } from './llm-orchestrator-descriptor-cache.js'
+import { emitToolPermissionDenied } from './llm-orchestrator-tool-events.js'
 import { validateToolResults } from './llm-orchestrator-validation.js'
 import { logger } from './logger.js'
 import type { TaskProvider } from './providers/types.js'
@@ -33,7 +34,7 @@ import {
   buildProviderlessToolDescriptors,
   buildToolDescriptors,
 } from './tools/index.js'
-import type { AskPermissionFn } from './tools/permission-gate.js'
+import { buildToolApproval, type AskPermissionFn, type ToolApprovalFn } from './tools/permission-gate.js'
 import { finalizeProviderScopedTools } from './tools/wrap-tool-execution.js'
 
 const log = logger.child({ scope: 'llm-orchestrator:tools' })
@@ -89,6 +90,8 @@ export type LlmInvocationOptions = {
   userText: string
   stagedDownloadFn: StagedFileDownloadFn | undefined
   askPermission: AskPermissionFn | undefined
+  /** Pre-execution approval resolver passed to every model call in this invocation. */
+  toolApproval: ToolApprovalFn
   providerRequestScope: ProviderRequestScope
   actorRole?: ActorRole
   chatParticipantResolver?: ChatParticipantResolver
@@ -123,6 +126,14 @@ export function buildLlmInvocationOpts(
   providerRequestScope: ProviderRequestScope,
 ): LlmInvocationOptions {
   const askPermission: AskPermissionFn = (req) => askPermissionViaChat(src.reply, src.contextId, req)
+  const toolApproval = buildToolApproval({
+    contextId: src.contextId,
+    askPermission,
+    onDenied: (denial) => {
+      if (denial.runtime === null) return
+      emitToolPermissionDenied(denial.runtime, denial)
+    },
+  })
   return {
     contextId: src.contextId,
     configId,
@@ -134,6 +145,7 @@ export function buildLlmInvocationOpts(
     userText: src.userText,
     stagedDownloadFn,
     askPermission,
+    toolApproval,
     providerRequestScope,
     actorRole: src.actorRole,
     isBotAdmin: src.isBotAdmin,
@@ -165,11 +177,9 @@ const applyCompactionAndDisclosure = (
 }
 
 const applyGateFilters = (descriptors: ToolSet, opts: LlmInvocationOptions): ToolSet => {
-  const { contextId, chatUserId, askPermission, actorRole } = opts
+  const { contextId, chatUserId, actorRole } = opts
   const prefTools =
-    actorRole === 'guest'
-      ? applyGuestReadOnlyFilter(descriptors)
-      : applyToolPreferences(descriptors, contextId, askPermission)
+    actorRole === 'guest' ? applyGuestReadOnlyFilter(descriptors) : applyToolPreferences(descriptors, contextId)
   const pi = parseScopedContextId(contextId)?.platformInstanceId
   return pi === undefined
     ? prefTools

@@ -218,7 +218,7 @@ type InvokeWithLiveStatusArgs = {
  */
 const EMPTY_TURN_WARN_MIN_OUTPUT_TOKENS = 64
 
-const buildTurnVerifier = (invokeArgs: InvokeModelArgs): VerifierDeps => {
+export const buildTurnVerifier = (invokeArgs: InvokeModelArgs & { turnId: string }): VerifierDeps => {
   const readOnlyToolset = selectReadOnlyTools(invokeArgs.tools)
   // The verifier runs its own generateText with an independently built,
   // full keyed toolsContext record — a verifier tool call must not run
@@ -231,6 +231,15 @@ const buildTurnVerifier = (invokeArgs: InvokeModelArgs): VerifierDeps => {
         model: invokeArgs.model,
         ...hoistSystemMessages(system, messages),
         tools: readOnlyToolset ?? {},
+        toolApproval: invokeArgs.toolApproval,
+        runtimeContext: {
+          contextId: invokeArgs.contextId,
+          chatUserId: invokeArgs.chatUserId,
+          contextType: invokeArgs.contextType,
+          model: invokeArgs.mainModel,
+          modelRole: 'main',
+          turnId: invokeArgs.turnId,
+        },
         stopWhen: invokeArgs.deps.stepCountIs(VERIFIER_MAX_STEPS),
         timeout: 1_200_000,
       }

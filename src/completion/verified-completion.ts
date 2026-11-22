@@ -27,11 +27,16 @@ const containsToolFailure = (value: unknown): boolean => {
   return false
 }
 
-/** True when any tool-result message in the turn carries a ToolFailureResult (scanned defensively). */
+/** The SDK writes an `execution-denied` tool-result when the approval hook denies a call. */
+const isExecutionDeniedOutput = (value: unknown): boolean =>
+  value !== null && typeof value === 'object' && Reflect.get(value, 'type') === 'execution-denied'
+
+/** True when any tool-result message in the turn carries a ToolFailureResult or an SDK denial (scanned defensively). */
 export const detectToolFailure = (messages: readonly ModelMessage[]): boolean => {
   for (const message of messages) {
     if (message.role !== 'tool') continue
     if (containsToolFailure(message.content)) return true
+    if (message.content.some((part) => part.type === 'tool-result' && isExecutionDeniedOutput(part.output))) return true
   }
   return false
 }

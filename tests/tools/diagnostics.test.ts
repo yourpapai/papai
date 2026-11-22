@@ -563,7 +563,7 @@ describe('run_diagnostics tool preferences', () => {
     expect(tools).not.toHaveProperty('run_diagnostics')
   })
 
-  test('tool_prefs ask wraps run_diagnostics so an ungranted call returns permission_denied', async () => {
+  test('tool_prefs ask exposes run_diagnostics with a reason-stripping execute', async () => {
     setToolPrefs('diag-prefs-ask', { domainDefaults: {}, toolOverrides: { run_diagnostics: 'ask' } })
 
     const tools = await makeTools(
@@ -575,13 +575,13 @@ describe('run_diagnostics tool preferences', () => {
     const wrapped = tools['run_diagnostics']
     expect(wrapped).toBeDefined()
     assert(wrapped !== undefined)
-    // ask wraps the execute fn; with no chat surface (askPermission undefined)
-    // an ungranted call returns the structured permission_denied result.
+    // ask extends the schema and strips the reason; approval itself happens
+    // before execution at the SDK boundary, so direct invocation runs.
     const out: unknown = await getToolExecutor(wrapped)(
       { _permission_reason: 'health check' },
       { toolCallId: 't1', messages: [], context: {} },
     )
-    expect(out).toMatchObject({ status: 'permission_denied' })
+    expect(out).not.toMatchObject({ status: 'permission_denied' })
   })
 })
 

@@ -150,6 +150,7 @@ const callLlm = async (args: CallLlmArgs): Promise<CallLlmResult> => {
       deps,
       progressReporter,
       disclosure,
+      toolApproval: invocationOpts.toolApproval,
       turnId,
       providerRequestScope,
       analytics: { providerBinding: resolvedLlm.source },

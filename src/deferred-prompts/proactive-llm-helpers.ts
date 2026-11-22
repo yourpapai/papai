@@ -26,6 +26,7 @@ import { logger } from '../logger.js'
 import type { TaskProvider } from '../providers/types.js'
 import { buildProviderlessSystemPrompt, buildSystemPrompt } from '../system-prompt.js'
 import type { DisclosureSession } from '../tools/disclosure/registry.js'
+import type { ToolApprovalFn } from '../tools/permission-gate.js'
 import { buildToolsContextRecord } from '../tools/wrap-tool-execution.js'
 import type { LlmConfig } from './proactive-llm-config.js'
 import type { ExecutionMetadata } from './types.js'
@@ -38,6 +39,7 @@ export const buildProactiveVerification = (
   tools: ToolSet,
   history: readonly ModelMessage[],
   scope: ProviderRequestScope,
+  toolApproval: ToolApprovalFn,
 ): { verifier: VerifierDeps; history: readonly ModelMessage[] } => {
   const readOnlyToolset = selectReadOnlyTools(tools)
   // Independently built keyed toolsContext for the proactive verifier call.
@@ -49,6 +51,7 @@ export const buildProactiveVerification = (
         model,
         ...hoistSystemMessages(system, messages),
         tools: readOnlyToolset ?? {},
+        toolApproval,
         stopWhen: deps.stepCountIs(VERIFIER_MAX_STEPS),
         timeout: 1_200_000,
       }
@@ -91,6 +94,7 @@ export type FullGenerationInput = Readonly<{
   systemPrompt: string
   messages: ModelMessage[]
   disclosure: DisclosureSession
+  toolApproval: ToolApprovalFn
 }>
 
 /** Minimal view of an LLM result needed to decide the user-facing delivery text. */

@@ -488,16 +488,12 @@ describe('clearToolPrefs', () => {
 
 const READER_NAMES = ['read_recent_logs', 'read_llm_traces', 'read_recent_turns', 'read_recent_tool_failures'] as const
 
-const readerDmOptions = (
-  askPermission: MakeToolsOptions['askPermission'],
-  overrides: Partial<MakeToolsOptions> = {},
-): MakeToolsOptions => ({
+const readerDmOptions = (overrides: Partial<MakeToolsOptions> = {}): MakeToolsOptions => ({
   storageContextId: 'reader-prefs-ctx',
   chatUserId: 'reader-prefs-ctx',
   contextType: 'dm',
   mode: 'normal',
   isBotAdmin: true,
-  askPermission,
   ...overrides,
 })
 
@@ -542,30 +538,17 @@ describe('diagnostics reader family tool preferences', () => {
     const ctx = 'reader-prefs-deny-domain'
     setToolPrefs(ctx, { riskDefaults: {}, domainDefaults: { diagnostics: 'deny' }, toolOverrides: {} })
 
-    const tools = await makeTools(
-      createMockProvider(),
-      readerDmOptions(undefined, { storageContextId: ctx, chatUserId: ctx }),
-    )
+    const tools = await makeTools(createMockProvider(), readerDmOptions({ storageContextId: ctx, chatUserId: ctx }))
 
     for (const name of READER_NAMES) expect(tools).not.toHaveProperty(name)
     expect(tools).not.toHaveProperty('run_diagnostics')
   })
 
-  test('a diagnostics domain ask wraps each reader: approval executes the tool', async () => {
-    const ctx = 'reader-prefs-ask-approve'
+  test('a diagnostics domain ask exposes a reason-stripping execute with no in-body gating', async () => {
+    const ctx = 'reader-prefs-ask-strip'
     setToolPrefs(ctx, { riskDefaults: {}, domainDefaults: { diagnostics: 'ask' }, toolOverrides: {} })
-    const decisions: string[] = []
 
-    const tools = await makeTools(
-      createMockProvider(),
-      readerDmOptions(
-        ({ toolName }) => {
-          decisions.push(toolName)
-          return Promise.resolve('allow' as const)
-        },
-        { storageContextId: ctx, chatUserId: ctx },
-      ),
-    )
+    const tools = await makeTools(createMockProvider(), readerDmOptions({ storageContextId: ctx, chatUserId: ctx }))
 
     for (const name of READER_NAMES) expect(tools).toHaveProperty(name)
     const result: unknown = await getToolExecutor(tools['read_recent_logs']!)(
@@ -574,32 +557,12 @@ describe('diagnostics reader family tool preferences', () => {
     )
     assert(isRecord(result))
     expect(result).not.toMatchObject({ status: 'permission_denied' })
-    expect(decisions).toEqual(['read_recent_logs'])
-  })
-
-  test('a diagnostics domain ask wraps each reader: decline returns structured permission_denied', async () => {
-    const ctx = 'reader-prefs-ask-decline'
-    setToolPrefs(ctx, { riskDefaults: {}, domainDefaults: { diagnostics: 'ask' }, toolOverrides: {} })
-
-    const tools = await makeTools(
-      createMockProvider(),
-      readerDmOptions(() => Promise.resolve('deny' as const), { storageContextId: ctx, chatUserId: ctx }),
-    )
-
-    const result: unknown = await getToolExecutor(tools['read_recent_turns']!)(
-      { _permission_reason: 'inspect a stuck turn' },
-      { toolCallId: 't2', messages: [], context: {} },
-    )
-    expect(result).toMatchObject({ status: 'permission_denied' })
   })
 
   test('implicit allow default exposes each reader unwrapped and directly executable', async () => {
     const ctx = 'reader-prefs-implicit-allow'
 
-    const tools = await makeTools(
-      createMockProvider(),
-      readerDmOptions(undefined, { storageContextId: ctx, chatUserId: ctx }),
-    )
+    const tools = await makeTools(createMockProvider(), readerDmOptions({ storageContextId: ctx, chatUserId: ctx }))
 
     for (const name of READER_NAMES) expect(tools).toHaveProperty(name)
     const result: unknown = await getToolExecutor(tools['read_llm_traces']!)({})
@@ -610,16 +573,12 @@ describe('diagnostics reader family tool preferences', () => {
 
 const PROOF_TOOL_NAMES = ['run_proof_check', 'read_proof_results'] as const
 
-const proofDmOptions = (
-  askPermission: MakeToolsOptions['askPermission'],
-  overrides: Partial<MakeToolsOptions> = {},
-): MakeToolsOptions => ({
+const proofDmOptions = (overrides: Partial<MakeToolsOptions> = {}): MakeToolsOptions => ({
   storageContextId: 'proof-prefs-ctx',
   chatUserId: 'proof-prefs-ctx',
   contextType: 'dm',
   mode: 'normal',
   isBotAdmin: true,
-  askPermission,
   ...overrides,
 })
 
@@ -671,29 +630,16 @@ describe('proof tool preferences', () => {
     const ctx = 'proof-prefs-deny-domain'
     setToolPrefs(ctx, { riskDefaults: {}, domainDefaults: { diagnostics: 'deny' }, toolOverrides: {} })
 
-    const tools = await makeTools(
-      createMockProvider(),
-      proofDmOptions(undefined, { storageContextId: ctx, chatUserId: ctx }),
-    )
+    const tools = await makeTools(createMockProvider(), proofDmOptions({ storageContextId: ctx, chatUserId: ctx }))
 
     for (const name of PROOF_TOOL_NAMES) expect(tools).not.toHaveProperty(name)
   })
 
-  test('a diagnostics domain ask keeps both proof tools present and approval executes the runner', async () => {
-    const ctx = 'proof-prefs-ask-approve'
+  test('a diagnostics domain ask keeps both proof tools present and the runner executes directly', async () => {
+    const ctx = 'proof-prefs-ask-strip'
     setToolPrefs(ctx, { riskDefaults: {}, domainDefaults: { diagnostics: 'ask' }, toolOverrides: {} })
-    const decisions: string[] = []
 
-    const tools = await makeTools(
-      createMockProvider(),
-      proofDmOptions(
-        ({ toolName }) => {
-          decisions.push(toolName)
-          return Promise.resolve('allow' as const)
-        },
-        { storageContextId: ctx, chatUserId: ctx },
-      ),
-    )
+    const tools = await makeTools(createMockProvider(), proofDmOptions({ storageContextId: ctx, chatUserId: ctx }))
 
     for (const name of PROOF_TOOL_NAMES) expect(tools).toHaveProperty(name)
     const result: unknown = await getToolExecutor(tools['run_proof_check']!)(
@@ -702,32 +648,12 @@ describe('proof tool preferences', () => {
     )
     assert(isRecord(result))
     expect(result).toMatchObject({ status: 'completed', record: { check: 'bug4_create_response_mode' } })
-    expect(decisions).toEqual(['run_proof_check'])
-  })
-
-  test('a diagnostics domain ask wraps the reader: decline returns structured permission_denied', async () => {
-    const ctx = 'proof-prefs-ask-decline'
-    setToolPrefs(ctx, { riskDefaults: {}, domainDefaults: { diagnostics: 'ask' }, toolOverrides: {} })
-
-    const tools = await makeTools(
-      createMockProvider(),
-      proofDmOptions(() => Promise.resolve('deny' as const), { storageContextId: ctx, chatUserId: ctx }),
-    )
-
-    const result: unknown = await getToolExecutor(tools['read_proof_results']!)(
-      { _permission_reason: 'read recent proof runs' },
-      { toolCallId: 't2', messages: [], context: {} },
-    )
-    expect(result).toMatchObject({ status: 'permission_denied' })
   })
 
   test('implicit allow default exposes both proof tools unwrapped and directly executable', async () => {
     const ctx = 'proof-prefs-implicit-allow'
 
-    const tools = await makeTools(
-      createMockProvider(),
-      proofDmOptions(undefined, { storageContextId: ctx, chatUserId: ctx }),
-    )
+    const tools = await makeTools(createMockProvider(), proofDmOptions({ storageContextId: ctx, chatUserId: ctx }))
 
     for (const name of PROOF_TOOL_NAMES) expect(tools).toHaveProperty(name)
     const result: unknown = await getToolExecutor(tools['read_proof_results']!)({})

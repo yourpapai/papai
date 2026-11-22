@@ -39,7 +39,7 @@ async function buildProviderlessObservedTools(options: ProactiveToolOptions): Pr
     hasProvider: false,
     tools: descriptors,
   })
-  return applyToolPreferences(descriptors, options.storageContextId, undefined)
+  return applyToolPreferences(descriptors, options.storageContextId)
 }
 
 export async function buildFullToolSet(

@@ -3,34 +3,15 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import type { FlexibleSchema, ToolExecutionOptions } from 'ai'
+import type { FlexibleSchema, ToolApprovalStatus, ToolExecutionOptions } from 'ai'
 import { jsonSchema } from 'ai'
 import { z } from 'zod'
 
+import { getConfigContextIdFromStorageContextId } from '../chat/scoped-context.js'
 import { logger } from '../logger.js'
+import { getToolPrefs, resolveToolPermission } from './tool-preferences.js'
 
 const log = logger.child({ scope: 'tools:permission-gate' })
-
-export interface PermissionDeniedResult {
-  readonly status: 'permission_denied'
-  readonly message: string
-}
-
-export function buildPermissionDenied(message: string): PermissionDeniedResult {
-  return { status: 'permission_denied', message }
-}
-
-/** Type guard for the structured denial returned by an ask-gated tool execution. */
-export function isPermissionDeniedResult(value: unknown): value is PermissionDeniedResult {
-  return (
-    typeof value === 'object' &&
-    value !== null &&
-    'status' in value &&
-    value.status === 'permission_denied' &&
-    'message' in value &&
-    typeof value.message === 'string'
-  )
-}
 
 const PERMISSION_REASON_DESCRIPTION =
   'Brief, user-facing reason this tool call is needed. ' +
@@ -94,18 +75,20 @@ export function extendSchemaForAsk(schema: unknown): FlexibleSchema {
   const wrappedJson = getJsonFromSchema(schema)
   if (wrappedJson === null) {
     log.warn({ schemaType: typeof schema }, 'Cannot extend schema for ask; missing JSON shape')
-    // Best-effort: return original schema untouched. Gate will deny without _permission_reason.
+    // Best-effort: return the reason-only schema so the approval resolver still receives a reason.
     return z.object({ [PERMISSION_REASON_FIELD]: z.string().min(1).max(280).describe(PERMISSION_REASON_DESCRIPTION) })
   }
   const merged = mergeJsonSchemaWithPermissionReason(wrappedJson)
   return jsonSchema(merged)
 }
 
+export type AskPermissionDecision = 'allow' | 'deny' | 'ignored'
+
 export type AskPermissionFn = (req: {
   toolName: string
   reason: string
   args: Record<string, unknown>
-}) => Promise<'allow' | 'deny'>
+}) => Promise<AskPermissionDecision>
 
 export type ExecuteFn<O> = (input: unknown, options: ToolExecutionOptions<unknown>) => Promise<O>
 
@@ -119,27 +102,111 @@ function omitReasonField(input: Record<string, unknown>): Record<string, unknown
   return Object.fromEntries(entries)
 }
 
-export function gatedExecute<O>(
-  execute: ExecuteFn<O>,
-  toolName: string,
-  askPermission: AskPermissionFn | undefined,
-): ExecuteFn<O | PermissionDeniedResult> {
-  return async (input: unknown, options: ToolExecutionOptions<unknown>): Promise<O | PermissionDeniedResult> => {
-    if (askPermission === undefined) {
-      return buildPermissionDenied(`Tool '${toolName}' requires user permission, but no chat surface is available.`)
+function toRecord(input: unknown): Record<string, unknown> {
+  if (!isRecord(input)) return {}
+  const record: Record<string, unknown> = {}
+  for (const [key, value] of Object.entries(input)) record[key] = value
+  return record
+}
+
+/**
+ * Assembly-side wrapper for an `ask` tool. Approval now runs before execution via
+ * the SDK's `toolApproval` hook, so execution only strips the model-authored reason.
+ */
+export function stripPermissionReason<O>(execute: ExecuteFn<O>): ExecuteFn<O> {
+  return (input, options): Promise<O> => execute(isRecord(input) ? omitReasonField(input) : input, options)
+}
+
+/** The runtime fields the approval resolver needs to attribute a denied call. */
+export type ToolApprovalRuntime = Readonly<{
+  contextId: string
+  chatUserId: string
+  contextType: 'dm' | 'group'
+  model: string
+  modelRole: 'main' | 'small'
+  turnId: string
+}>
+
+/** A denied approval, reported for analytics parity with an executed tool call. */
+export type ToolDenial = Readonly<{
+  toolName: string
+  toolCallId: string
+  input: unknown
+  durationMs: number
+  runtime: ToolApprovalRuntime | null
+}>
+
+/**
+ * The generic AI SDK `toolApproval` hook. Every exposed tool goes through it; it
+ * answers `not-applicable` unless the resolved `tool_prefs` permission is `ask`.
+ */
+export type ToolApprovalFn = (options: {
+  readonly toolCall: { readonly toolName: string; readonly toolCallId: string; readonly input: unknown }
+  readonly runtimeContext?: unknown
+}) => Promise<ToolApprovalStatus>
+
+export type BuildToolApprovalOptions = Readonly<{
+  /** The turn's storage context id; permission resolution re-derives the config context. */
+  contextId: string
+  /** The chat-bound prompt; absent on surfaces that cannot ask (proactive turns). */
+  askPermission: AskPermissionFn | undefined
+  /** Called once for every denied call, before the SDK emits the denied tool result. */
+  onDenied?: (denial: ToolDenial) => void
+  /** Injectable clock for approval-latency measurement (tests only). */
+  now?: () => number
+}>
+
+const runtimeOf = (value: unknown): ToolApprovalRuntime | null => {
+  if (!isRecord(value)) return null
+  const { contextId, chatUserId, contextType, model, modelRole, turnId } = value
+  if (
+    typeof contextId !== 'string' ||
+    typeof chatUserId !== 'string' ||
+    typeof model !== 'string' ||
+    typeof turnId !== 'string' ||
+    (contextType !== 'dm' && contextType !== 'group') ||
+    (modelRole !== 'main' && modelRole !== 'small')
+  ) {
+    return null
+  }
+  return { contextId, chatUserId, contextType, model, modelRole, turnId }
+}
+
+const userDeniedReason = (toolName: string): string => `User denied execution of '${toolName}'.`
+
+const timeoutReason = (toolName: string): string =>
+  `Permission prompt for '${toolName}' timed out after five minutes; the call was denied.`
+
+const noSurfaceReason = (toolName: string): string =>
+  `Tool '${toolName}' requires user permission, but no chat surface is available.`
+
+export function buildToolApproval(options: BuildToolApprovalOptions): ToolApprovalFn {
+  const { contextId, askPermission, onDenied, now = Date.now } = options
+  return async ({ toolCall, runtimeContext }): Promise<ToolApprovalStatus> => {
+    const { toolName, toolCallId, input } = toolCall
+    // Re-resolve at call time: a preference tightened mid-turn must still prompt.
+    const prefsContextId = getConfigContextIdFromStorageContextId(contextId)
+    const permission = resolveToolPermission(getToolPrefs(prefsContextId), toolName)
+    if (permission !== 'ask') return 'not-applicable'
+
+    const runtime = runtimeOf(runtimeContext)
+    const deny = (reason: string, durationMs: number): ToolApprovalStatus => {
+      onDenied?.({ toolName, toolCallId, input, durationMs, runtime })
+      return { type: 'denied', reason }
     }
-    const inputRecord: Record<string, unknown> = {}
-    if (typeof input === 'object' && input !== null) {
-      for (const [k, v] of Object.entries(input)) {
-        inputRecord[k] = v
-      }
-    }
-    const reason = extractReason(inputRecord)
-    const cleaned = omitReasonField(inputRecord)
-    const decision = await askPermission({ toolName, reason, args: cleaned })
-    if (decision === 'deny') {
-      return buildPermissionDenied(`User denied execution of '${toolName}'.`)
-    }
-    return execute(cleaned, options)
+
+    if (askPermission === undefined) return deny(noSurfaceReason(toolName), 0)
+
+    const startedAt = now()
+    const inputRecord = toRecord(input)
+    const decision = await askPermission({
+      toolName,
+      reason: extractReason(inputRecord),
+      args: omitReasonField(inputRecord),
+    })
+    const durationMs = Math.max(0, now() - startedAt)
+
+    if (decision === 'allow') return 'approved'
+    return deny(decision === 'ignored' ? timeoutReason(toolName) : userDeniedReason(toolName), durationMs)
   }
 }

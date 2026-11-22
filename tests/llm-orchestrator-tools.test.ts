@@ -80,6 +80,7 @@ const baseOpts = (
   userText: overrides.userText ?? 'hello',
   stagedDownloadFn: NO_STAGED_DOWNLOAD,
   askPermission: undefined,
+  toolApproval: () => Promise.resolve('not-applicable'),
   providerRequestScope: NO_ANALYTICS_SCOPE,
 })
 
@@ -159,6 +160,7 @@ describe('llm-orchestrator-tools / getOrCreateDescriptors cache behaviour', () =
       userText: 'remember this note',
       stagedDownloadFn: NO_STAGED_DOWNLOAD,
       askPermission: undefined,
+      toolApproval: () => Promise.resolve('not-applicable'),
       providerRequestScope: NO_ANALYTICS_SCOPE,
     })
 
@@ -406,6 +408,7 @@ describe('llm-orchestrator-tools / prepareLlmInvocation enabledToolNames', () =>
       userText: 'remember this note',
       stagedDownloadFn: NO_STAGED_DOWNLOAD,
       askPermission: undefined,
+      toolApproval: () => Promise.resolve('not-applicable'),
       providerRequestScope: NO_ANALYTICS_SCOPE,
     })
 
@@ -434,6 +437,7 @@ describe('llm-orchestrator-tools / prepareLlmInvocation enabledToolNames', () =>
       userText: 'remember this note',
       stagedDownloadFn: NO_STAGED_DOWNLOAD,
       askPermission: undefined,
+      toolApproval: () => Promise.resolve('not-applicable'),
       providerRequestScope: NO_ANALYTICS_SCOPE,
     })
 
@@ -466,6 +470,7 @@ describe('llm-orchestrator-tools / prepareLlmInvocation enabledToolNames', () =>
       userText: 'What is our release note cadence?',
       stagedDownloadFn: NO_STAGED_DOWNLOAD,
       askPermission: undefined,
+      toolApproval: () => Promise.resolve('not-applicable'),
       providerRequestScope: NO_ANALYTICS_SCOPE,
     })
 
@@ -522,6 +527,7 @@ describe('buildFullToolSet / guest actorRole branch', () => {
       userText: 'what tasks are there?',
       stagedDownloadFn: NO_STAGED_DOWNLOAD,
       askPermission: undefined,
+      toolApproval: () => Promise.resolve('not-applicable'),
       providerRequestScope: NO_ANALYTICS_SCOPE,
       actorRole: 'guest',
     })

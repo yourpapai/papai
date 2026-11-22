@@ -5,44 +5,16 @@
 
 import { describe, expect, test } from 'bun:test'
 
+import type { ToolExecutionOptions } from 'ai'
 import { jsonSchema } from 'ai'
 import { z } from 'zod'
 
 import {
-  buildPermissionDenied,
-  isPermissionDeniedResult,
   PERMISSION_REASON_FIELD,
   extendSchemaForAsk,
+  stripPermissionReason,
+  type ExecuteFn,
 } from '../../src/tools/permission-gate.js'
-
-describe('isPermissionDeniedResult', () => {
-  test('recognizes the structured denial shape', () => {
-    expect(isPermissionDeniedResult(buildPermissionDenied('no'))).toBe(true)
-  })
-
-  test('rejects non-denial values', () => {
-    expect(isPermissionDeniedResult(undefined)).toBe(false)
-    expect(isPermissionDeniedResult(null)).toBe(false)
-    expect(isPermissionDeniedResult({ status: 'ok' })).toBe(false)
-    expect(isPermissionDeniedResult({ status: 'permission_denied' })).toBe(false)
-    expect(isPermissionDeniedResult('permission_denied')).toBe(false)
-  })
-
-  test('rejects an object whose status is not permission_denied even with a string message', () => {
-    expect(isPermissionDeniedResult({ status: 'other_status', message: 'hi' })).toBe(false)
-  })
-
-  test('rejects a permission_denied object whose message is not a string', () => {
-    expect(isPermissionDeniedResult({ status: 'permission_denied', message: 7 })).toBe(false)
-  })
-})
-
-describe('buildPermissionDenied', () => {
-  test('returns structured permission_denied shape', () => {
-    const result = buildPermissionDenied('User denied the call.')
-    expect(result).toEqual({ status: 'permission_denied', message: 'User denied the call.' })
-  })
-})
 
 describe('extendSchemaForAsk (Zod input)', () => {
   test('adds required _permission_reason field and rejects without it', () => {
@@ -105,68 +77,6 @@ describe('extendSchemaForAsk (jsonSchema/MCP input)', () => {
         required: expect.arrayContaining(['id']) as unknown,
       },
     })
-  })
-})
-
-import type { ToolExecutionOptions } from 'ai'
-
-import { type AskPermissionFn, gatedExecute } from '../../src/tools/permission-gate.js'
-
-const toolOpts: ToolExecutionOptions<unknown> = { toolCallId: 't1', messages: [], context: {} }
-
-function fakeExecute(input: unknown, _opts: ToolExecutionOptions<unknown>): Promise<string> {
-  const rec = typeof input === 'object' && input !== null ? input : {}
-  return Promise.resolve(`ran:${String(Object.entries(rec).find(([k]) => k === 'id')?.[1] ?? '')}`)
-}
-
-describe('gatedExecute', () => {
-  test('runs the original execute when askPermission returns "allow"', async () => {
-    const ask: AskPermissionFn = () => Promise.resolve('allow')
-    const gated = gatedExecute(fakeExecute, 'demo_tool', ask)
-    const result = await gated({ id: 'X', _permission_reason: 'because' }, toolOpts)
-    expect(result).toBe('ran:X')
-  })
-
-  test('strips _permission_reason before forwarding to original execute', async () => {
-    let seen: unknown = null
-    const recorder = (input: unknown, _opts: ToolExecutionOptions<unknown>): Promise<string> => {
-      seen = input
-      return Promise.resolve('ok')
-    }
-    const ask: AskPermissionFn = () => Promise.resolve('allow')
-    const gated = gatedExecute(recorder, 'demo_tool', ask)
-    await gated({ id: 'X', _permission_reason: 'r' }, toolOpts)
-    expect(seen).toEqual({ id: 'X' })
-  })
-
-  test('returns permission_denied when askPermission returns "deny"', async () => {
-    const ask: AskPermissionFn = () => Promise.resolve('deny')
-    const gated = gatedExecute(fakeExecute, 'demo_tool', ask)
-    const result = await gated({ id: 'X', _permission_reason: 'r' }, toolOpts)
-    expect(result).toMatchObject({
-      status: 'permission_denied',
-      message: expect.stringContaining('demo_tool') as unknown,
-    })
-  })
-
-  test('returns permission_denied when askPermission is undefined (no chat surface)', async () => {
-    const gated = gatedExecute(fakeExecute, 'demo_tool', undefined)
-    const result = await gated({ id: 'X', _permission_reason: 'r' }, toolOpts)
-    expect(result).toMatchObject({
-      status: 'permission_denied',
-      message: expect.stringContaining('no chat surface') as unknown,
-    })
-  })
-
-  test('passes toolName, reason, and args to askPermission', async () => {
-    let captured: { toolName: string; reason: string; args: Record<string, unknown> } | null = null
-    const ask: AskPermissionFn = (req) => {
-      captured = req
-      return Promise.resolve('allow')
-    }
-    const gated = gatedExecute(fakeExecute, 'demo_tool', ask)
-    await gated({ id: 'X', _permission_reason: 'cleanup' }, toolOpts)
-    expect(captured).toMatchObject({ toolName: 'demo_tool', reason: 'cleanup', args: { id: 'X' } })
   })
 })
 
@@ -249,37 +159,42 @@ describe('extendSchemaForAsk (jsonSchema merge fidelity)', () => {
   })
 })
 
-describe('gatedExecute input handling', () => {
-  test('treats a missing _permission_reason as an empty reason passed to askPermission', async () => {
-    const captured: { reason: string } = { reason: '' }
-    const ask: AskPermissionFn = (req) => {
-      captured.reason = req.reason
-      return Promise.resolve('deny')
+const toolOpts: ToolExecutionOptions<unknown> = { toolCallId: 't1', messages: [], context: {} }
+
+describe('stripPermissionReason', () => {
+  test('removes _permission_reason before the tool body runs', async () => {
+    let seen: unknown = null
+    const execute: ExecuteFn<string> = (input) => {
+      seen = input
+      return Promise.resolve('ok')
     }
-    const gated = gatedExecute(fakeExecute, 'demo_tool', ask)
-    await gated({ id: 'X' }, toolOpts)
-    expect(captured.reason).toBe('')
+    const stripped = stripPermissionReason(execute)
+
+    await expect(stripped({ id: 'X', _permission_reason: 'because' }, toolOpts)).resolves.toBe('ok')
+    expect(seen).toEqual({ id: 'X' })
   })
 
-  test('coerces a non-object string input into empty args for askPermission', async () => {
-    let capturedArgs: Record<string, unknown> | null = null
-    const ask: AskPermissionFn = (req) => {
-      capturedArgs = req.args
-      return Promise.resolve('deny')
+  test('passes non-object input through unchanged', async () => {
+    let seen: unknown = null
+    const execute: ExecuteFn<string> = (input) => {
+      seen = input
+      return Promise.resolve('ok')
     }
-    const gated = gatedExecute(fakeExecute, 'demo_tool', ask)
-    await gated('not-an-object', toolOpts)
-    expect(JSON.stringify(capturedArgs)).toBe('{}')
+    const stripped = stripPermissionReason(execute)
+
+    await stripped('raw-input', toolOpts)
+    expect(seen).toBe('raw-input')
   })
 
-  test('coerces a null input into empty args for askPermission without throwing', async () => {
-    let capturedArgs: Record<string, unknown> | null = null
-    const ask: AskPermissionFn = (req) => {
-      capturedArgs = req.args
-      return Promise.resolve('deny')
+  test('executes without any approval step', async () => {
+    let calls = 0
+    const execute: ExecuteFn<string> = () => {
+      calls += 1
+      return Promise.resolve('ran')
     }
-    const gated = gatedExecute(fakeExecute, 'demo_tool', ask)
-    await gated(null, toolOpts)
-    expect(JSON.stringify(capturedArgs)).toBe('{}')
+    const stripped = stripPermissionReason(execute)
+
+    await expect(stripped({ id: 'X' }, toolOpts)).resolves.toBe('ran')
+    expect(calls).toBe(1)
   })
 })

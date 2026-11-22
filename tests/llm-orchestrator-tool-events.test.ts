@@ -11,10 +11,10 @@ import {
   handleToolCallFinishEvent,
   buildToolCallFinishHandler,
   buildToolCallStartHandler,
+  emitToolPermissionDenied,
 } from '../src/llm-orchestrator-tool-events.js'
 import type { ToolCallContext } from '../src/llm-orchestrator-types.js'
 import { buildToolFailureResult } from '../src/tool-failure.js'
-import { buildPermissionDenied } from '../src/tools/permission-gate.js'
 import { mockLogger } from './utils/test-helpers.js'
 
 const baseContext = (): ToolCallContext => ({
@@ -208,12 +208,24 @@ describe('analytics terminal ordering', () => {
     expect(terminals[0]!.data['errorClass']).not.toBeNull()
   })
 
-  test('permission denial resolves to the permission_denied terminal', () => {
-    const { collected } = lifecycle(successEvent(buildPermissionDenied("User denied execution of 'get_task'.")))
+  test('a denied approval emits one permission_denied terminal with the lifecycle source id', () => {
+    const ctx = baseContext()
+    const collected = collect(() => {
+      emitToolPermissionDenied(ctx, {
+        toolName: 'get_task',
+        toolCallId: 'tc1',
+        input: { id: 't1', _permission_reason: 'inspect the task' },
+        durationMs: 120,
+      })
+    })
     const terminals = ofType(collected, 'tool:analytics_completed')
     expect(terminals).toHaveLength(1)
     expect(terminals[0]!.data['executionOutcome']).toBe('permission_denied')
-    expect(JSON.stringify(terminals[0]!.data)).not.toContain('User denied')
+    expect(terminals[0]!.data['errorClass']).toBe('permission')
+    expect(terminals[0]!.data['statusClass']).toBe('none')
+    expect(terminals[0]!.data['resultBytes']).toBe(0)
+    expect(terminals[0]!.data['analyticsSourceId']).toBe('turn-1:tc1')
+    expect(JSON.stringify(terminals[0]!.data)).not.toContain('inspect the task')
   })
 
   test('repeated finish callbacks for the same lifecycle keep exactly one terminal', () => {
