@@ -23,7 +23,7 @@ See LICENSE in the project root for details.
 ## 3. Docs and final gate
 
 - [x] 3.1 Update `docs/architecture/overview.md` and `docs/architecture/behaviors.md` (`behavior:mid-run-control`) for native steering and outcome-based leftovers; verify `rg -n "steerQueue|createSteeringPrepareStep|composePrepareSteps" src docs` returns no stale references and `bun run format:check` passes.
-- [ ] 3.2 Run `bun test`, `bun run typecheck`, `bun run lint`, `bun run test:stories`, and `bun run test:mutate:changed --base=HEAD~1`; verify all exit 0 and the architecture pages from 3.1 are in the same commit.
+- [x] 3.2 Run `bun test`, `bun run typecheck`, `bun run lint`, `bun run test:stories`, and `bun run test:mutate:changed --base=HEAD~1`; verify all exit 0 and the architecture pages from 3.1 are in the same commit.
 
 ## Workflow follow-up
 
