@@ -30,8 +30,8 @@
 - [x] 4.4 Bump `pixelmatch` 8.0.0; recalibrate only the `figma:verify` threshold (`DEFAULT_COMPARE_THRESHOLD = 0.1`) from a known-good/known-bad pair, using `windowSize` only if it preserves real-change detection; verify the pair produces the expected pass/fail and record the measured ratio change. Do not change `playwright.config.ts` thresholds for this bump.
 - [x] 4.5 Bump `oxc-parser` to exactly `0.159.0`; verify `bun test tests/plugins tests/story tests/smoke` passes, including the `walkNodes` paths.
 - [x] 4.6 Bump `oxlint` 1.94.0 and `oxlint-tsgolint` 7.0.2008 together; run `bun run lint` and `bun run typecheck`, fix new findings without disable comments, and verify both exit 0.
-- [ ] 4.7 Run `bun run format` after the oxfmt 0.79 bump; inspect the HTML/Svelte diff and verify `bun run format:check` exits 0.
-- [ ] 4.8 Bump `@playwright/test` 1.65.1; verify `bun run test:e2e` and `bun run shoot` pass under Bun. Do not add `onlyFailures` reporters: the project uses `list` + rprtr, and a failure-only artifact path is a separate change.
+- [x] 4.7 Run `bun run format` after the oxfmt 0.79 bump; inspect the HTML/Svelte diff and verify `bun run format:check` exits 0.
+- [x] 4.8 Bump `@playwright/test` 1.65.1; verify `bun run test:e2e` and `bun run shoot` pass under Bun. Do not add `onlyFailures` reporters: the project uses `list` + rprtr, and a failure-only artifact path is a separate change.
 - [ ] 4.9 Commit Wave 3 as one commit per major migration; verify each commit reverts independently with `git revert --no-commit` plus `bun install --frozen-lockfile`.
 
 ## 5. Wave 4 — visual and developer extras
