@@ -14,7 +14,6 @@ import { logger } from './logger.js'
 import { withReplyTypingHeartbeat } from './reply-typing-heartbeat.js'
 import { createNoProgressCondition } from './run-control/no-progress-condition.js'
 import { runRegistry } from './run-control/registry.js'
-import { composePrepareSteps, createSteeringPrepareStep } from './run-control/steering-prepare-step.js'
 import { createStopRequestedCondition } from './run-control/stop-condition.js'
 import { createTurnLimitTracker, TURN_LIMIT_STOP_REASON } from './run-control/turn-limit.js'
 import { RunAbortedError } from './run-control/types.js'
@@ -89,10 +88,9 @@ type GeneratedTurn = {
 const callGenerateText = async (a: GenerateArgs): Promise<GeneratedTurn> => {
   const { contextId, turnId, model, systemPrompt, messages, tools, toolsContext, deps, disclosure, ctx } = a
   const run = runRegistry.get(contextId)
-  const disclosureStep =
-    disclosure === undefined ? undefined : createDisclosurePrepareStep(disclosure, contextId, turnId)
-  const prepareStep =
-    run === undefined ? disclosureStep : composePrepareSteps(createSteeringPrepareStep(run), disclosureStep)
+  // Disclosure owns the single `prepareStep` hook: it only narrows `activeTools` and
+  // never rebuilds `messages`, so it cannot drop a steering message.
+  const prepareStep = disclosure === undefined ? undefined : createDisclosurePrepareStep(disclosure, contextId, turnId)
   // Budget cap + no-progress guard always apply; a live force-stop condition is added when a run is active.
   const turnLimit = createTurnLimitTracker(deps.stepCountIs, AGENT_MAX_STEPS)
   const stopWhen =
@@ -112,7 +110,7 @@ const callGenerateText = async (a: GenerateArgs): Promise<GeneratedTurn> => {
       tools,
       timeout: 1_200_000,
       stopWhen,
-      ...(run === undefined ? {} : { abortSignal: run.abortController.signal }),
+      ...(run === undefined ? {} : { abortSignal: run.abortController.signal, experimental_steering: run.steering }),
       onToolExecutionStart: buildToolCallStartHandler(ctx),
       onToolExecutionEnd: (event) => {
         if (run !== undefined) run.completedEffects.push({ toolName: event.toolCall.toolName })
@@ -121,6 +119,9 @@ const callGenerateText = async (a: GenerateArgs): Promise<GeneratedTurn> => {
       ...(prepareStep === undefined ? {} : { prepareStep }),
       ...(disclosure === undefined ? {} : { repairToolCall: createRepairToolCall(disclosure, contextId) }),
     }
+    // The SDK resolves steer outcomes only from inside a started run, so the handoff
+    // is exactly the moment settleSteering may start waiting on them.
+    if (run !== undefined) run.steeringStarted = true
     const result = await deps.generateText(Object.assign({}, baseOptions, { toolsContext }))
     return { result, turnLimitHit: turnLimit.hit }
   } catch (error) {

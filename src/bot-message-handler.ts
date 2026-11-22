@@ -43,6 +43,7 @@ import { logger } from './logger.js'
 import { enqueueMessage, type CoalescedItem as QueuedCoalescedItem } from './message-queue/index.js'
 import { buildPromptWithReplyContext } from './reply-context.js'
 import { runRegistry } from './run-control/registry.js'
+import { requestSteer } from './run-control/steering.js'
 import type { RunControl } from './run-control/types.js'
 import { getContextLanguage } from './utils/config-language.js'
 
@@ -206,11 +207,8 @@ async function steerActiveRun(
   seed: AuthorizedTurnSeed | undefined,
   observer: AnalyticsObserver | undefined,
 ): Promise<void> {
-  activeRun.steerQueue.push({ text: steerText })
-  log.debug(
-    { storageContextId: auth.storageContextId, turnId: activeRun.turnId },
-    'Mid-run message routed to steer queue',
-  )
+  requestSteer(activeRun, steerText)
+  log.debug({ storageContextId: auth.storageContextId, turnId: activeRun.turnId }, 'Mid-run message steered')
   await reply.text(t('steer.ack', getContextLanguage(auth.configContextId ?? auth.storageContextId)))
   if (observer === undefined || seed === undefined) return
   observer.observe(

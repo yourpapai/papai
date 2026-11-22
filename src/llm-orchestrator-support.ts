@@ -16,6 +16,7 @@ import { emitUser } from './debug/event-bus.js'
 import { extractAppError, getAppErrorDetails, getUserMessage } from './errors.js'
 import { saveHistory } from './history.js'
 import { t } from './i18n/index.js'
+import type { Locale } from './i18n/index.js'
 import { createLiveStatusReporter } from './live-status/reporter.js'
 import { hoistSystemMessages } from './llm-message-utils.js'
 import { invokeModelWithTyping, peekAttemptOrdinal } from './llm-orchestrator-invoke.js'
@@ -24,11 +25,14 @@ import { emitLlmError, logProcessMessage } from './llm-orchestrator-logging.js'
 import type { LlmFailureAnalytics } from './llm-orchestrator-logging.js'
 import { collectTurnMessages } from './llm-orchestrator-messages.js'
 import { sendLlmResponse } from './llm-orchestrator-send.js'
+import type { InvocationSource } from './llm-orchestrator-tools.js'
 import type { InvokeModelArgs, LlmOrchestratorDeps } from './llm-orchestrator-types.js'
 export { handleToolCallFinish } from './llm-orchestrator-tool-replies.js'
 import { logger } from './logger.js'
 import { extractFactToolCalls, extractFactToolResults } from './memory-tool-steps.js'
 import { extractFactsFromSdkResults, upsertFact } from './memory.js'
+import { buildStopSummary } from './run-control/summary.js'
+import { RunAbortedError } from './run-control/types.js'
 import { buildToolsContextRecord } from './tools/wrap-tool-execution.js'
 import { getContextLanguage } from './utils/config-language.js'
 
@@ -154,6 +158,37 @@ export const handleLlmTurnError = async (args: HandleLlmTurnErrorArgs): Promise<
   )
   saveHistory(contextId, [...baseHistory, args.userHistoryMessage])
   await handleOrchestratorMessageError(reply, contextId, error)
+}
+
+type TurnFailureArgs = {
+  readonly error: unknown
+  readonly invocationSource: Omit<InvocationSource, 'history'>
+  readonly turn: { readonly baseHistory: readonly ModelMessage[]; readonly historyMessage: ModelMessage }
+  readonly resolvedLlm: { readonly main: { readonly model: string } }
+  readonly resolvedTurnId: string
+  readonly startedAt: number
+  readonly locale: Locale
+}
+
+/**
+ * Terminal reporting for a turn that threw: a force-abort posts the forced stop
+ * summary, every other failure goes through the normal error handler.
+ */
+export const reportTurnFailure = async (failure: TurnFailureArgs): Promise<void> => {
+  const { error, invocationSource, turn, resolvedLlm, resolvedTurnId, startedAt, locale } = failure
+  if (error instanceof RunAbortedError) {
+    await invocationSource.reply.formatted(buildStopSummary(error.effects, { forced: true, locale }))
+    return
+  }
+  await handleLlmTurnError({
+    ...invocationSource,
+    mainModel: resolvedLlm.main.model,
+    startedAt,
+    baseHistory: turn.baseHistory,
+    userHistoryMessage: turn.historyMessage,
+    error,
+    turnId: resolvedTurnId,
+  })
 }
 
 export const persistFactsFromResults = (contextId: string, result: unknown): void => {

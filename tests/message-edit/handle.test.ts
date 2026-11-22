@@ -27,6 +27,7 @@ import {
   createGroupMessage,
   createMockChat,
   createMockReply,
+  createRecordingSteering,
   flushPendingWrites,
   mockLogger,
   seedTestPlatformInstance,
@@ -91,7 +92,8 @@ describe('onIncomingEdit', () => {
     const ctxId = scopedDm('cmd-user')
     addUser({ userId: 'cmd-user', platformInstanceId: PLATFORM_ID, addedBy: ADMIN_ID })
     const { reply, textCalls } = createMockReply()
-    const run = runRegistry.begin(ctxId, { turnId: 't', reply, originatingMessageIds: ['m1'] })
+    const { steering, steered } = createRecordingSteering()
+    runRegistry.begin(ctxId, { turnId: 't', reply, originatingMessageIds: ['m1'], steering })
 
     const msg: IncomingMessage = {
       ...createDmMessage('cmd-user'),
@@ -102,9 +104,9 @@ describe('onIncomingEdit', () => {
     }
     await onIncomingEdit(chat, msg, reply, {})
 
-    expect(run.steerQueue.length).toBe(0)
+    expect(steered).toEqual([])
     expect(textCalls.length).toBe(0)
-    runRegistry.end(ctxId)
+    await runRegistry.end(ctxId)
   })
 
   test('W1 pushes a steer correction containing the edited text and acks', async () => {
@@ -121,7 +123,8 @@ describe('onIncomingEdit', () => {
     appendHistory(ctxId, [makeUserTurn('m1', 'hello')])
 
     const { reply, textCalls } = createMockReply()
-    const run = runRegistry.begin(ctxId, { turnId: 't', reply, originatingMessageIds: ['m1'] })
+    const { steering, steered } = createRecordingSteering()
+    runRegistry.begin(ctxId, { turnId: 't', reply, originatingMessageIds: ['m1'], steering })
 
     const edited: IncomingMessage = {
       ...createDmMessage('w1-user'),
@@ -131,15 +134,15 @@ describe('onIncomingEdit', () => {
     }
     await onIncomingEdit(chat, edited, reply, {})
 
-    expect(run.steerQueue.some((s) => s.text.includes('Your earlier message was edited'))).toBe(true)
-    expect(run.steerQueue.some((s) => s.text.includes('hi'))).toBe(true)
+    expect(steered.some((text) => text.includes('Your earlier message was edited'))).toBe(true)
+    expect(steered.some((text) => text.includes('hi'))).toBe(true)
     expect(textCalls.some((t) => t.includes('folding that into the current run'))).toBe(true)
 
     // Baseline history + metadata correction ran for W1 too.
     expect(loadHistory(ctxId).find((m) => m.role === 'user')?.content).toBe('hi')
     expect(getMessageByContext(ctxId, 'm1')?.text).toBe('hi')
 
-    runRegistry.end(ctxId)
+    await runRegistry.end(ctxId)
   })
 
   test('W1 steer ack renders in the group-shared config context language, not the thread language', async () => {
@@ -180,7 +183,7 @@ describe('onIncomingEdit', () => {
     expect(textCalls.some((t) => t.includes('встраиваю это в текущий запуск'))).toBe(true)
     expect(textCalls.some((t) => t.includes('folding that into the current run'))).toBe(false)
 
-    runRegistry.end(threadStore)
+    await runRegistry.end(threadStore)
   })
 
   test('W1 emits a turn_steered fact on the active run when an analytics observer is wired', async () => {
@@ -197,7 +200,8 @@ describe('onIncomingEdit', () => {
     appendHistory(ctxId, [makeUserTurn('m1', 'hello')])
 
     const { reply } = createMockReply()
-    const run = runRegistry.begin(ctxId, { turnId: 't-analytics', reply, originatingMessageIds: ['m1'] })
+    const { steering, steered: steeredTexts } = createRecordingSteering()
+    runRegistry.begin(ctxId, { turnId: 't-analytics', reply, originatingMessageIds: ['m1'], steering })
 
     const facts: AnalyticsSourceFact[] = []
     const edited: IncomingMessage = {
@@ -225,9 +229,9 @@ describe('onIncomingEdit', () => {
     })
     // The edit is a correction, not a newly accepted message: no double count.
     expect(facts.some((fact) => fact.type === 'chat_message_accepted')).toBe(false)
-    expect(run.steerQueue.some((s) => s.text.includes('Your earlier message was edited'))).toBe(true)
+    expect(steeredTexts.some((text) => text.includes('Your earlier message was edited'))).toBe(true)
 
-    runRegistry.end(ctxId)
+    await runRegistry.end(ctxId)
   })
 
   test('W3 (silent) still applies baseline metadata + history correction, no ack', async () => {
@@ -281,9 +285,10 @@ describe('onIncomingEdit', () => {
     }
     await onIncomingEdit(chat, edited, reply, {})
 
-    expect(run.steerQueue.length).toBe(0)
+    expect(run.steerLeftovers).toEqual([])
+    expect(run.pendingSteerOutcomes).toEqual([])
     expect(textCalls.length).toBe(0)
-    runRegistry.end(ctxId)
+    await runRegistry.end(ctxId)
   })
 
   test('skips when auth denies the user', async () => {
@@ -300,9 +305,10 @@ describe('onIncomingEdit', () => {
     }
     await onIncomingEdit(chat, edited, reply, {})
 
-    expect(run.steerQueue.length).toBe(0)
+    expect(run.steerLeftovers).toEqual([])
+    expect(run.pendingSteerOutcomes).toEqual([])
     expect(textCalls.length).toBe(0)
-    runRegistry.end(ctxId)
+    await runRegistry.end(ctxId)
   })
 
   test('W1 emits edit_classified w1 alongside the steer fact', async () => {
@@ -325,7 +331,7 @@ describe('onIncomingEdit', () => {
     const classified = facts.filter((fact) => fact.type === 'edit_classified')
     expect(classified).toHaveLength(1)
     expect(classified[0]).toMatchObject({ window: 'w1' })
-    runRegistry.end(ctxId)
+    await runRegistry.end(ctxId)
   })
 
   test('W2 no-side-effects emits edit_classified w2 plus the regen funnel', async () => {

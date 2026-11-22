@@ -6,16 +6,35 @@
 import type { ReplyFn } from '../chat/types.js'
 import { logger } from '../logger.js'
 import { lastTurnRegistry } from './last-turn-registry.js'
-import type { InjectedMessage, RunControl } from './types.js'
+import { settleSteering } from './steering.js'
+import type { InjectedMessage, RunControl, SteeringHandle } from './types.js'
 
 const log = logger.child({ scope: 'run-control:registry' })
+
+/** A promise nothing resolves: only a steering run the SDK started settles its outcomes. */
+const neverSettles = (): Promise<never> =>
+  new Promise<never>(() => {
+    // Settled by the SDK's steering run; this handle never starts one.
+  })
+
+/**
+ * Handle for a run begun without one (tests and non-interactive paths). It never
+ * starts, so `settleSteering` reads every pending text as a leftover instead of
+ * waiting on an outcome nothing can resolve.
+ */
+const unstartedSteering: SteeringHandle = { steer: neverSettles, queue: neverSettles }
 
 export class RunRegistry {
   private runs = new Map<string, RunControl>()
 
   begin(
     contextId: string,
-    opts: { turnId: string; reply: ReplyFn; originatingMessageIds: readonly string[] },
+    opts: {
+      turnId: string
+      reply: ReplyFn
+      originatingMessageIds: readonly string[]
+      steering?: SteeringHandle
+    },
   ): RunControl {
     // A new run supersedes any prior last-turn snapshot for this context.
     lastTurnRegistry.evict(contextId)
@@ -26,7 +45,10 @@ export class RunRegistry {
       abortController: new AbortController(),
       originatingMessageIds: opts.originatingMessageIds,
       replyTarget: undefined,
-      steerQueue: [],
+      steering: opts.steering ?? unstartedSteering,
+      steeringStarted: false,
+      pendingSteerOutcomes: [],
+      steerLeftovers: [],
       stopRequested: false,
       completedEffects: [],
     }
@@ -39,13 +61,14 @@ export class RunRegistry {
     return this.runs.get(contextId)
   }
 
-  /** Remove the run; return any steer messages that were never injected. */
-  end(contextId: string): InjectedMessage[] {
+  /** Remove the run; settle every pending steer and return the ones never delivered. */
+  async end(contextId: string): Promise<InjectedMessage[]> {
     const run = this.runs.get(contextId)
     this.runs.delete(contextId)
     if (run === undefined) return []
-    log.debug({ contextId, turnId: run.turnId, leftover: run.steerQueue.length }, 'Run ended')
-    return run.steerQueue
+    await settleSteering(run)
+    log.debug({ contextId, turnId: run.turnId, leftover: run.steerLeftovers.length }, 'Run ended')
+    return run.steerLeftovers
   }
 
   /** Test-only: drop all runs (singleton reset between tests in a file). */

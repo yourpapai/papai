@@ -26,6 +26,7 @@ import { logger } from '../logger.js'
 import { getMessageByContext } from '../message-cache/index.js'
 import { lastTurnRegistry, type LastTurn } from '../run-control/last-turn-registry.js'
 import { runRegistry } from '../run-control/registry.js'
+import { requestSteer } from '../run-control/steering.js'
 import type { RunControl } from '../run-control/types.js'
 import { getContextLanguage } from '../utils/config-language.js'
 import { classifyEdit } from './classify.js'
@@ -88,7 +89,7 @@ export type EditHandlerDeps = {
  *
  * Window dispatch (Task 6's classifier):
  *  - W1 (active run owns the edited message): inject a steer correction into
- *    the run's `steerQueue` and ack the user mid-run.
+ *    the run's native steering handle and ack the user mid-run.
  *  - W2 (last completed turn owns it, no later user message): rerun pathway —
  *    stubbed here, implemented in Tasks 10–11.
  *  - W3 (everything else): silent — baseline already corrected the stores.
@@ -165,8 +166,8 @@ function observeEditClassification(
 }
 
 /**
- * W1 dispatch: inject the edited text into the live run's `steerQueue` (the
- * orchestrator picks it up at the next tool-step boundary) and ack the user.
+ * W1 dispatch: hand the edited text to the live run's native steering handle (the
+ * SDK delivers it at the next tool-step boundary) and ack the user.
  * An edit-steer is the same mid-run steering boundary as a manual steer, so it
  * emits the same `turn_steered` fact; the edit itself is a correction, not a
  * newly accepted message, so no accepted/turn facts are produced here.
@@ -179,7 +180,7 @@ async function pushW1SteerAndAck(
   deps: EditHandlerDeps,
 ): Promise<void> {
   const steerText = `⟲ Your earlier message was edited. New version:\n\n${msg.text}`
-  run.steerQueue.push({ text: steerText })
+  requestSteer(run, steerText)
   await reply.text(t('steer.ack', getContextLanguage(auth.configContextId ?? auth.storageContextId)))
   const observer = deps.analyticsObserver
   if (observer === undefined) return

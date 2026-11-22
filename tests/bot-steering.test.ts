@@ -23,6 +23,7 @@ import {
   createDmMessage,
   createMockChatForBot,
   createMockReply,
+  createRecordingSteering,
   mockLogger,
   seedCommonTestPlatformInstances,
   setupTestDb,
@@ -103,7 +104,7 @@ describe('mid-run steering routing', () => {
     runRegistry.clear()
   })
 
-  test('a message during an active run is pushed to the steer queue with an ack and does not enqueue a turn', async () => {
+  test('a message during an active run reaches the native steering handle with an ack and enqueues no turn', async () => {
     const userId = 'steer-user-1'
     addUser(userId, ADMIN_ID)
     setupUserConfig(userId)
@@ -112,7 +113,13 @@ describe('mid-run steering routing', () => {
 
     // Simulate an active run for the DM user's storage context
     const { reply: runReply } = createMockReply()
-    const run = runRegistry.begin(storageContextId, { turnId: 't1', reply: runReply, originatingMessageIds: [] })
+    const { steering, steered } = createRecordingSteering()
+    const run = runRegistry.begin(storageContextId, {
+      turnId: 't1',
+      reply: runReply,
+      originatingMessageIds: [],
+      steering,
+    })
 
     const { reply, textCalls } = createMockReply()
     const messageHandler = getMessageHandler()
@@ -120,7 +127,8 @@ describe('mid-run steering routing', () => {
 
     await messageHandler!({ ...createDmMessage(userId), text: 'only project X' }, reply)
 
-    expect(run.steerQueue).toEqual([{ text: 'only project X' }])
+    expect(steered).toEqual(['only project X'])
+    expect(run.pendingSteerOutcomes).toHaveLength(1)
     expect(textCalls.some((c) => c.includes('folding'))).toBe(true)
     expect(enqueueCallCount).toBe(0)
   })

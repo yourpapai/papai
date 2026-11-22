@@ -24,7 +24,7 @@ import {
   type ProcessMessageRest,
   type ResolvedProcessMessageInputs,
 } from './llm-orchestrator-process-args.js'
-import { handleLlmTurnError, invokeWithLiveStatus, logProcessMessage } from './llm-orchestrator-support.js'
+import { invokeWithLiveStatus, logProcessMessage, reportTurnFailure } from './llm-orchestrator-support.js'
 import { buildLlmInvocationOpts, prepareLlmInvocation, type InvocationSource } from './llm-orchestrator-tools.js'
 import type { LlmOrchestratorDeps } from './llm-orchestrator-types.js'
 import { ensureRequiredConfig, resolveLlmForTurn } from './llm-orchestrator-unconfigured.js'
@@ -36,8 +36,9 @@ import { defaultTaskProviderResolver } from './providers/resolver.js'
 import type { TaskProvider } from './providers/types.js'
 import { lastTurnRegistry } from './run-control/last-turn-registry.js'
 import { runRegistry } from './run-control/registry.js'
+import { createSdkSteering } from './run-control/steering.js'
 import { buildStopSummary } from './run-control/summary.js'
-import { RunAbortedError, type InjectedMessage, type RunControl } from './run-control/types.js'
+import type { InjectedMessage, RunControl } from './run-control/types.js'
 import { getContextLanguage } from './utils/config-language.js'
 
 const log = logger.child({ scope: 'llm-orchestrator' })
@@ -47,6 +48,7 @@ export const resolveAiOutputSettingsContextId = (contextId: string): string =>
 
 export const defaultDeps: LlmOrchestratorDeps = {
   generateText: (...args) => generateText(...args),
+  createSteering: createSdkSteering,
   stepCountIs: (...args) => isStepCount(...args),
   buildModel: (config, reasoningEffort) =>
     buildChatModel(
@@ -168,13 +170,14 @@ type RunTurnArgs = {
 }
 
 const runTurn = async (args: RunTurnArgs): Promise<InjectedMessage[]> => {
-  const { invocationSource, turn, deps, configId, resolvedLlm, resolvedTurnId, originatingMessageIds, startedAt } = args
+  const { invocationSource, turn, deps, configId, resolvedLlm, resolvedTurnId, originatingMessageIds } = args
   const { reply, contextId, contextType, actorRole } = invocationSource
   const locale = getContextLanguage(getConfigContextIdFromStorageContextId(contextId))
   const run = runRegistry.begin(contextId, {
     turnId: resolvedTurnId,
     reply,
     originatingMessageIds,
+    steering: (deps.createSteering ?? createSdkSteering)(),
   })
   let leftover: InjectedMessage[] = []
   try {
@@ -196,21 +199,9 @@ const runTurn = async (args: RunTurnArgs): Promise<InjectedMessage[]> => {
     recordAssistantTurn(meta, turn, result)
     if (run.stopRequested) await reply.formatted(buildStopSummary(run.completedEffects, { forced: false, locale }))
   } catch (error) {
-    if (error instanceof RunAbortedError) {
-      await reply.formatted(buildStopSummary(error.effects, { forced: true, locale }))
-    } else {
-      await handleLlmTurnError({
-        ...invocationSource,
-        mainModel: resolvedLlm.main.model,
-        startedAt,
-        baseHistory: turn.baseHistory,
-        userHistoryMessage: turn.historyMessage,
-        error,
-        turnId: resolvedTurnId,
-      })
-    }
+    await reportTurnFailure({ ...args, error, locale })
   } finally {
-    leftover = runRegistry.end(contextId)
+    leftover = await runRegistry.end(contextId)
     // run is still a valid reference (end() only drops the map entry); capture
     // the finished turn's state so later W2 edit classification can inspect it.
     recordFinishedTurn(contextId, run)

@@ -7,7 +7,7 @@ import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
 import assert from 'node:assert/strict'
 
 import { generateText, stepCountIs } from 'ai'
-import type { ToolExecutionEndEvent } from 'ai'
+import type { Experimental_SteeringOutcome, ToolExecutionEndEvent } from 'ai'
 import { MockLanguageModelV3 } from 'ai/test'
 
 import { NO_ANALYTICS_SCOPE } from '../../src/analytics/provider-request-scope.js'
@@ -16,7 +16,7 @@ import type { InvokeModelArgs, LlmOrchestratorDeps } from '../../src/llm-orchest
 import { defaultDeps } from '../../src/llm-orchestrator.js'
 import { runRegistry } from '../../src/run-control/registry.js'
 import { RunAbortedError } from '../../src/run-control/types.js'
-import { createMockReply, mockLogger, setupTestDb } from '../utils/test-helpers.js'
+import { createFakeSteering, createMockReply, mockLogger, setupTestDb } from '../utils/test-helpers.js'
 
 type CapturedOpts = Parameters<LlmOrchestratorDeps['generateText']>[0]
 type GenerateResult = Awaited<ReturnType<LlmOrchestratorDeps['generateText']>>
@@ -99,7 +99,7 @@ describe('invokeModel run-control wiring', () => {
     runRegistry.clear()
   })
 
-  test('no active run: stopWhen is an array with step cap + no-progress guard, no abortSignal, no steering prepareStep', async () => {
+  test('no active run: stopWhen is an array with step cap + no-progress guard, no abortSignal, no steering', async () => {
     const captured: { opts?: CapturedOpts } = {}
     await invokeModel(buildArgs(captured, () => Promise.resolve(okResult)))
     const sw = captured.opts?.stopWhen
@@ -111,6 +111,7 @@ describe('invokeModel run-control wiring', () => {
     // A start-of-turn call (empty steps) must never stop the loop.
     expect(sw[1]({ steps: [] })).toBe(false)
     expect(captured.opts?.abortSignal).toBeUndefined()
+    expect(captured.opts?.experimental_steering).toBeUndefined()
     expect(captured.opts?.prepareStep).toBeUndefined()
   })
 
@@ -133,31 +134,24 @@ describe('invokeModel run-control wiring', () => {
     expect(captured.opts?.abortSignal).toBe(run.abortController.signal)
   })
 
-  test('active run: prepareStep injects queued steer messages', async () => {
+  test('active run: the run handle is the steering object and no steering prepareStep is composed', async () => {
     const { reply } = createMockReply()
-    const run = runRegistry.begin('ctx-1', { turnId: 't1', reply, originatingMessageIds: [] })
-    run.steerQueue.push({ text: 'only project X' })
+    const steering = createFakeSteering((): Promise<Experimental_SteeringOutcome> =>
+      Promise.resolve({
+        type: 'not-delivered',
+        id: 'steer-1',
+        message: { role: 'user', content: 'only project X' },
+        reason: 'finished',
+      }),
+    )
+    const run = runRegistry.begin('ctx-1', { turnId: 't1', reply, originatingMessageIds: [], steering })
     const captured: { opts?: CapturedOpts } = {}
     await invokeModel(buildArgs(captured, () => Promise.resolve(okResult)))
 
-    const prepareStepFn = captured.opts?.prepareStep
-    assert.ok(prepareStepFn !== undefined, 'prepareStep should be defined')
-    const result = await prepareStepFn({
-      stepNumber: 1,
-      steps: [],
-      messages: [{ role: 'user' as const, content: 'a' }],
-      model: mockModel,
-      instructions: undefined,
-      initialInstructions: undefined,
-      initialMessages: [],
-      responseMessages: [],
-      toolsContext: {},
-      runtimeContext: {},
-    })
-    expect(result?.messages).toEqual([
-      { role: 'user', content: 'a' },
-      { role: 'user', content: 'only project X' },
-    ])
+    expect(captured.opts?.experimental_steering).toBe(steering)
+    expect(captured.opts?.experimental_steering).toBe(run.steering)
+    expect(run.steeringStarted).toBe(true)
+    expect(captured.opts?.prepareStep).toBeUndefined()
   })
 
   test('active run: onToolCallFinish records completed effects', async () => {

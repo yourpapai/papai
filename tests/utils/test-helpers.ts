@@ -43,6 +43,7 @@ import { createLlmProvider, setAdminRoleBindings } from '../../src/llm-providers
 // MESSAGE CACHE TEST HELPERS
 // ============================================================================
 import type { CachedMessage } from '../../src/message-cache/types.js'
+import type { SteeringHandle } from '../../src/run-control/types.js'
 
 // Test-local message cache — fully isolated from production
 const testMessageCache = new Map<string, CachedMessage>()
@@ -478,6 +479,36 @@ export interface MockReplyResult {
   getReplies: () => string[]
   getRedactions: () => string[]
   getEmbeds: () => EmbedOptions[]
+}
+
+/**
+ * Fake steering handle: the test decides each `steer()` outcome, so steering tests
+ * need no real SDK generation. papai never calls `queue`, so it never settles.
+ */
+export function createFakeSteering(steer: SteeringHandle['steer']): SteeringHandle {
+  return {
+    steer,
+    queue: () =>
+      new Promise<never>(() => {
+        // Unused: papai only ever steers, never queues a after-task message.
+      }),
+  }
+}
+
+/** Fake steering handle that records accepted steer text and reports every steer delivered. */
+export function createRecordingSteering(): { steering: SteeringHandle; steered: string[] } {
+  const steered: string[] = []
+  const steering = createFakeSteering((message) => {
+    if (typeof message !== 'string') throw new Error('the run only steers plain text')
+    steered.push(message)
+    return Promise.resolve({
+      type: 'delivered',
+      id: `steer-${steered.length}`,
+      message: { role: 'user', content: message },
+      stepNumber: 1,
+    })
+  })
+  return { steering, steered }
 }
 
 /**
