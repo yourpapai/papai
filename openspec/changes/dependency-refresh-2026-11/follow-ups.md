@@ -26,7 +26,7 @@ These are the feature candidates deferred by `design.md`. Each needs its own Ope
 ## 3. SDK tool approvals — delivered by `sdk-tool-approvals`
 
 - **Source version:** `ai` 7.0.x tool approvals (approval replay present in 7.0.179).
-- **Status:** the awaited `toolApproval` resolver shipped in `openspec/changes/sdk-tool-approvals/`. `buildToolApproval` (`src/tools/permission-gate.ts`) is built once per invocation in `buildLlmInvocationOpts` and passed to every model call as the required `toolApproval` field; it re-resolves `tool_prefs`, awaits the existing chat confirmation for `ask` tools, and returns `approved` or `{ type: 'denied', reason }`. A denial never executes and reaches the model as an SDK `execution-denied` tool-result; assembly only extends the schema and strips `_permission_reason` (`stripPermissionReason`). Approval replay/suspension stayed a non-goal.
+- **Status:** the awaited `toolApproval` resolver shipped in `openspec/changes/archive/2026-11-22-sdk-tool-approvals/`. `buildToolApproval` (`src/tools/permission-gate.ts`) is built once per invocation in `buildLlmInvocationOpts` and passed to every model call as the required `toolApproval` field; it re-resolves `tool_prefs`, awaits the existing chat confirmation for `ask` tools, and returns `approved` or `{ type: 'denied', reason }`. A denial never executes and reaches the model as an SDK `execution-denied` tool-result; assembly only extends the schema and strips `_permission_reason` (`stripPermissionReason`). Approval replay/suspension stayed a non-goal.
 - **Remaining:** none for this candidate.
 
 ## 3a. Historical Papai fit (pre-delivery)
