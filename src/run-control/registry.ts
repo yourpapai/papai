@@ -49,6 +49,7 @@ export class RunRegistry {
       steeringStarted: false,
       pendingSteerOutcomes: [],
       steerLeftovers: [],
+      interruptsRequested: 0,
       stopRequested: false,
       completedEffects: [],
     }

@@ -52,6 +52,12 @@ export type RunControl = {
   pendingSteerOutcomes: PendingSteerOutcome[]
   /** Steer text the SDK reported as not delivered, kept for fresh-turn replay. */
   steerLeftovers: InjectedMessage[]
+  /**
+   * Interrupt requests made this run, counted at request time. Bounded by
+   * `MAX_INTERRUPTS_PER_RUN`; a cancelled call is not a step but can still be
+   * billed, so the bound keeps that cost predictable.
+   */
+  interruptsRequested: number
   stopRequested: boolean
   completedEffects: EffectRecord[]
 }

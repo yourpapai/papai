@@ -11,7 +11,7 @@ import { RunRegistry } from '../../src/run-control/registry.js'
 import { requestSteer, settleSteering } from '../../src/run-control/steering.js'
 import type { RunControl, SteeringHandle } from '../../src/run-control/types.js'
 import { assertEach, type Row } from '../utils/grouped-assertions.js'
-import { createFakeSteering, createMockReply } from '../utils/test-helpers.js'
+import { createFakeSteering, createMockReply, createRecordingSteering } from '../utils/test-helpers.js'
 
 const notDelivered = (reason: Experimental_SteeringNotDeliveredReason): Experimental_SteeringOutcome => ({
   type: 'not-delivered',
@@ -163,6 +163,72 @@ describe('settleSteering', () => {
     await settleSteering(run)
     await settleSteering(run)
 
+    expect(run.steerLeftovers).toEqual([{ text: 'only project X' }])
+  })
+})
+
+describe('requestSteer interrupt budget', () => {
+  test('under budget requests the interrupt and counts it', () => {
+    const { steering, steerCalls } = createRecordingSteering()
+    const run = makeRun(steering)
+
+    requestSteer(run, 'only project X')
+
+    expect(steerCalls).toEqual([{ text: 'only project X', options: { interrupt: true } }])
+    expect(run.interruptsRequested).toBe(1)
+  })
+
+  test('at the cap steers without options and keeps the count', () => {
+    const { steering, steerCalls } = createRecordingSteering()
+    const run = makeRun(steering)
+
+    for (const text of ['one', 'two', 'three', 'four']) requestSteer(run, text)
+
+    expect(steerCalls.map((call) => call.options)).toEqual([
+      { interrupt: true },
+      { interrupt: true },
+      { interrupt: true },
+      undefined,
+    ])
+    expect(run.interruptsRequested).toBe(3)
+  })
+
+  test('a requested graceful stop steers without options', () => {
+    const { steering, steerCalls } = createRecordingSteering()
+    const run = makeRun(steering)
+    run.stopRequested = true
+
+    requestSteer(run, 'only project X')
+
+    expect(steerCalls).toEqual([{ text: 'only project X', options: undefined }])
+    expect(run.interruptsRequested).toBe(0)
+  })
+
+  test('a delivered interrupt leaves nothing for replay', async () => {
+    const run = makeRun(createRecordingSteering().steering)
+    run.steeringStarted = true
+    requestSteer(run, 'only project X')
+
+    await settleSteering(run)
+
+    expect(run.steerLeftovers).toEqual([])
+  })
+
+  test('a not-delivered interrupt keeps the text for replay', async () => {
+    const calls: Array<{ text: string; interrupt: boolean | undefined }> = []
+    const run = makeRun(
+      createFakeSteering((message, options) => {
+        if (typeof message !== 'string') throw new Error('the run only steers plain text')
+        calls.push({ text: message, interrupt: options?.interrupt })
+        return Promise.resolve(notDelivered('finished'))
+      }),
+    )
+    run.steeringStarted = true
+    requestSteer(run, 'only project X')
+
+    await settleSteering(run)
+
+    expect(calls).toEqual([{ text: 'only project X', interrupt: true }])
     expect(run.steerLeftovers).toEqual([{ text: 'only project X' }])
   })
 })

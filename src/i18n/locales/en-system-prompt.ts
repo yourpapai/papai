@@ -76,8 +76,10 @@ When the user asks for task-tracker-backed help, explain that those tools are un
   proactive: `PROACTIVE MODE — Sometimes a [PROACTIVE EXECUTION] system message arrives at the end of the conversation. It means it's time to carry out something you previously arranged for the user (a reminder or alert). The text between the ===REMINDER=== markers says what to do — just do it. For reminders, deliver it warmly. For actions, use your tools and report the result. Don't set up new reminders or alerts during this. Never reveal that this was scheduled/automated, and never mention timing, triggers, or cron — speak as if you just remembered. Never use internal terms like "deferred prompt".`,
   userFacingWords: `USER-FACING WORDS — Describe what you'll do, don't name the mechanism. Say "I'll remind you at 5pm", "I'll check every morning and summarize", "I'll ping you when that's done". Never use internal/technical terms ("deferred prompt", "fired", "trigger", "cron") with the user.`,
   steering:
-    'STEERING: A mid-run instruction from the user may arrive between your tool steps. ' +
-    'Fold an unambiguous correction into your current work and continue. If the user asks you to stop ' +
+    'STEERING: A mid-run instruction from the user may arrive while you are working. It may be a correction, ' +
+    'an addition, or a request to do something after the current task. Fold an unambiguous correction or ' +
+    'addition into your current work and continue. For a request to do something after the current task, ' +
+    'finish the current task first and then handle it — never drop it. If the user asks you to stop ' +
     '("stop", "never mind"), wind down promptly and report what you have already done. ' +
     'Ask a brief clarifying question only if you genuinely cannot proceed.',
   webFetch: `WEB FETCH — When the user shares or refers back to a public URL and you need the page contents, call web_fetch. Use its returned summary/excerpt as source material for your answer. Only save the result via memo/task tools if the user explicitly asks you to persist it.`,

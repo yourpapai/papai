@@ -10,7 +10,7 @@ import type { Experimental_SteeringNotDeliveredReason, Experimental_SteeringOutc
 import { RunRegistry } from '../../src/run-control/registry.js'
 import { requestSteer } from '../../src/run-control/steering.js'
 import type { SteeringHandle } from '../../src/run-control/types.js'
-import { createFakeSteering, createMockReply } from '../utils/test-helpers.js'
+import { createFakeSteering, createMockReply, createRecordingSteering } from '../utils/test-helpers.js'
 
 const delivered: Experimental_SteeringOutcome = {
   type: 'delivered',
@@ -60,7 +60,48 @@ describe('RunRegistry', () => {
     expect(run.pendingSteerOutcomes).toEqual([])
     expect(run.steerLeftovers).toEqual([])
     expect(run.completedEffects).toEqual([])
+    expect(run.interruptsRequested).toBe(0)
     expect(registry.get('ctx-1')).toBe(run)
+  })
+
+  test('a new run for the same context starts with a zero interrupt count', () => {
+    const { reply } = createMockReply()
+    const { steering } = createRecordingSteering()
+    const first = registry.begin('ctx-1', { turnId: 't1', reply, originatingMessageIds: [], steering })
+    requestSteer(first, 'one')
+    requestSteer(first, 'two')
+    expect(first.interruptsRequested).toBe(2)
+
+    const second = registry.begin('ctx-1', { turnId: 't2', reply, originatingMessageIds: [] })
+
+    expect(second.interruptsRequested).toBe(0)
+  })
+
+  test('two storage contexts count interrupts independently', () => {
+    const { reply } = createMockReply()
+    const first = createRecordingSteering()
+    const second = createRecordingSteering()
+    const runOne = registry.begin('ctx-1', {
+      turnId: 't1',
+      reply,
+      originatingMessageIds: [],
+      steering: first.steering,
+    })
+    const runTwo = registry.begin('ctx-2', {
+      turnId: 't2',
+      reply,
+      originatingMessageIds: [],
+      steering: second.steering,
+    })
+
+    for (const text of ['a', 'b', 'c']) requestSteer(runOne, text)
+
+    expect(runOne.interruptsRequested).toBe(3)
+    expect(runTwo.interruptsRequested).toBe(0)
+
+    requestSteer(runTwo, 'd')
+    expect(runTwo.interruptsRequested).toBe(1)
+    expect(second.steerCalls[0]?.options).toEqual({ interrupt: true })
   })
 
   test('get returns undefined for unknown context', () => {

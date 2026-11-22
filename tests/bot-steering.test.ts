@@ -132,6 +132,34 @@ describe('mid-run steering routing', () => {
     expect(textCalls.some((c) => c.includes('folding'))).toBe(true)
     expect(enqueueCallCount).toBe(0)
   })
+
+  test('a plain mid-run message requests an interrupt, acks, and enqueues no turn', async () => {
+    const userId = 'steer-user-interrupt'
+    addUser(userId, ADMIN_ID)
+    setupUserConfig(userId)
+
+    const storageContextId = scopedDm(userId)
+    const { reply: runReply } = createMockReply()
+    const { steering, steered, steerCalls } = createRecordingSteering()
+    const run = runRegistry.begin(storageContextId, {
+      turnId: 't-interrupt',
+      reply: runReply,
+      originatingMessageIds: [],
+      steering,
+    })
+
+    const { reply, textCalls } = createMockReply()
+    const messageHandler = getMessageHandler()
+    assert.ok(messageHandler !== null)
+
+    await messageHandler({ ...createDmMessage(userId), text: 'only project X' }, reply)
+
+    expect(steered).toEqual(['only project X'])
+    expect(steerCalls).toEqual([{ text: 'only project X', options: { interrupt: true } }])
+    expect(run.interruptsRequested).toBe(1)
+    expect(textCalls.some((c) => c.includes('folding'))).toBe(true)
+    expect(enqueueCallCount).toBe(0)
+  })
 })
 
 describe('mid-run steering analytics', () => {
@@ -198,6 +226,38 @@ describe('mid-run steering analytics', () => {
     expect(JSON.stringify(facts)).not.toContain('only project X')
     expect(JSON.stringify(facts)).not.toContain('and also Y')
     expect(facts.filter((fact) => fact.type === 'turn_started')).toHaveLength(0)
+  })
+
+  test('the fourth message in one run falls back to plain steering with the same ack and fact', async () => {
+    const userId = 'steer-user-interrupt-budget'
+    addUser(userId, ADMIN_ID)
+    const storageContextId = scopedDm(userId)
+    const { reply: runReply } = createMockReply()
+    const { steering, steerCalls } = createRecordingSteering()
+    runRegistry.begin(storageContextId, {
+      turnId: 't-budget',
+      reply: runReply,
+      originatingMessageIds: [],
+      steering,
+    })
+
+    const messageHandler = getMessageHandler()
+    assert.ok(messageHandler !== null)
+    const { reply, textCalls } = createMockReply()
+    for (const text of ['one', 'two', 'three', 'four']) {
+      await messageHandler({ ...createDmMessage(userId), text }, reply)
+    }
+
+    expect(steerCalls.map((call) => call.options)).toEqual([
+      { interrupt: true },
+      { interrupt: true },
+      { interrupt: true },
+      undefined,
+    ])
+    expect(textCalls.filter((c) => c.includes('folding'))).toHaveLength(4)
+    const steered = steeredFacts()
+    expect(steered.map((fact) => fact.ordinal)).toEqual([1, 2, 3, 4])
+    expect(steered.every((fact) => fact.ackSent)).toBe(true)
   })
 })
 

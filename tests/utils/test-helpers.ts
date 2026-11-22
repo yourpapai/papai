@@ -495,12 +495,24 @@ export function createFakeSteering(steer: SteeringHandle['steer']): SteeringHand
   }
 }
 
+/** One recorded steer call: the text and the options papai passed with it. */
+export type RecordedSteer = {
+  readonly text: string
+  readonly options: Parameters<SteeringHandle['steer']>[1]
+}
+
 /** Fake steering handle that records accepted steer text and reports every steer delivered. */
-export function createRecordingSteering(): { steering: SteeringHandle; steered: string[] } {
+export function createRecordingSteering(): {
+  steering: SteeringHandle
+  steered: string[]
+  steerCalls: RecordedSteer[]
+} {
   const steered: string[] = []
-  const steering = createFakeSteering((message) => {
+  const steerCalls: RecordedSteer[] = []
+  const steering = createFakeSteering((message, options) => {
     if (typeof message !== 'string') throw new Error('the run only steers plain text')
     steered.push(message)
+    steerCalls.push({ text: message, options })
     return Promise.resolve({
       type: 'delivered',
       id: `steer-${steered.length}`,
@@ -508,7 +520,7 @@ export function createRecordingSteering(): { steering: SteeringHandle; steered: 
       stepNumber: 1,
     })
   })
-  return { steering, steered }
+  return { steering, steered, steerCalls }
 }
 
 /**

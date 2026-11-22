@@ -6,7 +6,7 @@
 import { beforeEach, describe, expect, test, mock } from 'bun:test'
 
 import { toScopedContextId, toScopedThreadContextId } from '../src/chat/scoped-context.js'
-import { setPluginConfig } from '../src/config.js'
+import { setConfigValue, setPluginConfig } from '../src/config.js'
 import { saveInstruction } from '../src/instructions.js'
 import { contributionRegistry } from '../src/plugins/contributions.js'
 import { pluginRegistry } from '../src/plugins/registry.js'
@@ -473,5 +473,26 @@ describe('system prompt steering fragment', () => {
       contextType: 'dm',
     })
     expect(prompt).toContain('mid-run instruction')
+  })
+
+  test('en steering section states the after-task rule and not a between-steps-only delivery', () => {
+    const prompt = buildProviderlessSystemPrompt('user-1', new Set<string>(), {
+      askPermissionAvailable: true,
+      contextType: 'dm',
+    })
+    expect(prompt).toContain('after the current task')
+    expect(prompt).toContain('never drop it')
+    expect(prompt).not.toContain('between your tool steps')
+  })
+
+  test('ru steering section states the after-task rule and not a between-steps-only delivery', () => {
+    setConfigValue('ru-steer-ctx', 'language', 'ru')
+    const prompt = buildProviderlessSystemPrompt('ru-steer-ctx', new Set<string>(), {
+      askPermissionAvailable: true,
+      contextType: 'dm',
+    })
+    expect(prompt).toContain('после текущей задачи')
+    expect(prompt).toContain('никогда не отбрасывай')
+    expect(prompt).not.toContain('Между твоими шагами')
   })
 })

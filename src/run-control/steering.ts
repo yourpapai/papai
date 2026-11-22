@@ -5,18 +5,37 @@
 
 import { experimental_createSteering } from 'ai'
 
+import { logger } from '../logger.js'
 import type { RunControl, SteeringHandle } from './types.js'
+
+const log = logger.child({ scope: 'run-control:steering' })
+
+/**
+ * Cancelled model calls per run. An interrupt that lands while tools run costs
+ * nothing, but it is still counted, which keeps the bound conservative.
+ */
+export const MAX_INTERRUPTS_PER_RUN = 3
 
 /** One fresh SDK steering handle per `generateText` call — the SDK forbids reuse. */
 export const createSdkSteering = (): SteeringHandle => experimental_createSteering()
 
 /**
- * Record a mid-run message as steering text. The SDK delivers it at the next step
- * boundary and resolves its outcome there (or when the loop ends); an outcome that
- * rejects despite the never-rejects contract is still preserved as a leftover.
+ * Record a mid-run message as steering text. While the interrupt budget allows and
+ * the run is not stopping, the SDK cancels the in-flight model call and redoes the
+ * step with the text; otherwise it delivers at the next step boundary. An outcome
+ * that rejects despite the never-rejects contract is still preserved as a leftover.
  */
 export function requestSteer(run: RunControl, text: string): void {
-  const outcome = run.steering.steer(text).then(
+  const interrupt = !run.stopRequested && run.interruptsRequested < MAX_INTERRUPTS_PER_RUN
+  if (interrupt) {
+    run.interruptsRequested += 1
+  } else {
+    log.debug(
+      { contextId: run.contextId, turnId: run.turnId, interruptsRequested: run.interruptsRequested },
+      'Steering without an interrupt request',
+    )
+  }
+  const outcome = (interrupt ? run.steering.steer(text, { interrupt: true }) : run.steering.steer(text)).then(
     (result) => (result.type === 'delivered' ? null : { text }),
     () => ({ text }),
   )

@@ -12,7 +12,7 @@ import type { AnalyticsSourceFact } from '../../src/analytics/source-facts.js'
 import { getThreadScopedStorageContextId } from '../../src/auth.js'
 import { addAuthorizedGroup } from '../../src/authorized-groups.js'
 import { cacheObservedIncomingMessage } from '../../src/bot-message-caching.js'
-import type { AuthorizationResult, IncomingMessage } from '../../src/chat/types.js'
+import type { AuthorizationResult, IncomingMessage, ReplyFn } from '../../src/chat/types.js'
 import { setConfigValue } from '../../src/config.js'
 import { addGroupMember } from '../../src/groups.js'
 import { appendHistory, loadHistory } from '../../src/history.js'
@@ -21,6 +21,7 @@ import { onIncomingEdit } from '../../src/message-edit/handle.js'
 import type { MessageSegment } from '../../src/message-edit/segments.js'
 import { lastTurnRegistry } from '../../src/run-control/last-turn-registry.js'
 import { runRegistry } from '../../src/run-control/registry.js'
+import type { RunControl } from '../../src/run-control/types.js'
 import { addUser } from '../../src/users.js'
 import {
   createDmMessage,
@@ -32,6 +33,7 @@ import {
   mockLogger,
   seedTestPlatformInstance,
   setupTestDb,
+  type RecordedSteer,
 } from '../utils/test-helpers.js'
 
 const PLATFORM_ID = 'test-instance'
@@ -41,6 +43,28 @@ const scopedDm = (userId: string): string => getThreadScopedStorageContextId(use
 
 function authFor(ctxId: string): AuthorizationResult {
   return { allowed: true, isBotAdmin: false, isGroupAdmin: false, storageContextId: ctxId }
+}
+
+/** Cache the original message and history a W1 edit corrects, then begin a recording run. */
+async function beginW1Fixture(userId: string): Promise<{
+  ctxId: string
+  reply: ReplyFn
+  run: RunControl
+  steerCalls: RecordedSteer[]
+}> {
+  const ctxId = scopedDm(userId)
+  addUser({ userId, platformInstanceId: PLATFORM_ID, addedBy: ADMIN_ID })
+  cacheObservedIncomingMessage({ ...createDmMessage(userId), text: 'hello', messageId: 'm1' }, authFor(ctxId))
+  await flushPendingWrites()
+  appendHistory(ctxId, [makeUserTurn('m1', 'hello')])
+  const { reply } = createMockReply()
+  const { steering, steerCalls } = createRecordingSteering()
+  const run = runRegistry.begin(ctxId, { turnId: 't', reply, originatingMessageIds: ['m1'], steering })
+  return { ctxId, reply, run, steerCalls }
+}
+
+function makeW1Edit(userId: string): IncomingMessage {
+  return { ...createDmMessage(userId), text: 'hi', messageId: 'm1', editedAt: 1 }
 }
 
 function makeUserTurn(messageId: string, text: string): ModelMessage {
@@ -230,6 +254,45 @@ describe('onIncomingEdit', () => {
     // The edit is a correction, not a newly accepted message: no double count.
     expect(facts.some((fact) => fact.type === 'chat_message_accepted')).toBe(false)
     expect(steeredTexts.some((text) => text.includes('Your earlier message was edited'))).toBe(true)
+
+    await runRegistry.end(ctxId)
+  })
+
+  test('W1 edit requests an interrupt while the run is under budget', async () => {
+    const userId = 'w1-interrupt-user'
+    const { ctxId, reply, run, steerCalls } = await beginW1Fixture(userId)
+
+    await onIncomingEdit(chat, makeW1Edit(userId), reply, {})
+
+    expect(steerCalls).toHaveLength(1)
+    expect(steerCalls[0]?.options).toEqual({ interrupt: true })
+    expect(run.interruptsRequested).toBe(1)
+
+    await runRegistry.end(ctxId)
+  })
+
+  test('W1 edit falls back to plain steering at the interrupt cap', async () => {
+    const userId = 'w1-cap-user'
+    const { ctxId, reply, run, steerCalls } = await beginW1Fixture(userId)
+    run.interruptsRequested = 3
+
+    await onIncomingEdit(chat, makeW1Edit(userId), reply, {})
+
+    expect(steerCalls).toHaveLength(1)
+    expect(steerCalls[0]?.options).toBeUndefined()
+
+    await runRegistry.end(ctxId)
+  })
+
+  test('W1 edit falls back to plain steering while the run is stopping', async () => {
+    const userId = 'w1-stop-user'
+    const { ctxId, reply, run, steerCalls } = await beginW1Fixture(userId)
+    run.stopRequested = true
+
+    await onIncomingEdit(chat, makeW1Edit(userId), reply, {})
+
+    expect(steerCalls).toHaveLength(1)
+    expect(steerCalls[0]?.options).toBeUndefined()
 
     await runRegistry.end(ctxId)
   })
