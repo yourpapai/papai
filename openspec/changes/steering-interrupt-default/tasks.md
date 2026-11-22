@@ -19,7 +19,7 @@
 
 ## 3. Full gate
 
-- [ ] 3.1 Run `bun test`, `bun run typecheck`, `bun run lint`, `bun run test:stories`, and `bun run test:mutate:changed --base=HEAD~1`; verify all exit 0, and confirm the architecture pages from 2.4 are in the same commit as the behavior.
+- [x] 3.1 Run `bun test`, `bun run typecheck`, `bun run lint`, `bun run test:stories`, and `bun run test:mutate:changed --base=HEAD~1`; verify all exit 0, and confirm the architecture pages from 2.4 are in the same commit as the behavior.
 
 ## Workflow follow-up
 
