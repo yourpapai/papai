@@ -45,7 +45,7 @@
 ## 6. Cleanup and integration
 
 - [ ] 6.1 Audit `ink`, `ink-testing-library`, and `dependency-cruiser` with `bun pm why` and knip; remove only the packages with no static or dynamic consumer in a separate commit, and verify `bun run knip` passes.
-- [ ] 6.2 Update `docs/architecture/storybook-screenshots.md` for the MSW 3 option name, rprtr `reportOnlyFailedTests`, and the pixelmatch 8 `figma:verify` recalibration; update the `README.md` dependency notes for the held Stryker runner; verify every documented command runs as written.
+- [x] 6.2 Update `docs/architecture/storybook-screenshots.md` for the MSW 3 option name, rprtr `reportOnlyFailedTests`, and the pixelmatch 8 `figma:verify` recalibration; update the `README.md` dependency notes for the held Stryker runner; verify every documented command runs as written.
 - [ ] 6.3 Run the full gate: `bun test`, `bun run typecheck`, `bun run lint`, `bun run check:full`, `bun run test:stories`, and `bun run duplicates`; verify all exit 0 and compare against the baseline reports.
 - [ ] 6.4 Write the follow-up proposal shortlist from design.md — native AI SDK steering first, then tool approvals and native tool search — with source version, papai fit, and required spec delta for each; verify each entry names a `file:line` starting point.
 

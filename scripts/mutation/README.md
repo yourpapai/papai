@@ -29,10 +29,12 @@ metadata only accepts core 9: a Bun patch
 (`patches/@hughescr%2Fstryker-bun-runner@1.3.8.patch`, registered under
 `patchedDependencies` in `package.json`) widens its peer/dependency ranges to
 `^9.0.0 || ^10.0.0`, applying exactly upstream PR
-hughescr/stryker-bun-runner#1. **Delete the patch** (and the
-`patchedDependencies` entry) when any runner release accepting core 10 ships;
-`patchedDependencies` pins the exact version, so drifting breaks loudly at
-install time. Because the score fingerprint hashes `bun.lock` and
+hughescr/stryker-bun-runner#1. **Do not move to 1.4+ yet**: those releases
+accept core 10 but declare `typescript < 7`, and Stryker's config reader fails
+against TypeScript 7 (`ts.parseConfigFileTextToJson`). Delete the patch (and
+the `patchedDependencies` entry) only when a runner release supports both
+Stryker 10 and TypeScript 7; `patchedDependencies` pins the exact version, so
+drifting breaks loudly at install time. Because the score fingerprint hashes `bun.lock` and
 `package.json`, the bump alone invalidated every carried-over score, and
 `baseline.json` was reseeded from a fresh full v10 run (delete the file, then
 `bun test:mutate --update-baseline`) — floors may sit lower than their v9

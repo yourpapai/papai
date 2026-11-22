@@ -62,6 +62,10 @@ interaction steps there and shoot:
 If an MSW-backed story captures blank/loading, add
 `await sharedPage.waitForLoadState('networkidle')` before the assertion.
 
+The Storybook worker starts with MSW 3's `onUnhandledFrame: 'bypass'`
+(`.storybook/preview.ts`): a request no scenario handles goes to the network
+instead of failing the story.
+
 ## What is and isn't committed
 
 - Committed: generated specs under `tests/visual/**` (the reusable test foundation).
@@ -119,6 +123,9 @@ unconditionally. Do not drop the `=all`.
 
 `@crvy/rprtr` is wired in `playwright.config.ts`. Run `bunx crvy-rprtr` to open a
 side-by-side review UI. Drop the reporter line from the config to remove it.
+`reportOnlyFailedTests` is enabled only when `CI=true`, so CI artifacts
+(`crvy-rprtr.html`, `crvy-rprtr-0.json`) keep just the failures while a local
+run keeps the live full report.
 
 ## Syncing stories to Figma
 
@@ -169,6 +176,13 @@ implemented render against the design render:
     `pngjs`, dev-only). Pass/fail is the mismatched-pixel ratio against
     `--threshold` (default 0.1); a failing run writes the diff image under
     `reports/figma-verify/` and names it in the report.
+
+    `pixelmatch` 8 uses the OKLab/HyAB metric (v7 used YIQ). The 0.1 default was
+    re-measured on 2026-11-22: identical renders diff 0; a real change over 12.8%
+    of the frame is 0.138889 under both versions; a 10% global tint is 0 pixels
+    under v7 and 122 pixels (ratio 0.000132) under v8; a 15% tint is 0.978 under
+    both. 0.1 still separates the known-good and known-bad pair, so neither
+    `windowSize` nor a threshold change is needed.
 
 ## Structured UX review
 

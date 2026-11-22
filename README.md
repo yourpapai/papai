@@ -699,10 +699,10 @@ master (`test:mutate:seed`), so a master update landing mid-run cannot lose the
 seed. See `scripts/mutation/README.md` for flags (`--no-ratchet`), the
 override/companion resolution, the record validation rules, the lazy
 record-shape migration, and the one-time migration catch-up note.
-Toolchain: Stryker 10 — the CLI host is Node (≥ 22; only test children run on
-Bun), and `@hughescr/stryker-bun-runner` installs via a Bun patch until
-upstream accepts core 10 (details and deletion condition in
-`scripts/mutation/README.md`).
+Toolchain: Stryker 10.1.1 — the CLI host is Node (≥ 22; only test children
+run on Bun). `@hughescr/stryker-bun-runner` stays pinned at 1.3.8 with its Bun
+patch: 1.4+ declares `typescript < 7`, while this repo runs TypeScript 7
+(details and deletion condition in `scripts/mutation/README.md`).
 
 ---
 
