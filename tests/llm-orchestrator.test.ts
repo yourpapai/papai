@@ -223,7 +223,7 @@ import { appendHistory } from '../src/history.js'
 import { getIdentityMapping, clearIdentityMapping } from '../src/identity/mapping.js'
 import { setContextSettings } from '../src/instances/context-store.js'
 import { getTaskInstance, insertTaskInstance } from '../src/instances/task-store.js'
-import { resetBotMisconfiguredNotifiedForTesting } from '../src/llm-orchestrator.js'
+import { resetBotMisconfiguredNotifiedForTesting } from '../src/llm-orchestrator-unconfigured.testing.js'
 import { ProviderClassifiedError, providerError } from '../src/providers/errors.js'
 import {
   registerContributedTaskProviderType,

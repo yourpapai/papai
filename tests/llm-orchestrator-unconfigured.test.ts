@@ -80,8 +80,8 @@ const installAiMock = (): void => {
 
 installAiMock()
 
-const { defaultDeps, processMessage, resetBotMisconfiguredNotifiedForTesting } =
-  await import('../src/llm-orchestrator.js')
+const { defaultDeps, processMessage } = await import('../src/llm-orchestrator.js')
+const { resetBotMisconfiguredNotifiedForTesting } = await import('../src/llm-orchestrator-unconfigured.testing.js')
 const { resolveLlmForTurn } = await import('../src/llm-orchestrator-unconfigured.js')
 
 const CTX_ID = 'unc-ctx-1'

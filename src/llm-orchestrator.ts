@@ -73,9 +73,6 @@ const maybeEnsureGroupMembership = (configId: string, chatUserId: string, userna
   })
 }
 
-/** Test-only helper to reset the admin-notified guard between tests. */
-export { resetBotMisconfiguredNotifiedForTesting } from './llm-orchestrator-unconfigured.js'
-
 const createProgressReporterForContext = (reply: ReplyFn, contextId: string): AiProgressReporter =>
   createAiProgressReporter(
     reply,
