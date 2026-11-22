@@ -62,10 +62,10 @@ function applyAppGlobals(title: string): Promise<void> {
 
 // mswLoader installs the worker on context.msw for fixturesLoader (and resets
 // handlers between stories). Custom setup keeps the historical
-// `onUnhandledRequest: 'bypass'` behavior of the v2 `initialize()` call.
+// `onUnhandledFrame: 'bypass'` behavior of the v2 `initialize()` call.
 const installMsw = mswLoader(async () => {
   const worker = setupWorker()
-  await worker.start({ onUnhandledRequest: 'bypass' })
+  await worker.start({ onUnhandledFrame: 'bypass' })
   return worker
 })
 

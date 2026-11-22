@@ -24,7 +24,7 @@
 
 ## 4. Wave 3 — tooling/UI majors
 
-- [ ] 4.1 Bump `msw` 3.0.7 and `msw-storybook-addon` 3.0.3; migrate `.storybook/preview.ts` from `onUnhandledRequest: 'bypass'` to `onUnhandledFrame: 'bypass'` and reconcile `MswApi`/`mswLoader` with addon v3; verify `bun run test:stories` and one screenshot per app area pass.
+- [x] 4.1 Bump `msw` 3.0.7 and `msw-storybook-addon` 3.0.3; migrate `.storybook/preview.ts` from `onUnhandledRequest: 'bypass'` to `onUnhandledFrame: 'bypass'` and reconcile `MswApi`/`mswLoader` with addon v3; verify `bun run test:stories` and one screenshot per app area pass.
 - [ ] 4.2 Bump `unpdf` 2.2.1; keep `src/web/pdf.ts` on `getDocumentProxy`/`extractText`; verify `bun test tests/web/pdf.test.ts` and the PDF smoke case pass.
 - [ ] 4.3 Bump `happy-dom` 21.0.4 and `@happy-dom/global-registrator` 21.0.4; verify `bun run test:client` passes without enabling CSS/iframe loading.
 - [ ] 4.4 Bump `pixelmatch` 8.0.0; recalibrate only the `figma:verify` threshold (`DEFAULT_COMPARE_THRESHOLD = 0.1`) from a known-good/known-bad pair, using `windowSize` only if it preserves real-change detection; verify the pair produces the expected pass/fail and record the measured ratio change. Do not change `playwright.config.ts` thresholds for this bump.
