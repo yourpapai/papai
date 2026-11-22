@@ -16,11 +16,11 @@
 
 ## 3. Wave 2 — AI SDK family
 
-- [ ] 3.1 Add or confirm a steering regression test that drains the queue exactly once across `prepareStep` calls (`tests/run-control/steering-prepare-step.test.ts` or the orchestrator suite); verify the test passes on the pre-bump code.
-- [ ] 3.2 Bump `ai` to 7.0.179, `@ai-sdk/openai-compatible` to 3.0.94, `@ai-sdk/provider` to 4.0.39, and `ai-tokenizer` to 1.0.7; verify `bun install` and `bun run typecheck` pass.
-- [ ] 3.3 Run the LLM suites (`bun test tests/llm-orchestrator* tests/run-control tests/tools/disclosure tests/long-term-memory tests/web/distill tests/llm-model-builder*`); verify all pass, especially steering queue drain and disclosure `activeTools`.
-- [ ] 3.4 Run the LLM suite with the SDK's deprecation warnings enabled (or inspect the captured test output) and grep for `AI_SDK_` deprecation codes; verify no deprecated API in use is reported.
-- [ ] 3.5 Commit Wave 2; verify the diff is limited to the four manifests, lockfile, and the steering test.
+- [x] 3.1 Add or confirm a steering regression test that drains the queue exactly once across `prepareStep` calls (`tests/run-control/steering-prepare-step.test.ts` or the orchestrator suite); verify the test passes on the pre-bump code.
+- [x] 3.2 Bump `ai` to 7.0.179, `@ai-sdk/openai-compatible` to 3.0.94, `@ai-sdk/provider` to 4.0.39, and `ai-tokenizer` to 1.0.7; verify `bun install` and `bun run typecheck` pass.
+- [x] 3.3 Run the LLM suites (`bun test tests/llm-orchestrator* tests/run-control tests/tools/disclosure tests/long-term-memory tests/web/distill tests/llm-model-builder*`); verify all pass, especially steering queue drain and disclosure `activeTools`.
+- [x] 3.4 Run the LLM suite with the SDK's deprecation warnings enabled (or inspect the captured test output) and grep for `AI_SDK_` deprecation codes; verify no deprecated API in use is reported.
+- [x] 3.5 Commit Wave 2; verify the diff is limited to the four manifests, lockfile, and the steering test.
 
 ## 4. Wave 3 — tooling/UI majors
 

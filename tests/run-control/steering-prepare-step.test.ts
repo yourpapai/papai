@@ -36,6 +36,26 @@ describe('createSteeringPrepareStep', () => {
     expect(step({ stepNumber: 2, steps: [], messages: base })).toBeUndefined()
   })
 
+  test('injects a multi-message queue exactly once across prepareStep calls', () => {
+    const run = makeRun()
+    run.steerQueue.push({ text: 'first steer' }, { text: 'second steer' })
+    const step = createSteeringPrepareStep(run)
+    const base = [{ role: 'user' as const, content: 'base' }]
+
+    const first = step({ stepNumber: 1, steps: [], messages: base })
+    const firstMessages = [
+      ...base,
+      { role: 'user' as const, content: 'first steer' },
+      { role: 'user' as const, content: 'second steer' },
+    ]
+    expect(first?.messages).toEqual(firstMessages)
+    expect(run.steerQueue).toEqual([])
+
+    // The SDK feeds the prior step's returned messages back into the next call.
+    // A drained queue must add nothing, so the steer turns appear exactly once.
+    expect(step({ stepNumber: 2, steps: [], messages: firstMessages })).toBeUndefined()
+  })
+
   test('delivers the raw steer text verbatim to the LLM messages', () => {
     const run = makeRun()
     const secret = 'steer text with sensitive detail 12345'

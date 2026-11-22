@@ -122,12 +122,12 @@
     "loc:history": "bun scripts/loc-history.ts"
   },
   "dependencies": {
-    "@ai-sdk/openai-compatible": "^3.0.41",
-    "@ai-sdk/provider": "^4.0.9",
+    "@ai-sdk/openai-compatible": "^3.0.94",
+    "@ai-sdk/provider": "^4.0.39",
     "@gramio/format": "^0.12.1",
     "@modelcontextprotocol/sdk": "^1.32.2",
-    "ai": "^7.0.87",
-    "ai-tokenizer": "^1.0.6",
+    "ai": "^7.0.179",
+    "ai-tokenizer": "^1.0.7",
     "date-fns-tz": "^3.2.0",
     "defuddle": "^0.19.13",
     "discord.js": "^14.28.1",
