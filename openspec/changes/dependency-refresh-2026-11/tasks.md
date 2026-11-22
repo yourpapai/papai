@@ -28,7 +28,7 @@
 - [x] 4.2 Bump `unpdf` 2.2.1; keep `src/web/pdf.ts` on `getDocumentProxy`/`extractText`; verify `bun test tests/web/pdf.test.ts` and the PDF smoke case pass.
 - [x] 4.3 Bump `happy-dom` 21.0.4 and `@happy-dom/global-registrator` 21.0.4; verify `bun run test:client` passes without enabling CSS/iframe loading.
 - [x] 4.4 Bump `pixelmatch` 8.0.0; recalibrate only the `figma:verify` threshold (`DEFAULT_COMPARE_THRESHOLD = 0.1`) from a known-good/known-bad pair, using `windowSize` only if it preserves real-change detection; verify the pair produces the expected pass/fail and record the measured ratio change. Do not change `playwright.config.ts` thresholds for this bump.
-- [ ] 4.5 Bump `oxc-parser` to exactly `0.159.0`; verify `bun test tests/plugins tests/story tests/smoke` passes, including the `walkNodes` paths.
+- [x] 4.5 Bump `oxc-parser` to exactly `0.159.0`; verify `bun test tests/plugins tests/story tests/smoke` passes, including the `walkNodes` paths.
 - [ ] 4.6 Bump `oxlint` 1.94.0 and `oxlint-tsgolint` 7.0.2008 together; run `bun run lint` and `bun run typecheck`, fix new findings without disable comments, and verify both exit 0.
 - [ ] 4.7 Run `bun run format` after the oxfmt 0.79 bump; inspect the HTML/Svelte diff and verify `bun run format:check` exits 0.
 - [ ] 4.8 Bump `@playwright/test` 1.65.1; verify `bun run test:e2e` and `bun run shoot` pass under Bun. Do not add `onlyFailures` reporters: the project uses `list` + rprtr, and a failure-only artifact path is a separate change.

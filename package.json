@@ -136,7 +136,7 @@
     "ipaddr.js": "^2.5.0",
     "linkedom": "^0.18.15",
     "marked": "^18.2.1",
-    "oxc-parser": "0.147.0",
+    "oxc-parser": "0.159.0",
     "p-limit": "^7.3.3",
     "pino": "^10.4.0",
     "rrule-temporal": "^2.3.0",
