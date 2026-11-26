@@ -36,6 +36,8 @@ See LICENSE in the project root for details.
 
 **Optional runtime flags:** `DEBUG_SERVER`, `DEBUG_HOSTNAME`, `DEBUG_PORT`, `LOG_LEVEL`. `KANEO_CLIENT_URL`/`KANEO_INTERNAL_URL` are no longer bootstrap vars but are still read at runtime by the Kaneo provisioning route (`src/debug/settings/provision-routes.ts`); `KANEO_INTERNAL_URL` also carries internal bot-to-Kaneo traffic.
 
+**Kaneo provisioning route** (`src/debug/settings/provision-routes.ts`) — the synthetic Better Auth account email is derived from the context's config context id, or from the platform username when the route has one, and sanitized to `[A-Za-z0-9._-]` before the random suffix (`toProvisionEmailLocalPart`, `plugins/task-provider-kaneo/provision-requests.ts`). Group contexts pass their scoped config context id (`pi:<b64>:ctx:<b64>`) with no username, so the raw id can never reach the sign-up body. Groups provisioned by an older build failed sign-up with `400 … Invalid email address` and have no stored binding: re-run **Provision** for each of them (settings → group → Task provider) after upgrading. There is no group auto-provision — only a new explicit Provision attempt retries a failed group.
+
 **`NOTIFY_TOKEN`** — optional bearer token guarding the proactive-notify endpoint (`POST /api/notify`, `src/debug/notify-route.ts`). Lazily seeded once into the `notify_token` `system_config` key on first read (`src/notify-token.ts`), then cached for the process lifetime, so **rotating it requires a restart**. When unset, `/api/notify` returns `503`. Consumed by an external ACP control service to push coding-session milestones into chat.
 
 **Analytics HMAC keyrings (required only for the pseudonymous longitudinal lane):**

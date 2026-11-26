@@ -13,8 +13,8 @@
 
 ## 3. Documentation
 
-- [ ] 3.1 Update `docs/architecture/environment.md` (provision route section) to state that the synthetic account identity is sanitized from the config context id/user id and that groups provisioned while this was broken must re-run Provision — verify with `bun run format:check`
-- [ ] 3.2 Update `docs/architecture/plugins.md` (provider provision hook) to record the identity contract: the hook receives an opaque config context id, so a provider deriving an account identity from it must sanitize it — verify with `bun run format:check`
+- [x] 3.1 Update `docs/architecture/environment.md` (provision route section) to state that the synthetic account identity is sanitized from the config context id/user id and that groups provisioned while this was broken must re-run Provision — verify with `bun run format:check`
+- [x] 3.2 Update `docs/architecture/plugins.md` (provider provision hook) to record the identity contract: the hook receives an opaque config context id, so a provider deriving an account identity from it must sanitize it — verify with `bun run format:check`
 
 ## 4. Integration verification
 
