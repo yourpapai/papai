@@ -456,6 +456,76 @@ describe('invokeWithLiveStatus locale', () => {
   })
 })
 
+describe('invokeWithLiveStatus verifier history', () => {
+  beforeEach(async () => {
+    mockLogger()
+    await setupTestDb()
+  })
+
+  test('a delivered steering message reaches the verifier history', async () => {
+    const steer: ModelMessage = { role: 'user', content: 'only project X' }
+    const model = new MockLanguageModelV3({
+      doGenerate: {
+        content: [],
+        finishReason: { unified: 'stop', raw: undefined },
+        usage: {
+          inputTokens: { total: 10, noCache: 0, cacheRead: 0, cacheWrite: 0 },
+          outputTokens: { total: 0, text: 0, reasoning: 0 },
+        },
+        warnings: [],
+      },
+    })
+    const generated = await generateText({ model, prompt: 'hi' })
+    // The result's fields are prototype getters, so mutate the real step instead of
+    // spreading the result: `collectTurnMessages` reads the field directly.
+    for (const step of generated.steps) {
+      Object.defineProperty(step, 'experimental_steeringMessages', { value: [steer], enumerable: true })
+    }
+    const captured: Array<Parameters<InvokeModelArgs['deps']['generateText']>[0]> = []
+    const progressReporter: AiProgressReporter = {
+      toolStarted: (): void => {},
+      toolFinished: (): void => {},
+      reasoning: (): void => {},
+      flush: () => Promise.resolve(),
+    }
+
+    await invokeWithLiveStatus({
+      reply: createMockReply().reply,
+      invokeArgs: {
+        contextId: 'ctx-steer-verifier',
+        chatUserId: 'user-1',
+        contextType: 'dm',
+        mainModel: 'gpt-4o',
+        model,
+        provider: null,
+        tools: {},
+        enabledToolNames: new Set<string>(),
+        messages: [{ role: 'user', content: 'hello' }],
+        turnId: 'turn-steer-verifier',
+        providerRequestScope: NO_ANALYTICS_SCOPE,
+        toolApproval: () => Promise.resolve('not-applicable'),
+        deps: {
+          generateText: (options) => {
+            captured.push(options)
+            return Promise.resolve(generated)
+          },
+          stepCountIs,
+          buildModel: () => model,
+          resolve: () => null,
+          maybeAutoProvision: () => Promise.resolve(false),
+        },
+      },
+      progressReporter,
+      liveStatusEnabled: false,
+    })
+
+    // Call 1 is the turn; call 2 is the verifier round-trip over the collected trace.
+    const verifierOptions = captured[1]
+    assert.ok(verifierOptions !== undefined, 'expected a verifier call')
+    expect(verifierOptions.messages).toContainEqual(steer)
+  })
+})
+
 // Real-logger capture window (logging-privacy pattern): the shared logger is
 // constructed at 'silent' by tests/setup, so its fixed-level multistream legs
 // stay quiet even while a test raises the root level; this dedicated

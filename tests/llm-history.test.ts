@@ -9,7 +9,7 @@ import type { ModelMessage } from 'ai'
 
 import * as conversationModule from '../src/conversation.js'
 import * as historyModule from '../src/history.js'
-import { appendAssistantHistory } from '../src/llm-history.js'
+import { appendAssistantHistory, recordAssistantTurn } from '../src/llm-history.js'
 import * as captureDebouncModule from '../src/long-term-memory/capture-debounce.js'
 import * as memoryRunnerModule from '../src/long-term-memory/runner.js'
 import { mockLogger } from './utils/test-helpers.js'
@@ -160,5 +160,96 @@ describe('appendAssistantHistory', () => {
       history: [...history, ...assistantMessages],
       actorRole: 'member',
     })
+  })
+})
+
+describe('recordAssistantTurn', () => {
+  const spies: SpyInstance[] = []
+
+  afterEach(() => {
+    for (const spy of spies) spy.mockRestore()
+    spies.length = 0
+  })
+
+  const track = <T extends SpyInstance>(spy: T): T => {
+    spies.push(spy)
+    return spy
+  }
+
+  const setUp = (): { appendCalls: ModelMessage[][] } => {
+    mockLogger()
+    const appendCalls: ModelMessage[][] = []
+    track(
+      spyOn(historyModule, 'appendHistory').mockImplementation((_id: string, msgs: readonly ModelMessage[]) => {
+        appendCalls.push([...msgs])
+      }),
+    )
+    track(spyOn(conversationModule, 'shouldTriggerTrim').mockReturnValue(false))
+    track(
+      spyOn(conversationModule, 'runTrimInBackground').mockImplementation((...args: unknown[]) => {
+        void args
+        return Promise.resolve()
+      }),
+    )
+    track(
+      spyOn(memoryRunnerModule, 'runMemoryExtractionInBackground').mockImplementation((...args: unknown[]) => {
+        void args
+        return Promise.resolve()
+      }),
+    )
+    track(
+      spyOn(captureDebouncModule, 'armMemoryCapture').mockImplementation((...args: unknown[]) => {
+        void args
+      }),
+    )
+    return { appendCalls }
+  }
+
+  const meta = { contextId: 'ctx', configId: 'cfg', mainModel: 'gpt-4o', contextType: 'dm' as const }
+  const turn = {
+    baseHistory: [{ role: 'user', content: 'hi' }] satisfies ModelMessage[],
+    historyMessage: { role: 'user', content: 'hi' } satisfies ModelMessage,
+  }
+
+  test('persists delivered steering messages in place, before the step that received them', () => {
+    const { appendCalls } = setUp()
+    const steer: ModelMessage = { role: 'user', content: 'only project X' }
+    const answer: ModelMessage = { role: 'assistant', content: 'Done.' }
+    const result = {
+      finishReason: 'stop',
+      steps: [{ experimental_steeringMessages: [steer], response: { messages: [answer] } }],
+    }
+
+    recordAssistantTurn(meta, turn, result)
+
+    expect(appendCalls[0]).toEqual([steer, answer])
+  })
+
+  test('drops an excluded steer text with one-removal semantics', () => {
+    const { appendCalls } = setUp()
+    const steer: ModelMessage = { role: 'user', content: 'only project X' }
+    const answer: ModelMessage = { role: 'assistant', content: 'Done.' }
+    const result = {
+      finishReason: 'stop',
+      steps: [{ experimental_steeringMessages: [steer, steer], response: { messages: [answer] } }],
+    }
+
+    recordAssistantTurn(meta, turn, result, ['only project X'])
+
+    expect(appendCalls[0]).toEqual([steer, answer])
+  })
+
+  test('keeps every occurrence when nothing is excluded', () => {
+    const { appendCalls } = setUp()
+    const steer: ModelMessage = { role: 'user', content: 'only project X' }
+    const answer: ModelMessage = { role: 'assistant', content: 'Done.' }
+    const result = {
+      finishReason: 'stop',
+      steps: [{ experimental_steeringMessages: [steer, steer], response: { messages: [answer] } }],
+    }
+
+    recordAssistantTurn(meta, turn, result, [])
+
+    expect(appendCalls[0]).toEqual([steer, steer, answer])
   })
 })

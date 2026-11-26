@@ -197,7 +197,7 @@ const runTurn = async (args: RunTurnArgs): Promise<InjectedMessage[]> => {
       contextType,
       actorRole,
     }
-    recordAssistantTurn(meta, turn, result)
+    recordAssistantTurn(meta, turn, result, run.excludedSteerTexts)
     if (run.stopRequested) await reply.formatted(buildStopSummary(run.completedEffects, { forced: false, locale }))
   } catch (error) {
     await reportTurnFailure({ ...args, error, locale })

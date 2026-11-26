@@ -61,6 +61,34 @@ describe('requestSteer', () => {
     expect(steered).toEqual(['only project X'])
     expect(run.pendingSteerOutcomes).toHaveLength(1)
   })
+
+  test('persists to history by default', () => {
+    const run = makeRun(createRecordingSteering().steering)
+
+    requestSteer(run, 'only project X')
+
+    expect(run.excludedSteerTexts).toEqual([])
+  })
+
+  test('{ persistInHistory: false } records the text once on the run', () => {
+    const run = makeRun(createRecordingSteering().steering)
+
+    requestSteer(run, 'only project X', { persistInHistory: false })
+
+    expect(run.excludedSteerTexts).toEqual(['only project X'])
+    expect(run.pendingSteerOutcomes).toHaveLength(1)
+  })
+
+  test('an undelivered steer leaves a leftover without an exclusion entry', async () => {
+    const run = makeRun(createFakeSteering(() => Promise.resolve(notDelivered('finished'))))
+    run.steeringStarted = true
+
+    requestSteer(run, 'only project X')
+    await settleSteering(run)
+
+    expect(run.steerLeftovers).toEqual([{ text: 'only project X' }])
+    expect(run.excludedSteerTexts).toEqual([])
+  })
 })
 
 describe('settleSteering', () => {

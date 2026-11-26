@@ -101,14 +101,42 @@ export type AssistantTurnMeta = {
 }
 
 /**
+ * Drop steering messages whose text the run excluded from history.
+ *
+ * Matching is by text with one-removal semantics: two identical steers can arrive in one
+ * run and only one may be excluded, and the SDK exposes no id or tag to tell them apart.
+ * Non-steering messages are never dropped, and no text is logged.
+ */
+const withoutExcludedSteers = (messages: readonly ModelMessage[], excluded: readonly string[]): ModelMessage[] => {
+  if (excluded.length === 0) return [...messages]
+  const remaining = [...excluded]
+  const kept: ModelMessage[] = []
+  for (const message of messages) {
+    if (message.role === 'user' && typeof message.content === 'string') {
+      const match = remaining.indexOf(message.content)
+      if (match !== -1) {
+        remaining.splice(match, 1)
+        continue
+      }
+    }
+    kept.push(message)
+  }
+  return kept
+}
+
+/**
  * Persist a completed LLM turn. A `finishReason` of `'tool-calls'` means the turn stopped mid-task
  * at the tool-step cap and will be resumed by "continue"; it is forwarded as `truncated` so the trim
  * that would otherwise collapse the in-progress tool trace is deferred until the task completes.
+ *
+ * Delivered steering messages are persisted in place, except text the run excluded because the
+ * stored user turn already carries that correction.
  */
 export const recordAssistantTurn = (
   meta: AssistantTurnMeta,
   turn: { baseHistory: readonly ModelMessage[]; historyMessage: ModelMessage },
   result: TurnMessagesResult & { finishReason?: string },
+  excludedSteerTexts: readonly string[] = [],
 ): void => {
   appendAssistantTurnHistory(
     meta.contextId,
@@ -116,7 +144,7 @@ export const recordAssistantTurn = (
     meta.mainModel,
     turn.baseHistory,
     turn.historyMessage,
-    collectTurnMessages(result),
+    withoutExcludedSteers(collectTurnMessages(result), excludedSteerTexts),
     meta.contextType,
     meta.actorRole,
     result.finishReason === 'tool-calls',

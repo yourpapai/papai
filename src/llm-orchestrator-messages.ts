@@ -5,7 +5,15 @@
 
 import type { ModelMessage } from 'ai'
 
-type StepLike = { response?: { messages?: readonly ModelMessage[] } }
+type StepLike = {
+  /**
+   * Steering text the SDK delivered to this step. It is added to the step's *input*,
+   * so it never appears in `response.messages`. Experimental in the pinned SDK; read
+   * it defensively and keep it optional so a result without it collects as before.
+   */
+  experimental_steeringMessages?: readonly ModelMessage[]
+  response?: { messages?: readonly ModelMessage[] }
+}
 
 /** The subset of an AI SDK `generateText` result we read to reconstruct a turn's messages. */
 export type TurnMessagesResult = {
@@ -22,8 +30,18 @@ export type TurnMessagesResult = {
  * therefore drops the whole tool trace, which breaks history persistence (a resumed turn loses
  * the tool context) and tool-failure detection (the failing tool-result is never inspected).
  * The full, ordered trace lives on `result.steps[].response.messages`; flatten it.
+ *
+ * Delivered steering text lives on `steps[].experimental_steeringMessages` — it is part of the
+ * step's *input*, not its response — so it is flattened immediately before that step's response
+ * messages, in the position the model saw it. Inclusion here is unconditional: persistence
+ * applies exclusions, while the verifier and failure detection read the same trace the model saw.
  */
+const flattenStep = (step: StepLike): ModelMessage[] => [
+  ...(step.experimental_steeringMessages ?? []),
+  ...(step.response?.messages ?? []),
+]
+
 export const collectTurnMessages = (result: TurnMessagesResult): ModelMessage[] =>
   result.steps === undefined || result.steps.length === 0
-    ? [...(result.finalStep?.response?.messages ?? [])]
-    : result.steps.flatMap((step) => [...(step.response?.messages ?? [])])
+    ? flattenStep(result.finalStep ?? {})
+    : result.steps.flatMap(flattenStep)

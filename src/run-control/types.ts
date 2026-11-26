@@ -53,6 +53,13 @@ export type RunControl = {
   /** Steer text the SDK reported as not delivered, kept for fresh-turn replay. */
   steerLeftovers: InjectedMessage[]
   /**
+   * Steer text that must not be persisted: the W1 edit notice when `applyEditToHistory` already
+   * rewrote the stored user turn, so persisting it would store the correction twice. Ordered, so
+   * filtering the collected messages can remove one occurrence per entry. In-memory only and
+   * thread-isolated by the run's `storageContextId`.
+   */
+  excludedSteerTexts: string[]
+  /**
    * Interrupt requests made this run, counted at request time. Bounded by
    * `MAX_INTERRUPTS_PER_RUN`; a cancelled call is not a step but can still be
    * billed, so the bound keeps that cost predictable.

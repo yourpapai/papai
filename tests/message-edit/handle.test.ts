@@ -46,7 +46,10 @@ function authFor(ctxId: string): AuthorizationResult {
 }
 
 /** Cache the original message and history a W1 edit corrects, then begin a recording run. */
-async function beginW1Fixture(userId: string): Promise<{
+async function beginW1Fixture(
+  userId: string,
+  opts: { storedTurn?: boolean } = {},
+): Promise<{
   ctxId: string
   reply: ReplyFn
   run: RunControl
@@ -56,7 +59,7 @@ async function beginW1Fixture(userId: string): Promise<{
   addUser({ userId, platformInstanceId: PLATFORM_ID, addedBy: ADMIN_ID })
   cacheObservedIncomingMessage({ ...createDmMessage(userId), text: 'hello', messageId: 'm1' }, authFor(ctxId))
   await flushPendingWrites()
-  appendHistory(ctxId, [makeUserTurn('m1', 'hello')])
+  if (opts.storedTurn !== false) appendHistory(ctxId, [makeUserTurn('m1', 'hello')])
   const { reply } = createMockReply()
   const { steering, steerCalls } = createRecordingSteering()
   const run = runRegistry.begin(ctxId, { turnId: 't', reply, originatingMessageIds: ['m1'], steering })
@@ -166,6 +169,28 @@ describe('onIncomingEdit', () => {
     expect(loadHistory(ctxId).find((m) => m.role === 'user')?.content).toBe('hi')
     expect(getMessageByContext(ctxId, 'm1')?.text).toBe('hi')
 
+    await runRegistry.end(ctxId)
+  })
+
+  test('W1 edit of a stored message excludes the synthetic notice from history', async () => {
+    const userId = 'w1-stored-exclusion-user'
+    const { ctxId, reply, run } = await beginW1Fixture(userId)
+
+    await onIncomingEdit(chat, makeW1Edit(userId), reply, {})
+
+    // The rewritten stored turn is the durable record; the notice would be a second copy.
+    expect(run.excludedSteerTexts).toEqual(['⟲ Your earlier message was edited. New version:\n\nhi'])
+    await runRegistry.end(ctxId)
+  })
+
+  test('W1 edit of a steer-only message persists the synthetic notice', async () => {
+    const userId = 'w1-steer-only-user'
+    const { ctxId, reply, run } = await beginW1Fixture(userId, { storedTurn: false })
+
+    await onIncomingEdit(chat, makeW1Edit(userId), reply, {})
+
+    // No stored user turn was rewritten, so the notice is the only record of the correction.
+    expect(run.excludedSteerTexts).toEqual([])
     await runRegistry.end(ctxId)
   })
 

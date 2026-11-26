@@ -51,4 +51,41 @@ describe('collectTurnMessages', () => {
 
     expect(collectTurnMessages(result)).toEqual([answer])
   })
+
+  test("places each step's delivered steering messages before that step's response messages", () => {
+    const firstSteer = msg('user', 'only project X')
+    const toolCall = msg('assistant', 'call create_task')
+    const secondSteer = msg('user', 'and use tabs')
+    const answer = msg('assistant', 'Done.')
+    const result = {
+      steps: [
+        { experimental_steeringMessages: [firstSteer], response: { messages: [toolCall] } },
+        { experimental_steeringMessages: [secondSteer], response: { messages: [answer] } },
+      ],
+      finalStep: { response: { messages: [answer] } },
+    }
+
+    expect(collectTurnMessages(result)).toEqual([firstSteer, toolCall, secondSteer, answer])
+  })
+
+  test('includes steering messages in the final-step fallback', () => {
+    const steer = msg('user', 'only project X')
+    const answer = msg('assistant', 'Done.')
+    const result = {
+      finalStep: { experimental_steeringMessages: [steer], response: { messages: [answer] } },
+    }
+
+    expect(collectTurnMessages(result)).toEqual([steer, answer])
+  })
+
+  test('keeps the current output when a result carries no steering field', () => {
+    const toolCall = msg('assistant', 'call create_task')
+    const answer = msg('assistant', 'Done.')
+    const result = {
+      steps: [{ response: { messages: [toolCall] } }, { response: { messages: [answer] } }],
+      finalStep: { response: { messages: [answer] } },
+    }
+
+    expect(collectTurnMessages(result)).toEqual([toolCall, answer])
+  })
 })

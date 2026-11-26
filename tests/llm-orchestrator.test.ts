@@ -24,9 +24,12 @@ import type { LlmOrchestratorDeps } from '../src/llm-orchestrator-types.js'
 import { defaultDeps, processMessage, resolveAiOutputSettingsContextId } from '../src/llm-orchestrator.js'
 import { clearLlmAdminCacheForTesting } from '../src/llm-providers/store.testing.js'
 import type { TaskProvider } from '../src/providers/types.js'
+import { runRegistry } from '../src/run-control/registry.js'
+import { requestSteer } from '../src/run-control/steering.js'
 import type { MemoryFact } from '../src/types/memory.js'
 import { createMockProvider } from './tools/mock-provider.js'
 import {
+  createFakeSteering,
   createMockReply,
   mockLogger,
   seedAdminLlmBinding,
@@ -1645,6 +1648,96 @@ describe('processMessage', () => {
       const facts = getCachedFacts(ctxId)
       expect(containsFact(facts, { identifier: '#1', title: 'First task', url: '' })).toBe(true)
       expect(containsFact(facts, { identifier: '#2', title: 'Second task', url: '' })).toBe(true)
+    })
+  })
+
+  describe('mid-run steer persistence', () => {
+    test('a delivered steer is persisted once, before the step that received it', async () => {
+      const ctxId = 'steer-history-delivered'
+      seedConfigForContext(ctxId)
+      const deliveredOutcome = {
+        type: 'delivered' as const,
+        id: 'steer-1',
+        message: { role: 'user' as const, content: 'only project X' },
+        stepNumber: 1,
+      }
+      generateTextImpl = (): Promise<GenerateTextResult> =>
+        Promise.resolve({
+          text: 'Done!',
+          toolCalls: [],
+          toolResults: [],
+          steps: [
+            {
+              experimental_steeringMessages: [{ role: 'user' as const, content: 'only project X' }],
+              response: { messages: [{ role: 'assistant' as const, content: 'Done!' }] },
+            },
+          ],
+          finalStep: { response: { messages: [{ role: 'assistant' as const, content: 'Done!' }] } },
+          usage: {},
+          finishReason: 'stop',
+          warnings: undefined,
+          request: {},
+          providerMetadata: undefined,
+        })
+      const deps: LlmOrchestratorDeps = {
+        ...defaultDeps,
+        createSteering: (): ReturnType<typeof createFakeSteering> =>
+          createFakeSteering(() => Promise.resolve(deliveredOutcome)),
+        generateText: (...args) => {
+          const run = runRegistry.get(ctxId)
+          assert.ok(run !== undefined, 'expected an active run')
+          run.steeringStarted = true
+          requestSteer(run, 'only project X')
+          return defaultDeps.generateText(...args)
+        },
+      }
+      const { reply } = createMockReply()
+
+      await processMessage(reply, ctxId, 'user-1', null, 'hello', 'dm', undefined, deps)
+
+      const history = getCachedHistory(ctxId)
+      const steerIndex = history.findIndex((m) => m.role === 'user' && m.content === 'only project X')
+      const answerIndex = history.findIndex((m) => m.role === 'assistant' && m.content === 'Done!')
+      expect(history.filter((m) => m.content === 'only project X')).toHaveLength(1)
+      expect(steerIndex).toBeGreaterThanOrEqual(0)
+      expect(steerIndex).toBeLessThan(answerIndex)
+    })
+
+    test('an undelivered steer is absent from the run history and persists only through the replay turn', async () => {
+      const ctxId = 'steer-history-undelivered'
+      seedConfigForContext(ctxId)
+      const notDeliveredOutcome = {
+        type: 'not-delivered' as const,
+        id: 'steer-1',
+        message: { role: 'user' as const, content: 'and use tabs' },
+        reason: 'finished' as const,
+      }
+      let generateCalls = 0
+      generateTextImpl = defaultGenerateTextResult
+      const deps: LlmOrchestratorDeps = {
+        ...defaultDeps,
+        createSteering: (): ReturnType<typeof createFakeSteering> =>
+          createFakeSteering(() => Promise.resolve(notDeliveredOutcome)),
+        generateText: (...args) => {
+          generateCalls += 1
+          if (generateCalls === 1) {
+            const run = runRegistry.get(ctxId)
+            assert.ok(run !== undefined, 'expected an active run')
+            run.steeringStarted = true
+            requestSteer(run, 'and use tabs')
+          }
+          return defaultDeps.generateText(...args)
+        },
+      }
+      const { reply } = createMockReply()
+
+      await processMessage(reply, ctxId, 'user-1', null, 'hello', 'dm', undefined, deps)
+
+      const history = getCachedHistory(ctxId)
+      expect(history.filter((m) => m.content === 'and use tabs')).toHaveLength(0)
+      expect(history.filter((m) => typeof m.content === 'string' && m.content.endsWith('\nand use tabs'))).toHaveLength(
+        1,
+      )
     })
   })
 

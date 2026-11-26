@@ -141,6 +141,55 @@ describe('sendLlmResponse verification wiring', () => {
     )
   })
 
+  test('a delivered steering message in the trace does not hide a tool failure', async () => {
+    mockLogger()
+    const reply = createMockReply()
+    let invoked = 0
+    await sendLlmResponse(
+      reply.reply,
+      'ctx-1',
+      {
+        ...baseResult,
+        text: 'All set — moved to Done.',
+        steps: [
+          {
+            experimental_steeringMessages: [{ role: 'user', content: 'only project X' }],
+            response: {
+              messages: [
+                {
+                  role: 'tool',
+                  content: [
+                    {
+                      type: 'tool-result',
+                      toolCallId: 'c1',
+                      toolName: 'move_task',
+                      output: { type: 'execution-denied', reason: 'policy denied the call' },
+                    },
+                  ],
+                },
+              ],
+            },
+          },
+        ],
+      },
+      undefined,
+      {
+        history: [],
+        verifier: {
+          readOnlyToolset: undefined,
+          invokeVerifier: (): Promise<{ text: string | undefined }> => {
+            invoked += 1
+            return Promise.resolve({ text: 'The move was denied by policy.' })
+          },
+        },
+      },
+    )
+    // A confident-text turn is risky only because the failure was detected through
+    // the same collected trace that now carries the steering message.
+    expect(invoked).toBe(1)
+    expect(reply.textCalls).toContain('The move was denied by policy.')
+  })
+
   test('a failing verifier on a risky turn with model text delivers the model text', async () => {
     mockLogger()
     const reply = createMockReply()

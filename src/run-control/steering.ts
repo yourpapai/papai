@@ -24,8 +24,20 @@ export const createSdkSteering = (): SteeringHandle => experimental_createSteeri
  * the run is not stopping, the SDK cancels the in-flight model call and redoes the
  * step with the text; otherwise it delivers at the next step boundary. An outcome
  * that rejects despite the never-rejects contract is still preserved as a leftover.
+ *
+ * `persistInHistory: false` marks the text as excluded from the turn's persisted
+ * history — the W1 edit notice whose correction is already stored in the rewritten
+ * user turn. The exclusion is recorded at request time, so it survives the outcome
+ * settling after the model loop returns. Logs carry counts, never steering text.
  */
-export function requestSteer(run: RunControl, text: string): void {
+export function requestSteer(run: RunControl, text: string, opts: { persistInHistory?: boolean } = {}): void {
+  if (opts.persistInHistory === false) {
+    run.excludedSteerTexts.push(text)
+    log.debug(
+      { contextId: run.contextId, turnId: run.turnId, excludedSteerCount: run.excludedSteerTexts.length },
+      'Steering text excluded from persisted history',
+    )
+  }
   const interrupt = !run.stopRequested && run.interruptsRequested < MAX_INTERRUPTS_PER_RUN
   if (interrupt) {
     run.interruptsRequested += 1

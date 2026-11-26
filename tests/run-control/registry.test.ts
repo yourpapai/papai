@@ -61,6 +61,7 @@ describe('RunRegistry', () => {
     expect(run.steerLeftovers).toEqual([])
     expect(run.completedEffects).toEqual([])
     expect(run.interruptsRequested).toBe(0)
+    expect(run.excludedSteerTexts).toEqual([])
     expect(registry.get('ctx-1')).toBe(run)
   })
 
@@ -75,6 +76,18 @@ describe('RunRegistry', () => {
     const second = registry.begin('ctx-1', { turnId: 't2', reply, originatingMessageIds: [] })
 
     expect(second.interruptsRequested).toBe(0)
+  })
+
+  test('a new run for the same context starts with an empty steer-exclusion list', () => {
+    const { reply } = createMockReply()
+    const { steering } = createRecordingSteering()
+    const first = registry.begin('ctx-1', { turnId: 't1', reply, originatingMessageIds: [], steering })
+    requestSteer(first, 'only project X', { persistInHistory: false })
+    expect(first.excludedSteerTexts).toEqual(['only project X'])
+
+    const second = registry.begin('ctx-1', { turnId: 't2', reply, originatingMessageIds: [] })
+
+    expect(second.excludedSteerTexts).toEqual([])
   })
 
   test('two storage contexts count interrupts independently', () => {
@@ -146,6 +159,17 @@ describe('RunRegistry', () => {
 
   test('end on unknown context returns an empty array', async () => {
     expect(await registry.end('nope')).toEqual([])
+  })
+
+  test('end returns leftover text only — an excluded delivered steer is not replayed', async () => {
+    const { reply } = createMockReply()
+    const { steering } = createRecordingSteering()
+    const run = registry.begin('ctx-1', { turnId: 't1', reply, originatingMessageIds: [], steering })
+    run.steeringStarted = true
+    requestSteer(run, 'only project X', { persistInHistory: false })
+
+    expect(await registry.end('ctx-1')).toEqual([])
+    expect(run.excludedSteerTexts).toEqual(['only project X'])
   })
 
   test('a run begun without a handle replays every steer as leftover', async () => {

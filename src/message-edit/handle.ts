@@ -111,7 +111,7 @@ export async function onIncomingEdit(
   if (prior !== undefined && prior.text === msg.text) return
 
   cacheObservedIncomingMessage(msg, auth)
-  applyEditToHistory(auth.storageContextId, msg.messageId, msg.text)
+  const corrected = applyEditToHistory(auth.storageContextId, msg.messageId, msg.text)
 
   const activeRun = runRegistry.get(auth.storageContextId)
   const lastTurn = lastTurnRegistry.get(auth.storageContextId)
@@ -136,7 +136,7 @@ export async function onIncomingEdit(
   )
 
   if (window === 'w1' && activeRun !== undefined) {
-    await pushW1SteerAndAck(activeRun, msg, reply, auth, deps)
+    await pushW1SteerAndAck(activeRun, msg, reply, auth, deps, corrected)
     return
   }
   if (window === 'w2' && lastTurn !== undefined) {
@@ -171,6 +171,11 @@ function observeEditClassification(
  * An edit-steer is the same mid-run steering boundary as a manual steer, so it
  * emits the same `turn_steered` fact; the edit itself is a correction, not a
  * newly accepted message, so no accepted/turn facts are produced here.
+ *
+ * `storedTurnCorrected` says whether the baseline correction rewrote a stored user
+ * turn. When it did, that rewrite is the durable record and the synthetic notice is
+ * excluded from persisted history; when the edited message was only ever a steer,
+ * the notice is the sole record of the correction the model saw and must persist.
  */
 async function pushW1SteerAndAck(
   run: RunControl,
@@ -178,9 +183,10 @@ async function pushW1SteerAndAck(
   reply: ReplyFn,
   auth: AuthorizationResult,
   deps: EditHandlerDeps,
+  storedTurnCorrected: boolean,
 ): Promise<void> {
   const steerText = `⟲ Your earlier message was edited. New version:\n\n${msg.text}`
-  requestSteer(run, steerText)
+  requestSteer(run, steerText, { persistInHistory: !storedTurnCorrected })
   await reply.text(t('steer.ack', getContextLanguage(auth.configContextId ?? auth.storageContextId)))
   const observer = deps.analyticsObserver
   if (observer === undefined) return
