@@ -36,6 +36,26 @@ function generatePassword(): string {
   return `${uuid.slice(0, 20)}Aa1!`
 }
 
+const PROVISION_EMAIL_DOMAIN = 'pap.ai'
+const PROVISION_EMAIL_STEM_MAX_LENGTH = 40
+const PROVISION_EMAIL_STEM_FALLBACK = 'papai'
+
+/**
+ * Derives a Better Auth-safe email local part from an opaque actor id.
+ *
+ * The id can be a scoped config context id (`pi:<b64>:ctx:<b64>`), an
+ * `@`-prefixed platform id, a numeric id, a unicode display name, or empty;
+ * Kaneo validates the sign-up body with a real email validator, so every
+ * character outside `[A-Za-z0-9._-]` is replaced and the stem is capped well
+ * below the RFC 5321 local-part limit.
+ */
+export function toProvisionEmailLocalPart(actorId: string): string {
+  const withoutPrefix = actorId.startsWith('@') ? actorId.slice(1) : actorId
+  const sanitized = withoutPrefix.replaceAll(/[^A-Za-z0-9._-]+/gu, '-').replaceAll(/^-+|-+$/gu, '')
+  const capped = sanitized.slice(0, PROVISION_EMAIL_STEM_MAX_LENGTH).replaceAll(/-+$/gu, '')
+  return capped === '' ? PROVISION_EMAIL_STEM_FALLBACK : capped
+}
+
 /** Emits the controlled provisioning observation; never throws, never carries request/response content. */
 const observeProvisionRequest = (
   scope: ProviderRequestScope,
@@ -165,7 +185,7 @@ async function doCreateApiKey(baseUrl: string, trustedOrigin: string, sessionCoo
 }
 
 /**
- * Provisions a new Kaneo account for a Telegram user:
+ * Provisions a new Kaneo account for a chat context (group-wide or per-user):
  * signs up, creates a workspace, and generates an API key (falling back to
  * the session token if the API key endpoint is unavailable).
  */
@@ -178,7 +198,8 @@ export async function provisionKaneoUser(
   username: string | null,
 ): Promise<ProvisionResult> {
   const uniqueSuffix = crypto.randomUUID().replaceAll('-', '').slice(0, 8)
-  const email = username === null ? `${platformUserId}-${uniqueSuffix}@pap.ai` : `${username}-${uniqueSuffix}@pap.ai`
+  const emailLocalPart = toProvisionEmailLocalPart(username ?? platformUserId)
+  const email = `${emailLocalPart}-${uniqueSuffix}@${PROVISION_EMAIL_DOMAIN}`
   const password = generatePassword()
   const name = username === null ? `User ${platformUserId}` : `@${username}`
   const slug = `papai-${platformUserId}-${uniqueSuffix}`

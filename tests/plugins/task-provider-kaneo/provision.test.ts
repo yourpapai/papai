@@ -6,10 +6,13 @@
 import { afterEach, beforeEach, describe, expect, mock, test } from 'bun:test'
 import assert from 'node:assert/strict'
 
+import { z } from 'zod'
+
 import { kaneoProvision } from '../../../plugins/task-provider-kaneo/auto-provision.js'
 import { isKaneoSessionCookie, type KaneoConfig } from '../../../plugins/task-provider-kaneo/client.js'
 import { ALL_CAPABILITIES, KANEO_TRAITS } from '../../../plugins/task-provider-kaneo/constants.js'
 import { KaneoProvider } from '../../../plugins/task-provider-kaneo/provider.js'
+import { toProvisionEmailLocalPart } from '../../../plugins/task-provider-kaneo/provision-requests.js'
 import {
   maybeProvisionKaneo,
   type ProvisionOutcome,
@@ -30,6 +33,7 @@ import {
   registerContributedTaskProviderType,
   unregisterContributedTaskProviderType,
 } from '../../../src/providers/registry.js'
+import { assertEach, type Row } from '../../utils/grouped-assertions.js'
 import {
   mockLogger,
   restoreFetch,
@@ -39,7 +43,9 @@ import {
 } from '../../utils/test-helpers.js'
 
 const KANEO_PLUGIN_ID = 'task-provider-kaneo'
+const KANEO_PLUGIN_CREDENTIAL_KEY = 'plugin:task-provider-kaneo:provider:credential'
 const KANEO_PLUGIN_WORKSPACE_KEY = 'plugin:task-provider-kaneo:provider:workspaceId'
+const SCOPED_GROUP_CONTEXT_ID = 'pi:dGcrLz09:ctx:YWJj+ZGVm'
 
 function assignKaneoContext(contextId: string): void {
   insertTaskInstance({
@@ -496,6 +502,97 @@ describe('provisionKaneoUser - unique email generation', () => {
   })
 })
 
+describe('provisioning email identity builder', () => {
+  test('derives a valid sanitized local part for every actor id shape (matrix)', async () => {
+    type IdentityRow = Row<{ readonly actorId: string; readonly expectedLocalPart: string }>
+    const rows: readonly IdentityRow[] = [
+      {
+        label: 'scoped config context id keeps its distinguishing segments',
+        actorId: SCOPED_GROUP_CONTEXT_ID,
+        expectedLocalPart: 'pi-dGcrLz09-ctx-YWJj-ZGVm',
+      },
+      {
+        label: '@-prefixed matrix-style id drops the leading @ and colon',
+        actorId: '@john:chat.company.com',
+        expectedLocalPart: 'john-chat.company.com',
+      },
+      { label: 'leading separator is trimmed', actorId: ':leading', expectedLocalPart: 'leading' },
+      { label: 'underscore stays allowed', actorId: 'team_alpha', expectedLocalPart: 'team_alpha' },
+      { label: 'numeric Telegram id passes through', actorId: '999', expectedLocalPart: '999' },
+      { label: 'unicode display name collapses to the fallback', actorId: 'Иван Петров', expectedLocalPart: 'papai' },
+      { label: 'partially unicode name keeps its ascii runs', actorId: 'José García', expectedLocalPart: 'Jos-Garc-a' },
+      { label: 'empty id falls back instead of producing a bare suffix', actorId: '', expectedLocalPart: 'papai' },
+      { label: 'long id is capped', actorId: 'a'.repeat(80), expectedLocalPart: 'a'.repeat(40) },
+      {
+        label: 'cap never leaves a trailing dash',
+        actorId: `${'a'.repeat(39)}-${'b'.repeat(10)}`,
+        expectedLocalPart: 'a'.repeat(39),
+      },
+    ]
+
+    await assertEach(rows, (row) => {
+      const localPart = toProvisionEmailLocalPart(row.actorId)
+      const address = `${localPart}-abcdef12@pap.ai`
+
+      expect(localPart).toBe(row.expectedLocalPart)
+      expect(localPart).toMatch(/^[A-Za-z0-9._-]+$/u)
+      expect(z.email().safeParse(address).success).toBe(true)
+    })
+  })
+})
+
+describe('provisioning identity for opaque actor ids', () => {
+  beforeEach(async () => {
+    mockLogger()
+    await setupTestDb()
+    process.env['KANEO_CLIENT_URL'] = 'https://kaneo.test'
+  })
+
+  afterEach(() => {
+    restoreFetch()
+  })
+
+  test('provisions a group-scoped context with a null username using a valid sign-up email', async () => {
+    let capturedEmail = ''
+    setMockFetch((url: string, init: RequestInit | undefined) =>
+      routeProvisionFetchCaptureEmailOnly(url, init, (email) => {
+        capturedEmail = email
+      }),
+    )
+
+    const result = await provisionKaneoUser('https://kaneo.test', 'https://kaneo.test', SCOPED_GROUP_CONTEXT_ID, null)
+
+    expect(capturedEmail).not.toBe('')
+    expect(z.email().safeParse(capturedEmail).success).toBe(true)
+    expect(result.workspaceId).toBe('ws-123')
+    expect(result.kaneoKey).toBe('api-key-123')
+  })
+
+  test('a rejected sign-up leaves no credential or workspace bound to the context', async () => {
+    setMockFetch((url: string) => {
+      if (url.includes('/sign-up')) {
+        return Promise.resolve(
+          new Response(JSON.stringify({ message: '[body.email] Invalid email address', code: 'VALIDATION_ERROR' }), {
+            status: 400,
+          }),
+        )
+      }
+      return Promise.resolve(new Response(JSON.stringify({}), { status: 200 }))
+    })
+
+    const outcome = await provisionAndConfigure(SCOPED_GROUP_CONTEXT_ID, null, {
+      publicUrl: 'https://kaneo.test',
+      internalUrl: undefined,
+    })
+
+    expect(outcome.status).toBe('failed')
+    if (outcome.status !== 'failed') throw new Error(`expected a failed outcome, got ${outcome.status}`)
+    expect(outcome.error).toContain('Sign-up failed (400)')
+    expect(getConfigValue(SCOPED_GROUP_CONTEXT_ID, KANEO_PLUGIN_CREDENTIAL_KEY)).toBeNull()
+    expect(getConfigValue(SCOPED_GROUP_CONTEXT_ID, KANEO_PLUGIN_WORKSPACE_KEY)).toBeNull()
+  })
+})
+
 describe('maybeProvisionKaneo', () => {
   let textCalls: string[] = []
 
@@ -544,6 +641,24 @@ describe('maybeProvisionKaneo', () => {
     // Should send welcome message with account details
     expect(textCalls).toHaveLength(1)
     expect(textCalls[0]).toContain('Your Kaneo account has been created')
+  })
+
+  test('provisions a null-username context with a valid sign-up email', async () => {
+    const contextId = 'pi:bXNn:ctx:dGVzdA'
+    assignKaneoContext(contextId)
+    let capturedEmail = ''
+    setMockFetch((url: string, init: RequestInit | undefined) =>
+      routeProvisionFetchCaptureEmailOnly(url, init, (email) => {
+        capturedEmail = email
+      }),
+    )
+
+    const provisioned = await maybeProvisionKaneo(mockReply, contextId, null)
+
+    expect(provisioned).toBe(true)
+    expect(z.email().safeParse(capturedEmail).success).toBe(true)
+    expect(getConfigValue(contextId, KANEO_PLUGIN_CREDENTIAL_KEY)).toBe('api-key-123')
+    expect(getConfigValue(contextId, KANEO_PLUGIN_WORKSPACE_KEY)).toBe('ws-123')
   })
 
   test('auto-provisioning uses assigned task instance URL without KANEO_CLIENT_URL', async () => {
