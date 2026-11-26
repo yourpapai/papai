@@ -5,6 +5,22 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [6.15.1] - 2026-11-26
+
+### Added
+
+- **settings:** Add member-scoped Kaneo credential routes
+- **settings-ui:** Add the personal Kaneo access surface
+
+### Fixed
+
+- **kaneo:** Route member auth traffic through the internal URL
+
+### Miscellaneous
+
+- **openspec:** Tick the kaneo member-access live proof
+- **openspec:** Tick fix-kaneo-member-access verification
+- **mutation:** Seed the kaneo member-access floors
 ## [6.15.0] - 2026-11-26
 
 ### Added
