@@ -23,6 +23,11 @@ export type KaneoConfig = {
 } & Partial<{
   /** Session cookie value (better-auth.session_token=...). When set, sent instead of Authorization: Bearer. */
   sessionCookie: string
+  /**
+   * Bot-internal Kaneo base URL for auth traffic (sign-up/sign-in/invitations).
+   * The public `baseUrl` stays the trusted `Origin` and the user-facing link base.
+   */
+  internalUrl: string
   /** Runtime-owned transport for hermetic plugin execution. */
   fetch: (url: string, init?: RequestInit) => Promise<Response>
 }>

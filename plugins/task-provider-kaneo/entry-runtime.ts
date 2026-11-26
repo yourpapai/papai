@@ -10,6 +10,7 @@ type KaneoConfig = {
   baseUrl: string
 } & Partial<{
   sessionCookie: string
+  internalUrl: string
   fetch: KaneoHttpFetch
 }>
 
@@ -56,10 +57,12 @@ export function createKaneoProvider(config: Record<string, string>, fetch?: Kane
 
   const baseUrl = config['baseUrl'] ?? ''
   const credential = config['credential'] ?? ''
+  const internalUrl = (config['internalUrl'] ?? '').trim()
+  const internalUrlConfig = internalUrl === '' ? {} : { internalUrl }
   const fetchTransport = fetch === undefined ? {} : { fetch }
   const kaneoConfig: KaneoConfig = isKaneoSessionCookie(credential)
-    ? { apiKey: '', baseUrl, sessionCookie: credential, ...fetchTransport }
-    : { apiKey: credential, baseUrl, ...fetchTransport }
+    ? { apiKey: '', baseUrl, sessionCookie: credential, ...internalUrlConfig, ...fetchTransport }
+    : { apiKey: credential, baseUrl, ...internalUrlConfig, ...fetchTransport }
 
   return new KaneoProvider(kaneoConfig, config['workspaceId'] ?? '')
 }

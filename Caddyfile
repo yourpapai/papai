@@ -1,4 +1,7 @@
 {$KANEO_CLIENT_URL} {
+	# Bot-internal member provisioning signs up through the task instance's
+	# internalUrl (bot → kaneo:5173), never this public edge. Do not open this
+	# rule to make member provisioning work — configure internalUrl instead.
 	handle /api/auth/sign-up/* {
 		respond 403
 	}

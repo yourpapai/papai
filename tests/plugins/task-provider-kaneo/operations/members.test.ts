@@ -282,6 +282,90 @@ describe('kaneoProvisionMember', () => {
 })
 
 // ---------------------------------------------------------------------------
+// Internal-URL routing for member auth traffic
+// ---------------------------------------------------------------------------
+
+const INTERNAL_CONFIG = {
+  apiKey: 'test-key',
+  baseUrl: 'https://kaneo.public.invalid',
+  internalUrl: 'http://kaneo.internal.invalid',
+} as const
+
+type ProvisionCall = { url: string; headers: Record<string, string>; body: unknown }
+
+function makeAuthCallRecorder(calls: ProvisionCall[]) {
+  return (url: string, init: RequestInit): Promise<Response> => {
+    calls.push({ url, headers: parseHeaders(init), body: parseBody(init) })
+    if (url.includes('/api/auth/sign-up/email')) return Promise.resolve(signUpResponse('uid-int', 'tok-int'))
+    if (url.includes('/api/auth/sign-in/email')) return Promise.resolve(signInResponse('uid-int', 'tok-int'))
+    if (url.includes('/api/auth/organization/invite-member')) return Promise.resolve(inviteResponse('inv-int'))
+    if (url.includes('/api/auth/organization/accept-invitation')) return Promise.resolve(acceptResponse())
+    return Promise.resolve(new Response('not found', { status: 404 }))
+  }
+}
+
+describe('kaneoProvisionMember internal URL routing', () => {
+  let calls: ProvisionCall[] = []
+
+  beforeEach(() => {
+    mockLogger()
+    calls = []
+    setMockFetch(makeAuthCallRecorder(calls))
+  })
+
+  test('sends sign-up, sign-in, invite and accept to the internal URL while Origin stays public', async () => {
+    await kaneoProvisionMember(
+      INTERNAL_CONFIG,
+      WORKSPACE_ID,
+      { chatUserId: 'chat-int-new', displayName: 'Int New', username: 'intnew' },
+      INTERNAL_CONFIG.baseUrl,
+    )
+    await kaneoProvisionMember(
+      INTERNAL_CONFIG,
+      WORKSPACE_ID,
+      { chatUserId: 'chat-int-reuse', displayName: 'Int Reuse', username: 'intreuse' },
+      INTERNAL_CONFIG.baseUrl,
+      { providerUserId: 'uid-int', login: 'intreuse@pap.ai', password: 'StoredPass1!Aa' },
+    )
+
+    const authCalls = calls.filter((call) => call.url.includes('/api/auth/'))
+    expect(authCalls).toHaveLength(6)
+    for (const call of authCalls) expect(call.url.startsWith('http://kaneo.internal.invalid/')).toBe(true)
+
+    const inviteCall = calls.find((call) => call.url.includes('/api/auth/organization/invite-member'))
+    expect(inviteCall?.headers['origin']).toBe(INTERNAL_CONFIG.baseUrl)
+    const acceptCall = calls.find((call) => call.url.includes('/api/auth/organization/accept-invitation'))
+    expect(acceptCall?.headers['origin']).toBe(INTERNAL_CONFIG.baseUrl)
+    restoreFetch()
+  })
+
+  test('sends every auth request to the public URL when internalUrl is absent', async () => {
+    await kaneoProvisionMember(
+      { apiKey: 'test-key', baseUrl: 'https://kaneo.public.invalid' },
+      WORKSPACE_ID,
+      { chatUserId: 'chat-public', displayName: 'Public', username: 'public' },
+      'https://kaneo.public.invalid',
+    )
+
+    const authCalls = calls.filter((call) => call.url.includes('/api/auth/'))
+    expect(authCalls).toHaveLength(3)
+    for (const call of authCalls) expect(call.url.startsWith('https://kaneo.public.invalid/')).toBe(true)
+    restoreFetch()
+  })
+
+  test('builds task and project links from the public URL when internalUrl is set', () => {
+    const provider = new KaneoProvider(INTERNAL_CONFIG, WORKSPACE_ID)
+
+    expect(provider.buildTaskUrl('task-1', 'project-1')).toBe(
+      `${INTERNAL_CONFIG.baseUrl}/dashboard/workspace/${WORKSPACE_ID}/project/project-1/task/task-1`,
+    )
+    expect(provider.buildProjectUrl('project-1')).toBe(
+      `${INTERNAL_CONFIG.baseUrl}/dashboard/workspace/${WORKSPACE_ID}/project/project-1`,
+    )
+  })
+})
+
+// ---------------------------------------------------------------------------
 // toEmailLocalPart — pure helper unit tests
 // ---------------------------------------------------------------------------
 

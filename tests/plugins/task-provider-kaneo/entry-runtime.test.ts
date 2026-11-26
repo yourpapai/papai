@@ -60,3 +60,40 @@ describe('createKaneoProvider transport', () => {
     expect(httpFetch).toHaveBeenCalledTimes(1)
   })
 })
+
+/** The provider keeps its built config private; member auth routing needs it observable. */
+const readBuiltConfig = (provider: object): unknown => Reflect.get(provider, 'config')
+
+const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === 'object' && value !== null
+
+describe('createKaneoProvider internalUrl', () => {
+  beforeEach(() => {
+    mockLogger()
+  })
+
+  test('preserves the instance internalUrl in the built provider config', () => {
+    const provider = createKaneoProvider({
+      baseUrl: 'https://kaneo.public.invalid',
+      internalUrl: 'http://kaneo.internal.invalid',
+      credential: 'key',
+      workspaceId: 'workspace-1',
+    })
+    const config = readBuiltConfig(provider)
+    assert(isRecord(config))
+
+    expect(config['internalUrl']).toBe('http://kaneo.internal.invalid')
+    expect(config['baseUrl']).toBe('https://kaneo.public.invalid')
+  })
+
+  test('leaves internalUrl undefined when the instance omits it', () => {
+    const provider = createKaneoProvider({
+      baseUrl: 'https://kaneo.public.invalid',
+      credential: 'key',
+      workspaceId: 'workspace-1',
+    })
+    const config = readBuiltConfig(provider)
+    assert(isRecord(config))
+
+    expect(config['internalUrl']).toBeUndefined()
+  })
+})

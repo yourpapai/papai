@@ -59,6 +59,9 @@ const AuthResponseSchema = z.object({
 
 const InviteResponseSchema = z.object({ id: z.string() })
 
+/** Bot-internal auth base: the instance's internal URL when configured, else the public base. */
+const resolveAuthBaseUrl = (config: KaneoConfig): string => config.internalUrl ?? config.baseUrl
+
 function generateMemberPassword(): string {
   const uuid = crypto.randomUUID().replaceAll('-', '')
   return `${uuid.slice(0, 20)}Aa1!`
@@ -147,7 +150,7 @@ async function doInviteMember(
   } else {
     headers['Cookie'] = serviceConfig.sessionCookie
   }
-  const res = await fetch(`${serviceConfig.baseUrl}/api/auth/organization/invite-member`, {
+  const res = await fetch(`${resolveAuthBaseUrl(serviceConfig)}/api/auth/organization/invite-member`, {
     method: 'POST',
     headers,
     body: JSON.stringify({
@@ -171,18 +174,18 @@ async function doInviteMember(
  * This is the only step that authenticates as the member, not the service account.
  */
 async function doAcceptInvitation(
-  baseUrl: string,
+  serviceConfig: KaneoConfig,
   memberSessionCookie: string,
   invitationId: string,
   publicUrl: string,
 ): Promise<void> {
   log.debug({ invitationId }, 'kaneoProvisionMember: accept-invitation')
-  const res = await fetch(`${baseUrl}/api/auth/organization/accept-invitation`, {
+  const res = await fetch(`${resolveAuthBaseUrl(serviceConfig)}/api/auth/organization/accept-invitation`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
       Cookie: memberSessionCookie,
-      Origin: publicUrl === '' ? baseUrl : publicUrl,
+      Origin: publicUrl === '' ? serviceConfig.baseUrl : publicUrl,
     },
     body: JSON.stringify({ invitationId }),
   })
@@ -248,7 +251,7 @@ export async function kaneoProvisionMember(
 
   const session = await establishMemberSession(serviceConfig, member, publicUrl, existing)
   const invitationId = await doInviteMember(serviceConfig, workspaceId, session.login, publicUrl)
-  await doAcceptInvitation(serviceConfig.baseUrl, session.sessionCookie, invitationId, publicUrl)
+  await doAcceptInvitation(serviceConfig, session.sessionCookie, invitationId, publicUrl)
 
   log.info({ chatUserId: member.chatUserId, userId: session.userId, workspaceId }, 'Kaneo member provisioned')
   return { providerUserId: session.userId, login: session.login, password: session.password }
@@ -267,7 +270,7 @@ async function establishMemberSession(
   existing: { providerUserId: string; login: string; password: string } | undefined,
 ): Promise<MemberSession> {
   if (existing !== undefined) {
-    const signIn = await doMemberSignIn(serviceConfig.baseUrl, publicUrl, existing.login, existing.password)
+    const signIn = await doMemberSignIn(resolveAuthBaseUrl(serviceConfig), publicUrl, existing.login, existing.password)
     log.info({ chatUserId: member.chatUserId, userId: signIn.userId }, 'Kaneo member reuse: signed in')
     return {
       userId: signIn.userId,
@@ -280,6 +283,6 @@ async function establishMemberSession(
   const localPart = toEmailLocalPart(member.username ?? member.chatUserId, member.chatUserId)
   const login = `${localPart}-${uniqueSuffix}@pap.ai`
   const password = generateMemberPassword()
-  const signUp = await doMemberSignUp(serviceConfig.baseUrl, publicUrl, login, password, member.displayName)
+  const signUp = await doMemberSignUp(resolveAuthBaseUrl(serviceConfig), publicUrl, login, password, member.displayName)
   return { userId: signUp.userId, sessionCookie: signUp.sessionCookie, login, password }
 }
