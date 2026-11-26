@@ -5,6 +5,59 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [6.15.0] - 2026-11-26
+
+### Added
+
+- **run-control:** Steer through the native AI SDK steering object
+- **tools:** Move ask approvals onto the SDK toolApproval hook
+- **run-control:** Request an interrupt for mid-run steering by default
+- **steering:** Persist delivered steering text in conversation history
+
+### Documentation
+
+- Record the refreshed dependency behavior
+- Add the dependency refresh follow-up shortlist
+- **openspec:** Complete native-ai-sdk-steering tasks
+- **openspec:** Mark native steering shipped and carve out its two deferred pieces
+- **openspec:** Propose sdk-tool-approvals
+- **openspec:** Archive sdk-tool-approvals
+- **openspec:** Point delivered tool-approvals follow-up at the archive
+- **openspec:** Tick the steering-interrupt-default full gate
+- **openspec:** Sync mid-run-steering and archive steering-interrupt-default
+- **openspec:** Sync specs and archive completed changes
+- **kaneo:** Record the provisioning identity contract
+
+### Fixed
+
+- **kaneo:** Derive the provisioning email from a sanitized actor id
+
+### Miscellaneous
+
+- **openspec:** Refresh skills for openspec 2.0.0
+- **openspec:** Mark wave 3 complete
+- **openspec:** Tick the persist-steering-history full gate
+- **openspec:** Tick fix-kaneo-group-provisioning verification tasks
+- **openspec:** Tick the fix-kaneo-group-provisioning mutation gate
+
+### Testing
+
+- Route the admin-notified reset through a testing shim
+
+### Deps
+
+- Refresh safe runtime and dev minors (wave 1)
+- Bump the AI SDK family (wave 2)
+- Migrate MSW and the Storybook addon to v3
+- Bump unpdf to v2
+- Bump happy-dom to v21
+- Bump pixelmatch to v8
+- Pin oxc-parser to 0.159.0
+- Bump oxlint and oxlint-tsgolint
+- Add the oxc-parser wasm binding for browser-condition tests
+- Bump Playwright to 1.65.1
+- Refresh visual and developer extras (wave 4)
+- Remove unused ink and dependency-cruiser packages
 ## [6.14.8] - 2026-09-12
 
 ### Added
