@@ -24,7 +24,7 @@
 
 ## 4. Integration and full verification
 
-- [ ] 4.1 With Docker available, bring up the pinned Kaneo behind a Caddy config that blocks `/api/auth/sign-up/*`, provision a member through the configured internal URL, and confirm the member row becomes `active` with a stored password while public sign-up remains 403; tear down with `down -v`
+- [x] 4.1 With Docker available, bring up the pinned Kaneo behind a Caddy config that blocks `/api/auth/sign-up/*`, provision a member through the configured internal URL, and confirm the member row becomes `active` with a stored password while public sign-up remains 403; tear down with `down -v`
 - [ ] 4.2 Run `bun run test`, `bun run typecheck`, `bun run lint`, `bun security`, and `openspec validate --strict fix-kaneo-member-access`; confirm all green
 - [ ] 4.3 Run `bun test:mutate:changed --base=HEAD~1` so the changed files' mutation scores are seeded for the CI ratchet; confirm no target falls below its recorded floor
 
