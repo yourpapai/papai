@@ -5,6 +5,12 @@
     "timeout": 0,
     "scored": 24
   },
+  "client/settings/fetcher-schemas-kaneo.ts": {
+    "score": 0.75,
+    "killed": 9,
+    "timeout": 0,
+    "scored": 12
+  },
   "client/settings/fetcher-schemas-llm-providers.ts": {
     "score": 0.47619047619047616,
     "killed": 30,
@@ -12,10 +18,10 @@
     "scored": 63
   },
   "client/settings/fetchers.ts": {
-    "score": 0.6587677725118484,
-    "killed": 139,
+    "score": 0.6727272727272727,
+    "killed": 148,
     "timeout": 0,
-    "scored": 211
+    "scored": 220
   },
   "client/settings/llm-model-metadata-fetchers.ts": {
     "score": 1,
@@ -23,11 +29,23 @@
     "timeout": 0,
     "scored": 20
   },
+  "client/settings/nav.svelte.ts": {
+    "score": 0.7632850241545893,
+    "killed": 158,
+    "timeout": 0,
+    "scored": 207
+  },
   "client/stories/msw/scenarios.ts": {
     "score": 1,
     "killed": 96,
     "timeout": 0,
     "scored": 96
+  },
+  "client/stories/msw/settings-handlers-kaneo-self.ts": {
+    "score": 0.10810810810810811,
+    "killed": 4,
+    "timeout": 0,
+    "scored": 37
   },
   "client/stories/msw/settings-handlers-metadata.ts": {
     "score": 0.34615384615384615,
@@ -1006,7 +1024,12 @@
   "plugins/task-provider-kaneo/delete-column.ts": 0.18181818181818182,
   "plugins/task-provider-kaneo/delete-project.ts": 0,
   "plugins/task-provider-kaneo/delete-task.ts": 0,
-  "plugins/task-provider-kaneo/entry-runtime.ts": 0.5892857142857143,
+  "plugins/task-provider-kaneo/entry-runtime.ts": {
+    "score": 0.6307692307692307,
+    "killed": 41,
+    "timeout": 0,
+    "scored": 65
+  },
   "plugins/task-provider-kaneo/get-comments.ts": 0,
   "plugins/task-provider-kaneo/get-task.ts": 0,
   "plugins/task-provider-kaneo/identity-resolver.ts": 0.6111111111111112,
@@ -1021,7 +1044,12 @@
   "plugins/task-provider-kaneo/mappers.ts": 0.7619047619047619,
   "plugins/task-provider-kaneo/operations/comments.ts": 0.2222222222222222,
   "plugins/task-provider-kaneo/operations/labels.ts": 0.6,
-  "plugins/task-provider-kaneo/operations/members.ts": 0.5833333333333334,
+  "plugins/task-provider-kaneo/operations/members.ts": {
+    "score": 0.5941176470588235,
+    "killed": 101,
+    "timeout": 0,
+    "scored": 170
+  },
   "plugins/task-provider-kaneo/operations/projects.ts": 0.2,
   "plugins/task-provider-kaneo/operations/relations.ts": 0,
   "plugins/task-provider-kaneo/operations/statuses.ts": 0.9090909090909091,
@@ -1308,10 +1336,10 @@
     "scored": 42
   },
   "src/debug/settings-api-router.ts": {
-    "score": 0.5170940170940171,
-    "killed": 121,
+    "score": 0.5336134453781513,
+    "killed": 127,
     "timeout": 0,
-    "scored": 234
+    "scored": 238
   },
   "src/debug/settings/admin/instances-routes.ts": 0.6261127596439169,
   "src/debug/settings/admin/llm-providers-routes.ts": {
@@ -1334,6 +1362,12 @@
   },
   "src/debug/settings/context-task-instance-routes.ts": 0.5808823529411765,
   "src/debug/settings/group-routes.ts": 0.6975476839237057,
+  "src/debug/settings/kaneo-credentials-routes.ts": {
+    "score": 0.7386934673366834,
+    "killed": 147,
+    "timeout": 0,
+    "scored": 199
+  },
   "src/debug/settings/llm-model-metadata-routes.ts": {
     "score": 0.68,
     "killed": 17,
