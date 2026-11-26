@@ -45,6 +45,7 @@
   import CodingIdentitySection from './sections/CodingIdentitySection.svelte'
   import GuestModeSection from './sections/GuestModeSection.svelte'
   import KaneoAccessSection from './sections/KaneoAccessSection.svelte'
+  import KaneoAccessSelfSection from './sections/KaneoAccessSelfSection.svelte'
   import ReleaseSubscriptionSection from './sections/ReleaseSubscriptionSection.svelte'
   import AdminInstancesSection from './sections/admin/AdminInstancesSection.svelte'
   import AdminProvidersSection from './sections/admin/AdminProvidersSection.svelte'
@@ -164,6 +165,7 @@
               <ToolsSection contextId={ctx} />
               <ReleaseSubscriptionSection scope="personal" contextId={ctx} />
               <AnalyticsPreferencesSection />
+              <KaneoAccessSelfSection />
               {#if isGroup}
                 <MembersSection contextId={ctx} />
                 <GroupProviderSection contextId={ctx} />

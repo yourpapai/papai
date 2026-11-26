@@ -30,7 +30,13 @@ describe('buildNavGroups', () => {
     const groups = buildNavGroups(personal, false)
     expect(groups.map((g) => g.key)).toEqual(['personal', 'advanced'])
     expect(groups.map((g) => g.kicker)).toEqual(['Personal', 'Advanced'])
-    expect(groups[0]!.items.map((i) => i.id)).toEqual(['profile', 'task-provider', 'tools', 'analytics'])
+    expect(groups[0]!.items.map((i) => i.id)).toEqual([
+      'profile',
+      'task-provider',
+      'tools',
+      'analytics',
+      'kaneo-access-self',
+    ])
     expect(groups[0]!.collapsible).toBe(false)
     expect(groups[0]!.danger).toBe(false)
   })
@@ -42,6 +48,7 @@ describe('buildNavGroups', () => {
       'task-provider',
       'tools',
       'analytics',
+      'kaneo-access-self',
       'members',
       'group-provider',
       'guest-mode',
@@ -162,12 +169,12 @@ describe('section id derivation', () => {
     expect(ids).toContain('profile')
     expect(ids).toContain('memory')
     expect(ids).toContain('instances')
-    expect(ids).toHaveLength(4 + 11 + 16)
+    expect(ids).toHaveLength(5 + 11 + 16)
   })
 
   test('mountedSectionIds omits collapsed groups and grows as they expand', () => {
     const groups = buildNavGroups(superAdmin, false)
-    expect(mountedSectionIds(groups)).toEqual(['profile', 'task-provider', 'tools', 'analytics'])
+    expect(mountedSectionIds(groups)).toEqual(['profile', 'task-provider', 'tools', 'analytics', 'kaneo-access-self'])
     toggleGroup('advanced')
     expect(mountedSectionIds(groups)).toContain('memory')
     expect(mountedSectionIds(groups)).not.toContain('instances')

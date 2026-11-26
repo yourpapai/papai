@@ -4,7 +4,12 @@
 // See LICENSE in the project root for details.
 
 import { readBody, requireOk } from '../shared/fetcher-helpers.js'
-import { KaneoRevealSchema, type KaneoReveal } from './fetcher-schemas-kaneo.js'
+import {
+  KaneoMembershipsSchema,
+  KaneoRevealSchema,
+  type KaneoMemberships,
+  type KaneoReveal,
+} from './fetcher-schemas-kaneo.js'
 import { ToolsResponseSchema, type ToolPreset, type ToolsResponse } from './fetcher-schemas-tools.js'
 import {
   ByokResponseSchema,
@@ -268,5 +273,13 @@ export const patchContextTaskInstance = (input: { taskInstanceId: string; contex
 
 export const revealKaneoPassword = (contextId: string): Promise<KaneoReveal> =>
   writeJson('/settings/api/kaneo/credentials', 'POST', { action: 'reveal', contextId }, (b) =>
+    KaneoRevealSchema.parse(b),
+  )
+
+export const fetchKaneoMemberships = (): Promise<KaneoMemberships> =>
+  getJson('/settings/api/kaneo/credentials/self', (b) => KaneoMembershipsSchema.parse(b))
+
+export const revealKaneoSelfPassword = (contextId: string): Promise<KaneoReveal> =>
+  writeJson('/settings/api/kaneo/credentials/self', 'POST', { action: 'reveal', contextId }, (b) =>
     KaneoRevealSchema.parse(b),
   )

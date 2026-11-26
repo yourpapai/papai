@@ -29,6 +29,7 @@ const PERSONAL_ITEMS: readonly NavItem[] = [
   { id: 'task-provider', label: 'Task provider' },
   { id: 'tools', label: 'Tools' },
   { id: 'analytics', label: 'Analytics' },
+  { id: 'kaneo-access-self', label: 'My Kaneo access' },
 ]
 
 const GROUP_ITEMS: readonly NavItem[] = [
@@ -36,7 +37,7 @@ const GROUP_ITEMS: readonly NavItem[] = [
   { id: 'group-provider', label: 'Group provider' },
   { id: 'guest-mode', label: 'Guest mode' },
   { id: 'coding-identity', label: 'Session identity' },
-  { id: 'kaneo-access', label: 'My Kaneo access' },
+  { id: 'kaneo-access', label: 'Group Kaneo access' },
 ]
 
 const ADVANCED_ITEMS: readonly NavItem[] = [

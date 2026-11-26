@@ -55,7 +55,7 @@ No group scope is used for either method. The session must still resolve an auth
 
 Add `KaneoAccessSelfSection.svelte` under `client/settings/sections/`, composed from the existing primitives (`PageHeader`, `KV`, `StatusPill`, `Btn`, `Code`, `CopyButton`, `EmptyState`, `ErrorState`, `IconButton`) and a `KaneoMembership` fetcher pair. It lists memberships and renders one reveal block per row, with the same one-way hide semantics as the group section. `KaneoAccessSection.svelte` stays untouched for group admins.
 
-Add `{ id: 'kaneo-access', label: 'My Kaneo access' }` to `PERSONAL_ITEMS` in `nav.svelte.ts` and render the new section in the personal branch of `SettingsApp.svelte`. A separate component avoids threading an optional list mode through the existing single-row state machine and keeps the change testable in isolation; the duplicated reveal call is one fetcher invocation.
+Add `{ id: 'kaneo-access-self', label: 'My Kaneo access' }` to `PERSONAL_ITEMS` in `nav.svelte.ts` and render the new section in the personal branch of `SettingsApp.svelte`; the existing group entry keeps id `kaneo-access` and is relabeled "Group Kaneo access" so the two surfaces do not share an id or a label. A separate component avoids threading an optional list mode through the existing single-row state machine and keeps the change testable in isolation; the duplicated reveal call is one fetcher invocation.
 
 ### D4 — No persisted state, migration, or backfill
 

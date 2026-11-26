@@ -70,7 +70,7 @@ describe('SettingsApp', () => {
     seed({})
     const component = mountApp()
     await drain()
-    for (const id of ['profile', 'task-provider', 'tools', 'analytics']) {
+    for (const id of ['profile', 'task-provider', 'tools', 'analytics', 'kaneo-access-self']) {
       expect(document.querySelector(`#${id}`)).not.toBeNull()
     }
     // Advanced is collapsed by default → its sections are not mounted.

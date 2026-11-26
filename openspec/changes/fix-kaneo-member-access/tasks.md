@@ -17,10 +17,10 @@
 
 ## 3. Personal-context settings surface
 
-- [ ] 3.1 Add failing fetcher/schema tests for the self endpoints in `tests/client/settings/fetcher-schemas-kaneo.test.ts`, then implement `KaneoMembershipSchema`, the list fetcher, and the self reveal fetcher in `client/settings/` — run `bun test tests/client/settings/fetcher-schemas-kaneo.test.ts`
-- [ ] 3.2 Add failing component tests for `KaneoAccessSelfSection.svelte` covering the loaded list, empty state, reveal-once behavior, and error state; implement the section with the shared primitives and its MSW handlers/story — run `bun test tests/client/settings/sections/KaneoAccessSelfSection.test.ts`
-- [ ] 3.3 Add `kaneo-access` to the personal nav items and render the new section in the personal branch of `SettingsApp.svelte`; update `tests/client/settings/nav.svelte.test.ts` — run `bun test tests/client/settings/nav.svelte.test.ts tests/client/settings/sections/KaneoAccessSelfSection.test.ts`
-- [ ] 3.4 Add the Storybook story for the new section and refresh the story manifest/coverage; verify with `bun run test:stories:manifest`
+- [x] 3.1 Add failing fetcher/schema tests for the self endpoints in `tests/client/settings/fetcher-schemas-kaneo.test.ts`, then implement `KaneoMembershipSchema`, the list fetcher, and the self reveal fetcher in `client/settings/` — run `bun test tests/client/settings/fetcher-schemas-kaneo.test.ts`
+- [x] 3.2 Add failing component tests for `KaneoAccessSelfSection.svelte` covering the loaded list, empty state, reveal-once behavior, and error state; implement the section with the shared primitives and its MSW handlers/story — run `bun test tests/client/settings/sections/KaneoAccessSelfSection.test.ts`
+- [x] 3.3 Add `kaneo-access` to the personal nav items and render the new section in the personal branch of `SettingsApp.svelte`; update `tests/client/settings/nav.svelte.test.ts` — run `bun test tests/client/settings/nav.svelte.test.ts tests/client/settings/sections/KaneoAccessSelfSection.test.ts`
+- [x] 3.4 Add the Storybook story for the new section and refresh the story manifest/coverage; verify with `bun run test:stories:manifest`
 
 ## 4. Integration and full verification
 

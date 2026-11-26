@@ -23,6 +23,7 @@ import {
   groupReleaseHandlers,
   guestModeHandlers,
 } from './settings-handlers-group.js'
+import { kaneoSelfHandlers } from './settings-handlers-kaneo-self.js'
 import { llmModelMetadataHandlers } from './settings-handlers-metadata.js'
 import {
   analyticsLegitimateInterestHandlers,
@@ -70,6 +71,10 @@ export const scenarios = {
   'settings-kaneo-not-provisioned': [...kaneoHandlers.notProvisioned],
   'settings-kaneo-error': [...kaneoHandlers.error],
   'settings-kaneo-loading': [...kaneoHandlers.loading],
+  'settings-kaneo-self-populated': [...kaneoSelfHandlers.populated],
+  'settings-kaneo-self-empty': [...kaneoSelfHandlers.empty],
+  'settings-kaneo-self-error': [...kaneoSelfHandlers.error],
+  'settings-kaneo-self-loading': [...kaneoSelfHandlers.loading],
   'settings-task-provider-bound': [...taskProviderBoundHandlers],
   'settings-shell-ready': [...shellReadyHandlers],
   'settings-shell-group-ready': [

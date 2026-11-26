@@ -20,3 +20,17 @@ export const KaneoRevealSchema = z.object({
   warning: z.string(),
 })
 export type KaneoReveal = z.infer<typeof KaneoRevealSchema>
+
+export const KaneoMembershipSchema = z.object({
+  contextId: z.string(),
+  groupLabel: z.string(),
+  login: z.string(),
+  status: z.enum(['active', 'inactive', 'failed']),
+  kaneoUrl: z.string().nullable(),
+})
+export type KaneoMembership = z.infer<typeof KaneoMembershipSchema>
+
+export const KaneoMembershipsSchema = z.object({
+  memberships: z.array(KaneoMembershipSchema),
+})
+export type KaneoMemberships = z.infer<typeof KaneoMembershipsSchema>
