@@ -20,7 +20,7 @@
 
 - [x] 4.1 With Docker available (image already cached from this investigation), bring up the pinned Kaneo image via `docker compose -f docker-compose.yml -f docker-compose.test.yml up -d kaneo-postgres kaneo`, run `provisionAndConfigure('<scoped group id>', null, { publicUrl, internalUrl })` and confirm the outcome is `provisioned`, then run `kaneoProvisionMember` and confirm the invited member appears at `GET /api/workspace/{id}/members`; tear the stack down with `down -v`
 - [x] 4.2 Run `bun run test`, `bun run typecheck`, `bun run lint`, and `bun security`; confirm all green and that the change's spec delta validates with `openspec validate --strict fix-kaneo-group-provisioning`
-- [ ] 4.3 Run `bun test:mutate:changed --base=HEAD~1` (or `--base=<merge-base>`) so the changed files' mutation scores are seeded for the CI ratchet; confirm no target falls below its recorded floor
+- [x] 4.3 Run `bun test:mutate:changed --base=HEAD~1` (or `--base=<merge-base>`) so the changed files' mutation scores are seeded for the CI ratchet; confirm no target falls below its recorded floor
 
 ## Workflow follow-up
 
