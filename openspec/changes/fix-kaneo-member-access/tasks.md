@@ -9,11 +9,11 @@
 
 ## 2. Member-scoped credentials API
 
-- [ ] 2.1 Add failing route tests in `tests/debug/settings/kaneo-credentials-routes.test.ts`: self list returns only the caller's rows for authorized groups on the caller's platform instance, excludes deauthorized groups and other users, and tolerates a null task instance; reveal succeeds once, 409s on a second attempt, rejects missing CSRF, denies another user's row as 404, and returns a generic error on decrypt failure — run `bun test tests/debug/settings/kaneo-credentials-routes.test.ts` and confirm the new cases fail
-- [ ] 2.2 Implement the self list handler and helpers in `src/debug/settings/kaneo-credentials-routes.ts` (platform-instance filter from the scoped context id, authorized-group filter, `known_group_contexts` label, per-context `kaneoUrl`) — run `bun test tests/debug/settings/kaneo-credentials-routes.test.ts`
-- [ ] 2.3 Implement the self reveal handler with row-ownership authorization, CSRF, reveal-once ciphertext clear, and non-disclosing 404 — run `bun test tests/debug/settings/kaneo-credentials-routes.test.ts`
-- [ ] 2.4 Dispatch `GET`/`POST /settings/api/kaneo/credentials/self` before the existing group route in `src/debug/settings-api-router.ts` and add a route-dispatch test asserting the existing group route is unchanged — run `bun test tests/debug/settings/kaneo-credentials-routes.test.ts`
-- [ ] 2.5 Update `docs/architecture/plugins.md` with the member-scoped credential route and its ownership authorization (no group-manager scope, encrypted-at-rest, reveal-once) — verify with `bun run format:check`
+- [x] 2.1 Add failing route tests in `tests/debug/settings/kaneo-credentials-routes.test.ts`: self list returns only the caller's rows for authorized groups on the caller's platform instance, excludes deauthorized groups and other users, and tolerates a null task instance; reveal succeeds once, 409s on a second attempt, rejects missing CSRF, denies another user's row as 404, and returns a generic error on decrypt failure — run `bun test tests/debug/settings/kaneo-credentials-routes.test.ts` and confirm the new cases fail
+- [x] 2.2 Implement the self list handler and helpers in `src/debug/settings/kaneo-credentials-routes.ts` (platform-instance filter from the scoped context id, authorized-group filter, `known_group_contexts` label, per-context `kaneoUrl`) — run `bun test tests/debug/settings/kaneo-credentials-routes.test.ts`
+- [x] 2.3 Implement the self reveal handler with row-ownership authorization, CSRF, reveal-once ciphertext clear, and non-disclosing 404 — run `bun test tests/debug/settings/kaneo-credentials-routes.test.ts`
+- [x] 2.4 Dispatch `GET`/`POST /settings/api/kaneo/credentials/self` before the existing group route in `src/debug/settings-api-router.ts` and add a route-dispatch test asserting the existing group route is unchanged — run `bun test tests/debug/settings/kaneo-credentials-routes.test.ts`
+- [x] 2.5 Update `docs/architecture/plugins.md` with the member-scoped credential route and its ownership authorization (no group-manager scope, encrypted-at-rest, reveal-once) — verify with `bun run format:check`
 
 ## 3. Personal-context settings surface
 

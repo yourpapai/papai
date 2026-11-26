@@ -27,7 +27,7 @@ import { handleContextTaskInstanceRoutes } from './settings/context-task-instanc
 import { handleContextVaultTokensRoutes } from './settings/context-vault-tokens-routes.js'
 import { handleGroupRoutes } from './settings/group-routes.js'
 import { handleIdentityRoutes } from './settings/identity-routes.js'
-import { handleKaneoCredentialsRoutes } from './settings/kaneo-credentials-routes.js'
+import { handleKaneoCredentialsRoutes, handleKaneoCredentialsSelfRoutes } from './settings/kaneo-credentials-routes.js'
 import { handleLlmModelMetadataRoutes } from './settings/llm-model-metadata-routes.js'
 import { handleMcpRoutes } from './settings/mcp-routes.js'
 import { handleMemoryRoutes } from './settings/memory-routes.js'
@@ -130,6 +130,7 @@ export function routeSettingsApi(
   if (url.pathname === '/settings/api/release-subscription') return handleReleaseSubscriptionRoutes(req, url)
   if (url.pathname.startsWith('/settings/api/group/')) return handleGroupRoutes(req, url, url.pathname)
   if (url.pathname === '/settings/api/provision/kaneo') return handleProvisionKaneo(req)
+  if (url.pathname === '/settings/api/kaneo/credentials/self') return handleKaneoCredentialsSelfRoutes(req)
   if (url.pathname === '/settings/api/kaneo/credentials') return handleKaneoCredentialsRoutes(req, url)
   return Promise.resolve(null)
 }
