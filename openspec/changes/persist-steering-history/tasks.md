@@ -27,7 +27,7 @@ See LICENSE in the project root for details.
 ## 3. Docs and full gate
 
 - [x] 3.1 Document persisted delivered steering, the W1 non-duplication rule, and the trim-cadence note in `docs/architecture/behaviors.md` (`behavior:mid-run-control`) and `docs/architecture/overview.md`; verify `rg -n "steering" docs/architecture/behaviors.md docs/architecture/overview.md` matches the shipped behavior and `bun run format:check` passes.
-- [ ] 3.2 Run the full gate: `bun test`, `bun run typecheck`, `bun run lint`, `bun run test:stories`, and `bun run test:mutate:changed --base=HEAD~1`; verify every command exits 0 and the docs from 3.1 are in the same commit as the behavior.
+- [x] 3.2 Run the full gate: `bun test`, `bun run typecheck`, `bun run lint`, `bun run test:stories`, and `bun run test:mutate:changed --base=HEAD~1`; verify every command exits 0 and the docs from 3.1 are in the same commit as the behavior.
 
 ## Workflow follow-up
 
